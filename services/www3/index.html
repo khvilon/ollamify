@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ollamify</title>
+    
+    <!-- Material UI Dependencies -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    
+    <!-- React and Dependencies -->
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- React Router -->
+    <script src="https://unpkg.com/@remix-run/router@1.14.1/dist/router.umd.min.js"></script>
+    <script src="https://unpkg.com/react-router@6.21.1/dist/umd/react-router.development.js"></script>
+    <script src="https://unpkg.com/react-router-dom@6.21.1/dist/umd/react-router-dom.development.js"></script>
+    
+    <!-- Material UI -->
+    <script src="https://unpkg.com/@emotion/react@11.11.1/dist/emotion-react.umd.min.js"></script>
+    <script src="https://unpkg.com/@emotion/styled@11.11.0/dist/emotion-styled.umd.min.js"></script>
+    <script src="https://unpkg.com/@mui/material@5.14.13/umd/material-ui.development.js"></script>
+    <script src="https://unpkg.com/@mui/x-data-grid@6.18.6/dist/umd/mui-x-data-grid.development.js"></script>
+    
+    <!-- Markdown Support -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>
+        window.ReactMarkdown = {
+            default: function(props) {
+                const { children } = props;
+                const html = marked.parse(children || '');
+                const div = document.createElement('div');
+                div.innerHTML = html;
+                return React.createElement('div', { dangerouslySetInnerHTML: { __html: html } });
+            }
+        };
+    </script>
+
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        .material-icons {
+            font-size: 24px;
+            line-height: 1;
+            vertical-align: middle;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script type="text/babel" src="src/components/Models.js"></script>
+    <script type="text/babel" src="src/components/Users.js"></script>
+    <script type="text/babel" src="src/components/Profile.js"></script>
+    <script type="text/babel" src="src/components/Documents.js"></script>
+    <script type="text/babel" src="src/components/Login.js"></script>
+    <script type="text/babel" src="src/components/Chat.js"></script>
+    <script type="text/babel" src="src/components/Projects.js"></script>
+    <script type="text/babel" src="src/components/Layout.js"></script>
+    <script type="text/babel">
+        const {
+            BrowserRouter,
+            Routes,
+            Route,
+            Link,
+            Navigate,
+            useNavigate,
+            useLocation
+        } = window.ReactRouterDOM;
+
+        const {
+            AppBar,
+            Box,
+            Button,
+            Container,
+            CssBaseline,
+            Drawer,
+            Grid,
+            IconButton,
+            List,
+            ListItem,
+            ListItemIcon,
+            ListItemText,
+            ListItemButton,
+            Paper,
+            Tab,
+            Tabs,
+            TextField,
+            Toolbar,
+            Typography,
+            CircularProgress,
+            Alert,
+            Dialog,
+            DialogTitle,
+            DialogContent,
+            DialogActions,
+            Card,
+            CardContent,
+            CardActions,
+            TableContainer,
+            Table,
+            TableHead,
+            TableBody,
+            TableRow,
+            TableCell,
+            FormControl,
+            InputLabel,
+            Select,
+            MenuItem,
+            FormHelperText,
+            DataGrid
+        } = window.MaterialUI;
+
+        // Material Icon component
+        const Icon = ({ children }) => (
+            <span className="material-icons">{children}</span>
+        );
+
+        // API client with auth handling
+        const api = {
+            async fetch(url, options = {}) {
+                const token = localStorage.getItem('token');
+                if (token) {
+                    options.headers = {
+                        ...options.headers,
+                        'Authorization': `Bearer ${token}`
+                    };
+                }
+
+                try {
+                    const response = await fetch(url, options);
+                    
+                    // Если получаем 401 или 403, удаляем токен и перенаправляем на логин
+                    if (response.status === 401 || response.status === 403) {
+                        localStorage.removeItem('token');
+                        window.location.href = '/login';
+                        return null;
+                    }
+                    
+                    return response;
+                } catch (error) {
+                    console.error('API Error:', error);
+                    throw error;
+                }
+            }
+        };
+
+        // Utility function to validate JSON
+        function isValidJson(str) {
+            if (!str) return true;
+            try {
+                JSON.parse(str);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // Components
+        const Models = window.Models;
+        const Users = window.Users;
+        const Profile = window.Profile;
+        const Documents = window.Documents;
+        const Login = window.Login;
+        const Layout = window.Layout;
+        const Chat = window.Chat;
+        const Projects = window.Projects;
+
+        function App() {
+            const prefersDarkMode = window.MaterialUI.useMediaQuery('(prefers-color-scheme: dark)');
+            const [mode, setMode] = React.useState(() => {
+                const savedTheme = localStorage.getItem('theme');
+                if (!savedTheme) {
+                    // Set system as default and save it
+                    localStorage.setItem('theme', 'system');
+                    return 'system';
+                }
+                return savedTheme;
+            });
+            const [isAuthenticated, setIsAuthenticated] = React.useState(!!localStorage.getItem('token'));
+
+            React.useEffect(() => {
+                const handleStorageChange = (e) => {
+                    if (e.key === 'theme') {
+                        setMode(e.newValue || 'system');
+                    }
+                };
+                window.addEventListener('storage', handleStorageChange);
+                return () => window.removeEventListener('storage', handleStorageChange);
+            }, []);
+
+            const theme = React.useMemo(() => {
+                const effectiveMode = mode === 'system' ? (prefersDarkMode ? 'dark' : 'light') : mode;
+                return window.MaterialUI.createTheme({
+                    palette: {
+                        mode: effectiveMode,
+                        ...(effectiveMode === 'dark' ? {
+                            background: {
+                                default: '#121212',
+                                paper: '#1e1e1e'
+                            },
+                            text: {
+                                primary: '#fff',
+                                secondary: 'rgba(255, 255, 255, 0.7)'
+                            }
+                        } : {
+                            background: {
+                                default: '#fff',
+                                paper: '#fff'
+                            },
+                            text: {
+                                primary: 'rgba(0, 0, 0, 0.87)',
+                                secondary: 'rgba(0, 0, 0, 0.6)'
+                            }
+                        })
+                    },
+                    components: {
+                        MuiPaper: {
+                            styleOverrides: {
+                                root: {
+                                    backgroundColor: effectiveMode === 'dark' ? '#1e1e1e' : '#fff'
+                                }
+                            }
+                        },
+                        MuiCard: {
+                            styleOverrides: {
+                                root: {
+                                    backgroundColor: effectiveMode === 'dark' ? '#1e1e1e' : '#fff'
+                                }
+                            }
+                        },
+                        MuiAppBar: {
+                            styleOverrides: {
+                                root: {
+                                    backgroundColor: effectiveMode === 'dark' ? '#1e1e1e' : '#fff',
+                                    color: effectiveMode === 'dark' ? '#fff' : '#000'
+                                }
+                            }
+                        },
+                        MuiDrawer: {
+                            styleOverrides: {
+                                paper: {
+                                    backgroundColor: effectiveMode === 'dark' ? '#1e1e1e' : '#fff'
+                                }
+                            }
+                        }
+                    }
+                });
+            }, [mode, prefersDarkMode]);
+
+            const handleLogin = (token) => {
+                localStorage.setItem('token', token);
+                setIsAuthenticated(true);
+            };
+
+            const handleLogout = () => {
+                localStorage.removeItem('token');
+                setIsAuthenticated(false);
+            };
+
+            return (
+                <window.MaterialUI.ThemeProvider theme={theme}>
+                    <window.MaterialUI.CssBaseline />
+                    <BrowserRouter>
+                        <Routes>
+                            <Route 
+                                path="/login" 
+                                element={
+                                    isAuthenticated ? (
+                                        <Navigate to="/documents" replace />
+                                    ) : (
+                                        <Login onLogin={handleLogin} />
+                                    )
+                                } 
+                            />
+                            <Route
+                                path="/*"
+                                element={
+                                    isAuthenticated ? (
+                                        <Layout onLogout={handleLogout}>
+                                            <Routes>
+                                                <Route path="/" element={<Navigate to="/documents" replace />} />
+                                                <Route path="/documents" element={<Documents />} />
+                                                <Route path="/models" element={<Models />} />
+                                                <Route path="/chat" element={<Chat />} />
+                                                <Route path="/users" element={<Users />} />
+                                                <Route path="/profile" element={<Profile />} />
+                                                <Route path="/projects" element={<Projects />} />
+                                                <Route path="*" element={<Navigate to="/documents" replace />} />
+                                            </Routes>
+                                        </Layout>
+                                    ) : (
+                                        <Navigate to="/login" replace />
+                                    )
+                                }
+                            />
+                        </Routes>
+                    </BrowserRouter>
+                </window.MaterialUI.ThemeProvider>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <App />
+        );
+    </script>
+</body>
+</html>
