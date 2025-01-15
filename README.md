@@ -1,146 +1,132 @@
 # Ollamify
 
-Платформа для управления документами и моделями с использованием Ollama для эмбеддингов и семантического поиска.
+A powerful document management and RAG (Retrieval Augmented Generation) system built with Ollama and modern web technologies.
 
-## Архитектура
+## Features
 
-Проект состоит из нескольких микросервисов:
+- **Document Management**
+  - Upload and process multiple document formats (PDF, DOCX, TXT)
+  - Automatic text extraction and chunking
+  - Document organization by projects
+  - Progress tracking for document processing
+  - Document search and filtering
 
-### Zeus Service (порт 3004)
-- Node.js + Express
-- Обработка документов и моделей
-- Создание эмбеддингов через Ollama
-- Семантический поиск
-- API для работы с документами и моделями
+- **RAG Capabilities**
+  - Question answering based on document content
+  - Multiple embedding model support
+  - Semantic search across documents
+  - Context-aware responses
 
-### Auth Service (порт 3003)
-- Node.js + Express
-- JWT аутентификация
-- Управление пользователями
-- Безопасное хранение паролей с bcrypt
+- **Model Management**
+  - Integration with Ollama models
+  - Support for OpenRouter models
+  - Model download and status tracking
+  - Capability-based model filtering
 
-### Frontend (www3) (порт 80)
-- React (без сборщика)
-- Material UI для компонентов
-- Модульная структура компонентов
-- Nginx для проксирования запросов
-- Защищенные роуты с авторизацией
-- Единая точка входа для всех сервисов
+## Components
 
-#### Структура компонентов фронтенда:
-- `Login.js` - Страница входа
-- `Documents.js` - Управление документами
-- `Models.js` - Управление моделями Ollama
-- `Users.js` - Управление пользователями
-- `Profile.js` - Профиль пользователя
-- `Layout.js` - Общий layout для авторизованных страниц
+### Frontend Pages
 
-### Ollama Service (порт 11434)
-- Сервис для работы с LLM моделями
-- Создание эмбеддингов
-- GPU акселерация
+1. **Documents** (`/documents`)
+   - Upload documents via file or direct text input
+   - View document list with metadata
+   - Filter documents by project
+   - Track document processing progress
+   - Delete documents
+   - Sort and paginate document list
 
-### Vector Database (порт 5432)
-- PostgreSQL с pgvector
-- Хранение документов и эмбеддингов
-- Векторный поиск
+2. **Chat** (`/chat`)
+   - Ask questions about documents
+   - Select project context for questions
+   - Choose between different LLM models
+   - View conversation history
+   - Markdown support for responses
+   - Real-time model status updates
 
-## Конфигурация
+3. **Models** (`/models`)
+   - View installed and available models
+   - Download new models
+   - Track download progress
+   - Filter models by capabilities
+   - Search through model list
+   - View model metadata and tags
 
-### Переменные окружения (.env)
-```env
-# Database Configuration
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=ollamify
-POSTGRES_HOST=vector-db
-POSTGRES_PORT=5432
+4. **Projects** (`/projects`)
+   - Create and manage projects
+   - Select embedding models for projects
+   - View project statistics
+   - Delete projects with confirmation
+   - Track document count per project
 
-# Auth Configuration
-JWT_SECRET=your-super-secret-key-change-in-production
-AUTH_PORT=3003
+## Setup
 
-# Zeus Configuration
-ZEUS_PORT=3004
+1. Clone the repository
+2. Copy `.env_example` to `.env` and configure:
+   ```
+   # Database Configuration
+   POSTGRES_USER=your_user
+   POSTGRES_PASSWORD=your_password
+   POSTGRES_DB=your_db
 
-# Nginx Configuration
-NGINX_PORT=80
-```
+   # JWT Configuration
+   JWT_SECRET=your_jwt_secret
+   JWT_EXPIRY=24h
 
-## Маршрутизация и авторизация
+   # Embedding Model
+   EMBEDDING_MODEL=all-minilm
 
-### Публичные маршруты:
-- `/login` - Страница входа
+   # OpenRouter Configuration
+   OPENROUTER_API_KEY=your_api_key
+   OPENROUTER_MODEL=your_model
+   OPENROUTER_URL=https://openrouter.ai/api/v1/chat/completions
+   ```
 
-### Защищенные маршруты (требуют авторизации):
-- `/documents` - Управление документами
-- `/models` - Управление моделями
-- `/users` - Управление пользователями
-- `/profile` - Профиль пользователя
+3. Start the services:
+   ```bash
+   docker-compose up -d
+   ```
 
-### Авторизация:
-- Использует JWT токены
-- Токен хранится в localStorage
-- Автоматический редирект на /login при отсутствии токена
-- Компонент Layout оборачивает только защищенные маршруты
+## Architecture
 
-## База данных
+The system consists of several microservices:
 
-### Основные таблицы
-
-#### users
-- id: UUID PRIMARY KEY
-- email: VARCHAR(255) UNIQUE
-- password_hash: VARCHAR(255)
-- role: VARCHAR(50)
-- created_at: TIMESTAMP
-- updated_at: TIMESTAMP
-
-#### documents
-- id: UUID PRIMARY KEY
-- title: VARCHAR(255)
-- content: TEXT
-- embedding: vector(384)
-- user_id: UUID REFERENCES users(id)
-- created_at: TIMESTAMP
-- updated_at: TIMESTAMP
-
-#### models
-- id: UUID PRIMARY KEY
-- name: VARCHAR(255)
-- description: TEXT
-- model_path: VARCHAR(255)
-- parameters: JSONB
-- created_at: TIMESTAMP
-- updated_at: TIMESTAMP
+- **Zeus** - Main backend service handling documents and RAG
+- **Auth** - Authentication service
+- **WWW3** - Frontend service
+- **Ollama** - Local model service
+- **PostgreSQL** - Database with pgvector extension
 
 ## API Endpoints
 
-### Auth API
-- POST /auth/login - Аутентификация
-- POST /auth/register - Регистрация
-- GET /auth/verify - Проверка токена
-- GET /auth/profile - Информация о пользователе
+### Documents
+- `GET /api/documents` - List documents
+- `POST /api/documents` - Upload document
+- `DELETE /api/documents/:id` - Delete document
+- `GET /api/documents/projects` - List projects
 
-### Documents API
-- GET /api/documents - Список документов
-- POST /api/documents - Создание документа
-- GET /api/documents/:id - Получение документа
-- PUT /api/documents/:id - Обновление документа
-- DELETE /api/documents/:id - Удаление документа
-- POST /api/documents/search - Семантический поиск
+### Projects
+- `GET /api/projects` - List projects
+- `POST /api/projects` - Create project
+- `DELETE /api/projects/:id` - Delete project
+- `GET /api/projects/:id/stats` - Get project stats
 
-### Models API
-- GET /api/models - Список моделей
-- POST /api/models - Создание модели
-- GET /api/models/:id - Получение модели
-- PUT /api/models/:id - Обновление модели
-- DELETE /api/models/:id - Удаление модели
-- POST /api/models/pull - Загрузка модели из репозитория
+### Models
+- `GET /api/models` - List installed models
+- `GET /api/models/available` - List available models
+- `POST /api/models/:name` - Download model
 
-### Users API
-- GET /api/users - Список пользователей
-- POST /api/users - Создание пользователя
-- GET /api/users/:id - Получение пользователя
-- PUT /api/users/:id - Обновление пользователя
-- DELETE /api/users/:id - Удаление пользователя
+### AI
+- `POST /api/ai/rag` - Question answering
+- `POST /api/ai/embed` - Get embeddings
+
+## Technologies
+
+- Frontend: React with Material-UI
+- Backend: Node.js with Express
+- Database: PostgreSQL with pgvector
+- Models: Ollama, OpenRouter
+- Containerization: Docker
+
+## License
+
+MIT License
