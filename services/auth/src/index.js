@@ -150,8 +150,8 @@ app.post('/auth/verify', async (req, res) => {
   try {
     let userInfo = null;
     const originalUri = req.headers['x-original-uri'] || '';
-    const isAiEndpoint = originalUri.includes('/api/ai/') || originalUri.includes('/api/v1/chat/completions');
-    console.log('Is AI endpoint:', isAiEndpoint);
+    const isExternalEndpoint = originalUri.includes('/api/ai/') || originalUri.includes('/api/v1/chat/completions') ||originalUri.includes('/api/documents/');
+    console.log('Is external endpoint:', isExternalEndpoint);
 
     // First try to verify as JWT
     try {
@@ -163,7 +163,7 @@ app.post('/auth/verify', async (req, res) => {
       console.log('JWT verification failed:', jwtError.message);
       
       // If JWT verification fails, try as API key
-      if (isAiEndpoint) {
+      if (isExternalEndpoint) {
         console.log('Attempting API key verification...');
         
         const result = await pool.query(
@@ -199,7 +199,7 @@ app.post('/auth/verify', async (req, res) => {
     }
 
     // Check permissions
-    console.log('Checking permissions:', { isAiEndpoint, isAdmin: userInfo.isAdmin });
+    console.log('Checking permissions:', { isExternalEndpoint, isAdmin: userInfo.isAdmin });
 
     // Set response headers with user info
     const userJson = JSON.stringify({
