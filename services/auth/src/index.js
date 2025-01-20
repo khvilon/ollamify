@@ -150,7 +150,7 @@ app.post('/auth/verify', async (req, res) => {
   try {
     let userInfo = null;
     const originalUri = req.headers['x-original-uri'] || '';
-    const isAiEndpoint = originalUri.includes('/api/ai/');
+    const isAiEndpoint = originalUri.includes('/api/ai/') || originalUri.includes('/api/v1/chat/completions');
     console.log('Is AI endpoint:', isAiEndpoint);
 
     // First try to verify as JWT
