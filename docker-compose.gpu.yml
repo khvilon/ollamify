@@ -1,0 +1,31 @@
+services:
+  ollama:
+    build:
+      context: .
+      dockerfile: services/ollama/Dockerfile
+    volumes:
+      - ollama_data:/root/.ollama
+    expose:
+      - "11434"
+    healthcheck:
+      test: ["CMD", "pgrep", "ollama"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    environment:
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - NVIDIA_VISIBLE_DEVICES=all
+    container_name: ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    networks:
+      - app-network
+
+volumes:
+  ollama_data:
