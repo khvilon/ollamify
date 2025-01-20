@@ -23,6 +23,14 @@ A powerful document management and RAG (Retrieval Augmented Generation) system b
   - Model download and status tracking
   - Capability-based model filtering
 
+- **User Management & Security**
+  - User registration and authentication
+  - Role-based access control (admin/user)
+  - API key generation and management
+  - Token-based authentication for API access
+  - Secure password hashing and storage
+  - Session management and JWT tokens
+
 ## Components
 
 ### Frontend Pages
@@ -58,6 +66,15 @@ A powerful document management and RAG (Retrieval Augmented Generation) system b
    - Delete projects with confirmation
    - Track document count per project
 
+5. **Users & API Keys** (`/users`)
+   - User account management
+   - Create and manage API keys
+   - View API key usage statistics
+   - Set API key permissions and limits
+   - Enable/disable API keys
+   - User role management (admin only)
+   - Password change functionality
+
 ## Setup
 
 1. Clone the repository
@@ -82,9 +99,31 @@ A powerful document management and RAG (Retrieval Augmented Generation) system b
    ```
 
 3. Start the services:
+
+   The system can run in two modes: CPU-only or with GPU support. The startup script will automatically detect NVIDIA GPU and choose the appropriate mode.
+
+   **Linux/macOS:**
    ```bash
-   docker-compose up -d
+   # Auto-detect GPU and start
+   ./start.sh
+
+   # Force CPU mode even if GPU is available
+   ./start.sh --cpu
    ```
+
+   **Windows (using Git Bash or WSL):**
+   ```bash
+   # Using Git Bash
+   bash start.sh
+
+   # Using WSL
+   wsl bash /mnt/c/path/to/ollamify/start.sh
+   ```
+
+   **Requirements for GPU mode:**
+   - NVIDIA GPU
+   - NVIDIA drivers installed
+   - NVIDIA Container Toolkit (nvidia-docker2)
 
 ## Architecture
 
