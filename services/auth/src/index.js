@@ -150,7 +150,7 @@ app.post('/auth/verify', async (req, res) => {
   try {
     let userInfo = null;
     const originalUri = req.headers['x-original-uri'] || '';
-    const isExternalEndpoint = originalUri.includes('/api/ai/') || originalUri.includes('/api/v1/chat/completions') ||originalUri.includes('/api/documents/');
+    const isExternalEndpoint = originalUri.includes('/api/ai') || originalUri.includes('/api/v1/chat/completions') || originalUri.includes('/api/documents');
     console.log('Is external endpoint:', isExternalEndpoint);
 
     // First try to verify as JWT
