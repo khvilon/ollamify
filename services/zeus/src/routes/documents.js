@@ -264,15 +264,19 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         .digest('hex');
 
       const client = await pool.connect();
+      logger.info('Got database connection');
       try {
         await client.query('BEGIN');
+        logger.info('Started transaction');
 
         // Получаем информацию о проекте и его модели эмбеддингов
+        logger.info(`Getting project info for "${project}"`);
         const projectInfo = await client.query(`
           SELECT name, embedding_model 
           FROM admin.projects 
           WHERE name = $1
         `, [project]);
+        logger.info(`Got project info, found ${projectInfo.rows.length} rows`);
 
         if (projectInfo.rows.length === 0) {
           throw new Error(`Project "${project}" not found`);
@@ -316,6 +320,8 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         // Коммитим транзакцию создания документа
         await client.query('COMMIT');
+        client.release();
+        logger.info('Database connection released after successful document creation');
 
         // Отправляем ответ сразу после создания документа
         res.json({
@@ -374,22 +380,30 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         logger.error('Database error:', dbError);
         await client.query('ROLLBACK');
         client.release();
+        logger.info('Database connection released after database error');
         throw dbError;
       }
     } catch (processingError) {
       logger.error('Error processing document:', processingError);
+      await client.query('ROLLBACK');
+      client.release();
+      logger.info('Database connection released after processing error');
       return res.status(500).json({
         error: 'Failed to process document',
         details: processingError.message,
-        stack: processingError.stack
+        code: 'PROCESSING_ERROR'
       });
     }
   } catch (error) {
     logger.error('Unhandled error in document upload:', error);
+    if (client) {
+      client.release();
+      logger.info('Database connection released after unhandled error');
+    }
     res.status(500).json({
       error: 'Internal server error',
       details: error.message,
-      stack: error.stack
+      code: 'INTERNAL_ERROR'
     });
   }
 });
