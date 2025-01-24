@@ -1,2 +1,3 @@
 *.sh text eol=lf
 start.sh binary
+services/ollama/init.sh binary
