@@ -338,9 +338,8 @@ router.post('/', uploadWithEncoding, async (req, res) => {
                 await chunkClient.query('BEGIN');
 
                 // Получаем эмбеддинг для чанка, используя модель из проекта
+                logger.info(`Getting embedding for chunk ${i + 1} using model ${projectEmbeddingModel}`);
                 const embedding = await getEmbedding(chunk, projectEmbeddingModel);
-                logger.info(`Got embedding with dimension ${embedding.length}`);
-
                 // Сохраняем чанк
                 await chunkClient.query(`
                   INSERT INTO "${project}".chunks
