@@ -7,6 +7,7 @@ import usersRouter from './routes/users.js';
 import projectsRouter from './routes/projects.js';
 import aiRouter from './routes/ai.js';
 import { errorHandler } from './errors.js';
+import logger from './utils/logger.js';
 
 dotenv.config();
 
@@ -20,14 +21,14 @@ app.use(express.urlencoded({ limit: '100mb', extended: true }));
 // Middleware для парсинга информации о пользователе
 app.use((req, res, next) => {
   const userHeader = req.headers['x-user'];
-  console.log('Raw X-User header:', userHeader);
+  logger.info('Raw X-User header:', userHeader);
   if (userHeader) {
     try {
       req.user = JSON.parse(userHeader);
-      console.log('Parsed user:', req.user);
+      logger.info('Parsed user:', req.user);
     } catch (error) {
-      console.error('Failed to parse X-User header:', error);
-      console.error('Header value:', userHeader);
+      logger.error('Failed to parse X-User header:', error);
+      logger.error('Header value:', userHeader);
     }
   }
   next();
@@ -44,5 +45,5 @@ app.use('/api/ai', aiRouter);
 app.use(errorHandler);
 
 app.listen(port, () => {
-  console.log(`Zeus server running on port ${port}`);
+  logger.info(`Zeus server running on port ${port}`);
 });

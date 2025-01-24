@@ -9,6 +9,7 @@ import { getEmbedding, getEmbeddingDimension, splitIntoChunks } from '../embeddi
 import { render_page, sanitizeText } from '../documentsTools.js';
 import DocumentQueries from '../db/documents.js';
 import dotenv from 'dotenv';
+import logger from '../utils/logger.js';
 
 dotenv.config();
 
@@ -31,7 +32,7 @@ const upload = multer({
 const uploadWithEncoding = (req, res, next) => {
   upload(req, res, (err) => {
     if (err) {
-      console.error('Multer error:', err);
+      logger.error('Multer error:', err);
       return res.status(400).json({
         error: 'File upload error',
         details: err.message
@@ -60,7 +61,7 @@ router.get('/', async (req, res) => {
       `, [project]);
       
       if (schemaExists.rows.length === 0) {
-        console.log(`Project "${project}" not found, returning empty array`);
+        logger.info(`Project "${project}" not found, returning empty array`);
         return res.json([]);
       }
       
@@ -78,11 +79,11 @@ router.get('/', async (req, res) => {
         FROM "${project}".documents
         ORDER BY created_at DESC
       `);
-      console.log(`Found ${result.rows.length} documents in project "${project}"`);
+      logger.info(`Found ${result.rows.length} documents in project "${project}"`);
       res.json(result.rows);
     } else {
       // Получаем все документы из всех проектов
-      console.log('Fetching documents from all projects');
+      logger.info('Fetching documents from all projects');
       const schemas = await pool.query(`
         SELECT schema_name
         FROM information_schema.schemata
@@ -96,7 +97,7 @@ router.get('/', async (req, res) => {
         AND schema_name NOT LIKE 'pg_%'
       `);
       
-      console.log(`Found ${schemas.rows.length} project schemas`);
+      logger.info(`Found ${schemas.rows.length} project schemas`);
       const allDocuments = [];
       
       for (const schema of schemas.rows) {
@@ -112,7 +113,7 @@ router.get('/', async (req, res) => {
           `, [projectName]);
           
           if (!tableExists.rows[0].exists) {
-            console.log(`Table 'documents' does not exist in schema "${projectName}", skipping`);
+            logger.info(`Table 'documents' does not exist in schema "${projectName}", skipping`);
             continue;
           }
           
@@ -129,20 +130,20 @@ router.get('/', async (req, res) => {
             FROM "${projectName}".documents
             ORDER BY created_at DESC
           `);
-          console.log(`Found ${docs.rows.length} documents in project "${projectName}"`);
+          logger.info(`Found ${docs.rows.length} documents in project "${projectName}"`);
           allDocuments.push(...docs.rows);
         } catch (err) {
-          console.error(`Error fetching documents from project "${projectName}":`, err);
+          logger.error(`Error fetching documents from project "${projectName}":`, err);
           // Продолжаем с следующим проектом
           continue;
         }
       }
       
-      console.log(`Returning ${allDocuments.length} documents in total`);
+      logger.info(`Returning ${allDocuments.length} documents in total`);
       res.json(allDocuments);
     }
   } catch (error) {
-    console.error('Error in GET /documents:', error);
+    logger.error('Error in GET /documents:', error);
     res.status(500).json({ 
       error: error.message,
       details: error.stack
@@ -160,7 +161,7 @@ router.get('/projects', async (req, res) => {
         `);
         res.json(result.rows);
     } catch (err) {
-        console.error('Error getting projects:', err);
+        logger.error('Error getting projects:', err);
         res.status(500).json({ error: 'Failed to get projects' });
     }
 });
@@ -168,8 +169,8 @@ router.get('/projects', async (req, res) => {
 // Загрузка документа (файл или текст)
 router.post('/', uploadWithEncoding, async (req, res) => {
   try {
-    console.log('POST /documents request received');
-    console.log('Request body:', {
+    logger.info('POST /documents request received');
+    logger.info('Request body:', {
       project: req.body.project,
       hasFile: !!req.file,
       hasContent: !!req.body.content,
@@ -180,7 +181,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
     const { project, content, metadata = {}, name, model } = req.body;
     
     if (!project) {
-      console.log('Missing project parameter');
+      logger.error('Missing project parameter');
       return res.status(400).json({
         error: 'Project parameter is required',
         code: 'MISSING_PROJECT'
@@ -189,12 +190,11 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
     // Проверяем модель
     const embeddingModel = model || EMBEDDING_MODEL;
-    console.log(`Using embedding model: ${embeddingModel}`);
 
     let documentContent;
     try {
       if (req.file) {
-        console.log(`Processing uploaded file: ${req.file.originalname} (${req.file.mimetype}, size: ${req.file.size} bytes)`);
+        logger.info(`Processing uploaded file: ${req.file.originalname} (${req.file.mimetype}, size: ${req.file.size} bytes)`);
         
         // Проверяем тип файла
         const supportedTypes = {
@@ -223,13 +223,13 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         }
 
         try {
-          console.log(`Extracting text from ${req.file.mimetype} file...`);
+          logger.info(`Extracting text from ${req.file.mimetype} file...`);
           const extractedText = await fileHandler(req.file.buffer);
-          console.log('Text extraction completed, sanitizing...');
+          logger.info('Text extraction completed, sanitizing...');
           documentContent = sanitizeText(extractedText);
-          console.log(`Extracted and sanitized ${documentContent.length} characters`);
+          logger.info(`Extracted and sanitized ${documentContent.length} characters`);
         } catch (error) {
-          console.error('Error processing file:', error);
+          logger.error('Error processing file:', error);
           return res.status(400).json({
             error: `Failed to process ${req.file.mimetype} file: ${error.message}`,
             details: error.stack
@@ -242,16 +242,16 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         try {
           documentContent = sanitizeText(content);
           metadata.name = name || content.split(' ').slice(0, 3).join(' ');
-          console.log(`Processing text content, length: ${documentContent.length}`);
+          logger.info(`Processing text content, length: ${documentContent.length}`);
         } catch (error) {
-          console.error('Error processing content:', error);
+          logger.error('Error processing content:', error);
           return res.status(400).json({
             error: error.message,
             code: 'INVALID_CONTENT'
           });
         }
       } else {
-        console.log('Neither file nor content provided');
+        logger.error('Neither file nor content provided');
         return res.status(400).json({
           error: 'Either file or content must be provided',
           code: 'MISSING_CONTENT'
@@ -279,6 +279,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         }
 
         const projectEmbeddingModel = projectInfo.rows[0].embedding_model;
+        logger.info(`Using project embedding model: ${projectEmbeddingModel}`);
         
         // Проверяем существование схемы проекта
         const schemaExists = await client.query(`
@@ -288,17 +289,17 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         `, [project]);
 
         if (schemaExists.rows.length === 0) {
-          console.log(`Creating new schema for project ${project}`);
+          logger.info(`Creating new schema for project ${project}`);
           const dimension = await getEmbeddingDimension(projectEmbeddingModel);
           await createProjectSchema(project, dimension);
         }
 
-        console.log('Splitting text into chunks...');
+        logger.info('Splitting text into chunks...');
         const chunks = splitIntoChunks(documentContent);
         const totalChunks = chunks.length;
         
-        console.log(`Document "${metadata.name}" content length: ${documentContent.length}`);
-        console.log(`Split into ${totalChunks} chunks`);
+        logger.info(`Document "${metadata.name}" content length: ${documentContent.length}`);
+        logger.info(`Split into ${totalChunks} chunks`);
 
         // Создаем документ
         const result = await client.query(`
@@ -311,7 +312,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         const document = result.rows[0];
         const documentId = document.id;
-        console.log(`Created document with ID ${documentId}`);
+        logger.info(`Created document with ID ${documentId}`);
 
         // Коммитим транзакцию создания документа
         await client.query('COMMIT');
@@ -330,16 +331,15 @@ router.post('/', uploadWithEncoding, async (req, res) => {
           try {
             // Сохраняем чанки с эмбеддингами
             for (let i = 0; i < chunks.length; i++) {
-              console.log(`Processing chunk ${i + 1}/${chunks.length}`);
+              logger.info(`Processing chunk ${i + 1}/${chunks.length}`);
               const chunk = chunks[i];
               
               try {
                 await chunkClient.query('BEGIN');
 
                 // Получаем эмбеддинг для чанка, используя модель из проекта
-                console.log(`Getting embedding for chunk ${i + 1} using model ${projectEmbeddingModel}`);
                 const embedding = await getEmbedding(chunk, projectEmbeddingModel);
-                console.log(`Got embedding with dimension ${embedding.length}`);
+                logger.info(`Got embedding with dimension ${embedding.length}`);
 
                 // Сохраняем чанк
                 await chunkClient.query(`
@@ -358,27 +358,27 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
                 await chunkClient.query('COMMIT');
               } catch (chunkError) {
-                console.error(`Error processing chunk ${i + 1}:`, chunkError);
+                logger.error(`Error processing chunk ${i + 1}:`, chunkError);
                 await chunkClient.query('ROLLBACK');
                 // Продолжаем обработку следующих чанков
               }
             }
 
-            console.log(`Successfully processed all chunks for document ${documentId}`);
+            logger.info(`Successfully processed all chunks for document ${documentId}`);
           } catch (processingError) {
-            console.error('Error in async processing:', processingError);
+            logger.error('Error in async processing:', processingError);
           } finally {
             chunkClient.release();
           }
         })();
       } catch (dbError) {
-        console.error('Database error:', dbError);
+        logger.error('Database error:', dbError);
         await client.query('ROLLBACK');
         client.release();
         throw dbError;
       }
     } catch (processingError) {
-      console.error('Error processing document:', processingError);
+      logger.error('Error processing document:', processingError);
       return res.status(500).json({
         error: 'Failed to process document',
         details: processingError.message,
@@ -386,7 +386,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       });
     }
   } catch (error) {
-    console.error('Unhandled error in document upload:', error);
+    logger.error('Unhandled error in document upload:', error);
     res.status(500).json({
       error: 'Internal server error',
       details: error.message,
@@ -419,17 +419,17 @@ router.get('/:id', async (req, res) => {
     `, [id]);
     
     if (result.rows.length === 0) {
-      console.log(`Document with ID ${id} not found in project "${project}"`);
+      logger.info(`Document with ID ${id} not found in project "${project}"`);
       return res.status(404).json({
         error: 'Document not found',
         code: 'DOCUMENT_NOT_FOUND'
       });
     }
     
-    console.log(`Document with ID ${id} found in project "${project}"`);
+    logger.info(`Document with ID ${id} found in project "${project}"`);
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Error fetching document:', error);
+    logger.error('Error fetching document:', error);
     res.status(500).json({ 
       error: error.message,
       details: error.stack
@@ -451,10 +451,10 @@ router.delete('/:id', async (req, res) => {
   
   try {
     await DocumentQueries.delete(project, id);
-    console.log(`Document with ID ${id} deleted from project "${project}"`);
+    logger.info(`Document with ID ${id} deleted from project "${project}"`);
     res.status(204).send();
   } catch (error) {
-    console.error('Error deleting document:', error);
+    logger.error('Error deleting document:', error);
     res.status(500).json({ 
       error: error.message,
       details: error.stack

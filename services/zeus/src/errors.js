@@ -1,3 +1,5 @@
+import logger from './utils/logger.js';
+
 export class AppError extends Error {
   constructor(message, statusCode = 500, details = null) {
     super(message);
@@ -18,7 +20,7 @@ export const asyncHandler = (fn) => (req, res, next) =>
 
 // Middleware для обработки ошибок
 export const errorHandler = (err, req, res, next) => {
-  console.error(err);
+  logger.error(err);
   
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({

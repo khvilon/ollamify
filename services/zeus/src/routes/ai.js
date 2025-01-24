@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -18,7 +19,7 @@ async function findRelevantDocuments(questionEmbedding, project, embeddingModel)
     `, [project]);
 
     if (schemaExists.rows.length === 0) {
-      console.log(`Creating new schema for project ${project}`);
+      logger.info(`Creating new schema for project ${project}`);
       const dimension = await getEmbeddingDimension(embeddingModel);
       await createProjectSchema(project, dimension);
     }
@@ -47,7 +48,7 @@ async function findRelevantDocuments(questionEmbedding, project, embeddingModel)
 
 // Получение ответа от LLM
 async function getAnswer(context, question) {
-  console.log('Sending request to OpenRouter API:', {
+  logger.info('Sending request to OpenRouter API:', {
     url: process.env.OPENROUTER_URL,
     model: process.env.OPENROUTER_MODEL,
     contextLength: context.length
@@ -93,7 +94,7 @@ Question: ${question}`
     const data = await response.json();
     return data.choices[0].message.content;
   } catch (error) {
-    console.error('Error in getAnswer:', error);
+    logger.error('Error in getAnswer:', error);
     throw error;
   }
 }
@@ -103,7 +104,7 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
   const isOpenRouter = model.startsWith('openrouter/');
   const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
 
-  console.log('Getting completion:', {
+  logger.info('Getting completion:', {
     service: isOpenRouter ? 'OpenRouter' : 'Ollama',
     model: actualModel,
     messagesCount: messages.length
@@ -156,7 +157,7 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       return data.response;
     }
   } catch (error) {
-    console.error('Error in getCompletion:', error);
+    logger.error('Error in getCompletion:', error);
     throw error;
   }
 }
@@ -209,7 +210,7 @@ router.post('/embed', async (req, res) => {
 
     res.json(response);
   } catch (error) {
-    console.error('Error getting embedding:', error);
+    logger.error('Error getting embedding:', error);
     res.status(500).json({ 
       error: {
         message: error.message,
@@ -315,7 +316,7 @@ router.post('/complete', async (req, res) => {
       res.json(response);
     }
   } catch (error) {
-    console.error('Error in completion:', error);
+    logger.error('Error in completion:', error);
     res.status(500).json({ 
       error: {
         message: error.message,
@@ -335,7 +336,7 @@ router.post('/rag', async (req, res) => {
   }
 
   try {
-    console.log('POST /ai/rag request received:', {
+    logger.info('POST /ai/rag request received:', {
       question,
       project,
       model
@@ -354,21 +355,21 @@ router.post('/rag', async (req, res) => {
     const embeddingModel = projectResult.rows[0].embedding_model;
     
     // Используем модель из проекта для эмбеддингов
-    console.log('Getting embedding for question:', question);
+    logger.info('Getting embedding for question:', question);
     const questionEmbedding = await getEmbedding(question, embeddingModel);
     
     // Ищем релевантные документы в конкретном проекте
-    console.log('Finding relevant documents in project:', project);
+    logger.info('Finding relevant documents in project:', project);
     const relevantDocs = await findRelevantDocuments(questionEmbedding, project, embeddingModel);
     
     if (relevantDocs.length === 0) {
-      console.log('No relevant documents found');
+      logger.info('No relevant documents found');
       return res.status(404).json({ 
         error: 'No relevant documents found for this question' 
       });
     }
 
-    console.log('Found relevant documents:', relevantDocs.map(doc => doc.filename));
+    logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
 
     const context = `Найденные релевантные фрагменты:\n\n` + 
     relevantDocs
@@ -376,7 +377,7 @@ router.post('/rag', async (req, res) => {
       .join('\n\n') +
     '\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.';
 
-    console.log('Getting answer from LLM...');
+    logger.info('Getting answer from LLM...');
     // Получаем ответ от LLM
     const answer = await getCompletion([
       {
@@ -393,7 +394,7 @@ Question: ${question}`
       }
     ], model);
 
-    console.log('Sending response to client');
+    logger.info('Sending response to client');
     res.json({
       answer,
       relevantDocuments: relevantDocs.map(doc => ({
@@ -403,7 +404,7 @@ Question: ${question}`
     });
 
   } catch (error) {
-    console.error('Error in ai/rag:', error);
+    logger.error('Error in ai/rag:', error);
     res.status(500).json({
       error: 'Failed to get answer',
       details: error.message

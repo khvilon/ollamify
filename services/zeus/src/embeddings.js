@@ -1,4 +1,5 @@
 import fetch from 'node-fetch';
+import logger from './utils/logger.js';
 
 export async function getEmbeddingDimension(model) {
     try {
@@ -13,10 +14,10 @@ export async function getEmbeddingDimension(model) {
       }
 
       const data = await response.json();
-      console.log(`Model ${model} returned embedding with dimension ${data.embedding.length}`);
+      logger.info(`Model ${model} returned embedding with dimension ${data.embedding.length}`);
       return data.embedding.length;
     } catch (error) {
-      console.error(`Error determining embedding dimension for model ${model}:`, error);
+      logger.error(`Error determining embedding dimension for model ${model}:`, error);
       throw error;
     }
 }
@@ -35,10 +36,10 @@ export async function getEmbedding(text, model) {
     }
 
     const data = await response.json();
-    console.log(`Got embedding with dimension ${data.embedding.length} from model ${model}`);
+    logger.info(`Got embedding with dimension ${data.embedding.length} from model ${model}`);
     return data.embedding;
   } catch (error) {
-    console.error('Error getting embedding:', error);
+    logger.error('Error getting embedding:', error);
     throw error;
   }
 }

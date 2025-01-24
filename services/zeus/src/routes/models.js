@@ -2,6 +2,7 @@ import express from 'express';
 import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
 import crypto from 'crypto';
+import logger from '../utils/logger.js';
 
 const router = express.Router();
 
@@ -38,11 +39,11 @@ async function fetchOllamaModels() {
   try {
     // Если кэш существует и прошло меньше часа с последнего обновления, возвращаем кэш
     if (modelsCache && lastCacheUpdate && (Date.now() - lastCacheUpdate) < CACHE_UPDATE_INTERVAL) {
-      console.log('Returning models from cache');
+      logger.info('Returning models from cache');
       return modelsCache;
     }
 
-    console.log('Fetching models from ollama.com');
+    logger.info('Fetching models from ollama.com');
     const response = await fetch('https://ollama.com/search');
     
     if (!response.ok) {
@@ -55,10 +56,10 @@ async function fetchOllamaModels() {
     const document = dom.window.document;
     
     const modelElements = document.querySelectorAll('[x-test-model]');
-    console.log(`Found ${modelElements.length} model elements`);
+    logger.info(`Found ${modelElements.length} model elements`);
 
     if (!modelElements || modelElements.length === 0) {
-      console.warn('No model elements found on the page');
+      logger.warn('No model elements found on the page');
       // Если не удалось получить новые данные, возвращаем кэш, если он есть
       if (modelsCache) {
         return modelsCache;
@@ -71,7 +72,7 @@ async function fetchOllamaModels() {
       try {
         const title = modelEl.querySelector('[x-test-search-response-title]')?.textContent;
         if (!title) {
-          console.warn('Skipping model element without title');
+          logger.warn('Skipping model element without title');
           return;
         }
 
@@ -108,28 +109,28 @@ async function fetchOllamaModels() {
           sizes
         });
       } catch (error) {
-        console.error('Error parsing model element:', error);
+        logger.error('Error parsing model element:', error);
       }
     });
 
-    console.log(`Successfully parsed ${models.length} models`);
+    logger.info(`Successfully parsed ${models.length} models`);
 
     // Обновляем кэш только если получили какие-то данные
     if (models.length > 0) {
       modelsCache = models;
       lastCacheUpdate = Date.now();
-      console.log('Models cache updated');
+      logger.info('Models cache updated');
     } else if (modelsCache) {
-      console.log('Using cached models due to empty parse result');
+      logger.info('Using cached models due to empty parse result');
       return modelsCache;
     }
 
     return models;
   } catch (error) {
-    console.error('Error fetching Ollama models:', error);
+    logger.error('Error fetching Ollama models:', error);
     // В случае ошибки возвращаем кэш, если он есть
     if (modelsCache) {
-      console.log('Returning cached models due to fetch error');
+      logger.info('Returning cached models due to fetch error');
       return modelsCache;
     }
     return []; // Возвращаем пустой массив, если нет ни данных, ни кэша
@@ -141,11 +142,11 @@ async function fetchOpenRouterModels() {
   try {
     // Если кэш существует и прошло меньше часа с последнего обновления, возвращаем кэш
     if (openRouterModelsCache && lastOpenRouterCacheUpdate && (Date.now() - lastOpenRouterCacheUpdate) < CACHE_UPDATE_INTERVAL) {
-      console.log('Returning OpenRouter models from cache');
+      logger.info('Returning OpenRouter models from cache');
       return openRouterModelsCache;
     }
 
-    console.log('Fetching models from OpenRouter');
+    logger.info('Fetching models from OpenRouter');
     const response = await fetch('https://openrouter.ai/api/v1/models');
     
     if (!response.ok) {
@@ -172,7 +173,7 @@ async function fetchOpenRouterModels() {
 
     return models;
   } catch (error) {
-    console.error('Error fetching OpenRouter models:', error);
+    logger.error('Error fetching OpenRouter models:', error);
     // Если не удалось получить новые данные, возвращаем кэш, если он есть
     if (openRouterModelsCache) {
       return openRouterModelsCache;
@@ -222,12 +223,12 @@ async function checkModelStatus(modelName) {
             });
           }
         } catch (e) {
-          console.error('Error parsing status line:', e);
+          logger.error('Error parsing status line:', e);
         }
       }
     }
   } catch (error) {
-    console.error(`Error checking status for ${modelName}:`, error);
+    logger.error(`Error checking status for ${modelName}:`, error);
     modelDownloadStatus.set(modelName, {
       status: 'error',
       progress: 0,
@@ -284,7 +285,7 @@ async function getRelevantContext(question) {
         // TODO: Здесь будет логика поиска релевантных документов
         return "";
     } catch (error) {
-        console.error('Error getting embeddings:', error);
+        logger.error('Error getting embeddings:', error);
         throw error;
     }
 }
@@ -320,7 +321,7 @@ async function getAnswer(context, question) {
         const data = await response.json();
         return data.choices[0]?.message?.content || 'No answer provided';
     } catch (error) {
-        console.error('Error getting answer:', error);
+        logger.error('Error getting answer:', error);
         throw error;
     }
 }
@@ -328,7 +329,7 @@ async function getAnswer(context, question) {
 // Инициализация статуса загрузки моделей при старте сервера
 async function initializeModelStatus() {
   try {
-    console.log('Initializing model status...');
+    logger.info('Initializing model status...');
     const response = await fetch('http://ollama:11434/api/pull', {
       method: 'POST',
       headers: {
@@ -349,7 +350,7 @@ async function initializeModelStatus() {
         try {
           const data = JSON.parse(line);
           if (data.status === 'downloading') {
-            console.log(`Found active download for model: ${data.model}`);
+            logger.info(`Found active download for model: ${data.model}`);
             modelDownloadStatus.set(data.model, {
               status: 'downloading',
               progress: Math.round((data.completed / data.total) * 100),
@@ -364,9 +365,9 @@ async function initializeModelStatus() {
       }
     }
 
-    console.log('Model status initialization completed');
+    logger.info('Model status initialization completed');
   } catch (error) {
-    console.error('Error initializing model status:', error);
+    logger.error('Error initializing model status:', error);
   }
 }
 
@@ -374,13 +375,13 @@ async function initializeModelStatus() {
 initializeModelStatus();
 
 // Инициализация кэша при запуске
-fetchOllamaModels().catch(console.error);
-fetchOpenRouterModels().catch(console.error);
+fetchOllamaModels().catch(logger.error);
+fetchOpenRouterModels().catch(logger.error);
 
 // Периодическое обновление кэша
 setInterval(() => {
-  fetchOllamaModels().catch(console.error);
-  fetchOpenRouterModels().catch(console.error);
+  fetchOllamaModels().catch(logger.error);
+  fetchOpenRouterModels().catch(logger.error);
 }, CACHE_UPDATE_INTERVAL);
 
 // Получение списка моделей
@@ -447,7 +448,7 @@ router.get('/', async (req, res) => {
     // Оборачиваем массив моделей в объект
     res.json({ models });
   } catch (error) {
-    console.error('Error getting models:', error);
+    logger.error('Error getting models:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -468,7 +469,7 @@ router.get('/available', async (req, res) => {
     
     res.json({ models: availableForDownload });
   } catch (error) {
-    console.error('Error fetching available models:', error);
+    logger.error('Error fetching available models:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -496,7 +497,7 @@ router.get('/models', async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching models:', error);
+    logger.error('Error fetching models:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -506,7 +507,7 @@ router.post('/pull', async (req, res) => {
   const { name, size } = req.body;
   
   try {
-    console.log(`Starting to pull model: ${name} (size: ${size})`);
+    logger.info(`Starting to pull model: ${name} (size: ${size})`);
     
     // Формируем полное имя модели с размером
     const modelName = size ? `${name}:${size}` : name;
@@ -521,7 +522,7 @@ router.post('/pull', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Error pulling model:', error);
+    logger.error('Error pulling model:', error);
     res.status(500).json({ error: error.message || 'Failed to pull model' });
   }
 });
@@ -561,7 +562,7 @@ router.get('/status/:name', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error checking model status:', error);
+    logger.error('Error checking model status:', error);
     res.status(500).json({ error: error.message || 'Failed to check model status' });
   }
 });
@@ -582,7 +583,7 @@ router.delete('/:name', async (req, res) => {
     const data = await response.json();
     res.json(data);
   } catch (error) {
-    console.error('Error deleting model:', error);
+    logger.error('Error deleting model:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -604,7 +605,7 @@ router.post('/chat/answer', async (req, res) => {
 
         res.json({ answer });
     } catch (error) {
-        console.error('Error processing question:', error);
+        logger.error('Error processing question:', error);
         res.status(500).json({ error: error.message || 'Failed to get answer' });
     }
 });
