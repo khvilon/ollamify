@@ -38,6 +38,8 @@ services:
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./services/vector-db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
     expose:
       - "5432"
     healthcheck:
