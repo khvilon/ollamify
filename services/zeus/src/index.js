@@ -8,6 +8,7 @@ import projectsRouter from './routes/projects.js';
 import aiRouter from './routes/ai.js';
 import { errorHandler } from './errors.js';
 import logger from './utils/logger.js';
+import { requestLogger } from './middleware/requestLogger.js';
 
 dotenv.config();
 
@@ -17,6 +18,9 @@ const port = process.env.ZEUS_PORT || 3004;
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 app.use(express.urlencoded({ limit: '100mb', extended: true }));
+
+// Request logging middleware
+app.use(requestLogger);
 
 // Middleware для парсинга информации о пользователе
 app.use((req, res, next) => {
