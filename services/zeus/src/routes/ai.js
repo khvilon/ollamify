@@ -136,14 +136,14 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       const data = await response.json();
       return data.choices[0].message.content;
     } else {
-      const response = await fetch('http://ollama:11434/api/generate', {
+      const response = await fetch('http://ollama:11434/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: actualModel,
-          prompt: messages[messages.length - 1].content,
+          messages: messages,
           stream: false
         })
       });
@@ -154,7 +154,7 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       }
 
       const data = await response.json();
-      return data.response;
+      return data.choices[0].message.content;
     }
   } catch (error) {
     logger.error('Error in getCompletion:', error);
@@ -243,18 +243,15 @@ router.post('/complete', async (req, res) => {
         throw new Error('Streaming is not supported for OpenRouter models');
       }
 
-      const response = await fetch('http://ollama:11434/api/generate', {
+      const response = await fetch('http://ollama:11434/api/chat', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           model: model,
-          prompt: messages[messages.length - 1].content,
-          stream: true,
-          options: {
-            temperature: temperature
-          }
+          messages: messages,
+          stream: true
         })
       });
 
