@@ -134,6 +134,14 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       }
 
       const data = await response.json();
+      if (data.error) {
+        const errorMessage = data.error.message;
+        const providerError = data.error.metadata?.raw ? JSON.parse(data.error.metadata.raw).error : null;
+        throw new Error(`API Error: ${errorMessage}${providerError ? `. Provider details: ${providerError.message}` : ''}`);
+      }
+      if (!data.choices || !data.choices.length) {
+        throw new Error(`API returned invalid response format: missing choices array. Response: ${JSON.stringify(data)}`);
+      }
       return data.choices[0].message.content;
     } else {
       const response = await fetch('http://ollama:11434/v1/chat/completions', {
@@ -324,24 +332,44 @@ router.post('/complete', async (req, res) => {
   }
 });
 
-async function getRelevantChunks(question, project, model) {
-  // Получаем модель для эмбеддингов из проекта
-  const projectResult = await pool.query(
-    'SELECT embedding_model FROM admin.projects WHERE name = $1',
-    [project]
-  );
-  if (projectResult.rows.length === 0) {
-    throw new Error('Project not found');
+async function getRelevantChunks(question, project, model, limit) {
+  let projects;
+  if (project) {
+    const projectResult = await pool.query(
+      'SELECT name, embedding_model FROM admin.projects WHERE name = $1',
+      [project]
+    );
+    if (projectResult.rows.length === 0) {
+      throw new Error('Project not found');
+    }
+    projects = projectResult.rows;
+  } else {
+    const projectResult = await pool.query(
+      'SELECT name, embedding_model FROM admin.projects'
+    );
+    projects = projectResult.rows;
+    if (projects.length === 0) {
+      throw new Error('No projects found');
+    }
   }
-  const embeddingModel = projectResult.rows[0].embedding_model;
 
-  logger.info('Getting embedding for question:', question);
-  const questionEmbedding = await getEmbedding(question, embeddingModel);
-
-  logger.info('Finding relevant documents in project:', project);
-  const relevantDocs = await findRelevantDocuments(questionEmbedding, project, embeddingModel);
-
-  return relevantDocs;
+  let allRelevantDocs = [];
+  await Promise.all(projects.map(async (proj) => {
+    logger.info('Getting embedding for question in project:', proj.name);
+    const questionEmbedding = await getEmbedding(question, proj.embedding_model);
+    logger.info('Finding relevant documents in project:', proj.name);
+    let relevantDocs = await findRelevantDocuments(questionEmbedding, proj.name, proj.embedding_model);
+    if (limit && relevantDocs.length > limit) {
+      relevantDocs = relevantDocs.slice(0, limit);
+    }
+    // Добавляем информацию о проекте к каждому документу
+    relevantDocs = relevantDocs.map(doc => ({
+      ...doc,
+      project: proj.name
+    }));
+    allRelevantDocs.push(...relevantDocs);
+  }));
+  return allRelevantDocs;
 }
 
 // RAG (Retrieval Augmented Generation) endpoint
@@ -394,7 +422,8 @@ Question: ${question}`
       answer,
       relevantDocuments: relevantDocs.map(doc => ({
         filename: doc.filename,
-        similarity: doc.similarity
+        similarity: doc.similarity,
+        project: doc.project
       }))
     });
 
@@ -408,15 +437,15 @@ Question: ${question}`
 });
 
 router.post('/rag/chunks', async (req, res) => {
-  const { question, project, model } = req.body;
+  const { question, project, limit } = req.body;
 
-  if (!question || !project || !model) {
-    return res.status(400).json({ error: 'Missing required parameters' });
+  if (!question) {
+    return res.status(400).json({ error: 'Missing required parameters: question' });
   }
 
   try {
-    logger.info('POST /ai/rag/chunks request received:', { question, project, model });
-    const relevantDocs = await getRelevantChunks(question, project, model);
+    logger.info('POST /ai/rag/chunks request received:', { question, project, limit });
+    const relevantDocs = await getRelevantChunks(question, project, null, limit ? Number(limit) : undefined);
     if (relevantDocs.length === 0) {
       logger.info('No relevant documents found');
       return res.status(404).json({ error: 'No relevant documents found for this question' });
