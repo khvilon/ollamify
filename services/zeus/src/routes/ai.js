@@ -324,6 +324,26 @@ router.post('/complete', async (req, res) => {
   }
 });
 
+async function getRelevantChunks(question, project, model) {
+  // Получаем модель для эмбеддингов из проекта
+  const projectResult = await pool.query(
+    'SELECT embedding_model FROM admin.projects WHERE name = $1',
+    [project]
+  );
+  if (projectResult.rows.length === 0) {
+    throw new Error('Project not found');
+  }
+  const embeddingModel = projectResult.rows[0].embedding_model;
+
+  logger.info('Getting embedding for question:', question);
+  const questionEmbedding = await getEmbedding(question, embeddingModel);
+
+  logger.info('Finding relevant documents in project:', project);
+  const relevantDocs = await findRelevantDocuments(questionEmbedding, project, embeddingModel);
+
+  return relevantDocs;
+}
+
 // RAG (Retrieval Augmented Generation) endpoint
 router.post('/rag', async (req, res) => {
   const { question, project, model } = req.body;
@@ -339,25 +359,7 @@ router.post('/rag', async (req, res) => {
       model
     });
 
-    // Получаем модель для эмбеддингов из проекта
-    const projectResult = await pool.query(
-      'SELECT embedding_model FROM admin.projects WHERE name = $1',
-      [project]
-    );
-
-    if (projectResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Project not found' });
-    }
-
-    const embeddingModel = projectResult.rows[0].embedding_model;
-    
-    // Используем модель из проекта для эмбеддингов
-    logger.info('Getting embedding for question:', question);
-    const questionEmbedding = await getEmbedding(question, embeddingModel);
-    
-    // Ищем релевантные документы в конкретном проекте
-    logger.info('Finding relevant documents in project:', project);
-    const relevantDocs = await findRelevantDocuments(questionEmbedding, project, embeddingModel);
+    const relevantDocs = await getRelevantChunks(question, project, model);
     
     if (relevantDocs.length === 0) {
       logger.info('No relevant documents found');
@@ -368,11 +370,7 @@ router.post('/rag', async (req, res) => {
 
     logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
 
-    const context = `Найденные релевантные фрагменты:\n\n` + 
-    relevantDocs
-      .map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`)
-      .join('\n\n') +
-    '\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.';
+    const context = `Найденные релевантные фрагменты:\n\n${relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n')}\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
 
     logger.info('Getting answer from LLM...');
     // Получаем ответ от LLM
@@ -406,6 +404,28 @@ Question: ${question}`
       error: 'Failed to get answer',
       details: error.message
     });
+  }
+});
+
+router.post('/rag/chunks', async (req, res) => {
+  const { question, project, model } = req.body;
+
+  if (!question || !project || !model) {
+    return res.status(400).json({ error: 'Missing required parameters' });
+  }
+
+  try {
+    logger.info('POST /ai/rag/chunks request received:', { question, project, model });
+    const relevantDocs = await getRelevantChunks(question, project, model);
+    if (relevantDocs.length === 0) {
+      logger.info('No relevant documents found');
+      return res.status(404).json({ error: 'No relevant documents found for this question' });
+    }
+    logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
+    res.json({ relevantDocuments: relevantDocs });
+  } catch (error) {
+    logger.error('Error in ai/rag/chunks:', error);
+    res.status(500).json({ error: 'Failed to get relevant documents', details: error.message });
   }
 });
 
