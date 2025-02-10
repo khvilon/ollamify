@@ -178,7 +178,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       fileSize: req.file ? req.file.size : null
     });
 
-    const { project, content, metadata = {}, name, model } = req.body;
+    const { project, content, metadata = {}, name, model, external_id } = req.body;
     
     if (!project) {
       logger.error('Missing project parameter');
@@ -300,82 +300,94 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         logger.info('Splitting text into chunks...');
         const chunks = splitIntoChunks(documentContent);
-        const totalChunks = chunks.length;
-        
         logger.info(`Document "${metadata.name}" content length: ${documentContent.length}`);
-        logger.info(`Split into ${totalChunks} chunks`);
+        logger.info(`Split into ${chunks.length} chunks`);
 
-        // Создаем документ
+        // Если есть external_id, проверяем существование документа
+        if (external_id) {
+          logger.info(`Checking for existing document with external_id: ${external_id}`);
+          const existingDoc = await client.query(`
+            SELECT id, content_hash
+            FROM "${project}".documents
+            WHERE external_id = $1
+          `, [external_id]);
+
+          if (existingDoc.rows.length > 0) {
+            const doc = existingDoc.rows[0];
+            if (doc.content_hash === contentHash) {
+              logger.info(`Document with external_id ${external_id} already exists with same content`);
+              await client.query('COMMIT');
+              client.release();
+              return res.json({
+                ...doc,
+                project,
+                status: 'exists',
+                message: 'Document already exists with same content'
+              });
+            } else {
+              logger.info(`Updating existing document with external_id ${external_id}`);
+              // Удаляем старые чанки
+              await client.query(`
+                DELETE FROM "${project}".chunks
+                WHERE document_id = $1
+              `, [doc.id]);
+
+              // Обновляем документ
+              const result = await client.query(`
+                UPDATE "${project}".documents
+                SET name = $1, content_hash = $2, total_chunks = $3, loaded_chunks = 0, metadata = $4
+                WHERE id = $5
+                RETURNING id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
+              `, [metadata.name || 'Untitled Document', contentHash, chunks.length, metadata, doc.id]);
+
+              const document = result.rows[0];
+              await client.query('COMMIT');
+              client.release();
+
+              res.json({
+                ...document,
+                project,
+                status: 'updated',
+                message: 'Document updated with new content',
+                loadedChunks: 0,
+                totalChunks: chunks.length
+              });
+
+              // Запускаем обработку чанков асинхронно
+              processChunks(project, document.id, chunks, projectEmbeddingModel);
+              return;
+            }
+          }
+        }
+
+        // Создаем новый документ
         const result = await client.query(`
           INSERT INTO "${project}".documents 
-            (name, content_hash, total_chunks, loaded_chunks, metadata)
+            (name, content_hash, total_chunks, loaded_chunks, metadata, external_id)
           VALUES 
-            ($1, $2, $3, $4, $5)
-          RETURNING id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at
-        `, [metadata.name || 'Untitled Document', contentHash, totalChunks, 0, metadata]);
+            ($1, $2, $3, $4, $5, $6)
+          RETURNING id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
+        `, [metadata.name || 'Untitled Document', contentHash, chunks.length, 0, metadata, external_id]);
 
         const document = result.rows[0];
         const documentId = document.id;
         logger.info(`Created document with ID ${documentId}`);
 
-        // Коммитим транзакцию создания документа
         await client.query('COMMIT');
         client.release();
         logger.info('Database connection released after successful document creation');
 
-        // Отправляем ответ сразу после создания документа
         res.json({
           ...document,
           project,
+          status: 'created',
+          message: 'Document created successfully',
           loadedChunks: 0,
-          totalChunks
+          totalChunks: chunks.length
         });
 
         // Запускаем обработку чанков асинхронно
-        (async () => {
-          const chunkClient = await pool.connect();
-          try {
-            // Сохраняем чанки с эмбеддингами
-            for (let i = 0; i < chunks.length; i++) {
-              logger.info(`Processing chunk ${i + 1}/${chunks.length}`);
-              const chunk = chunks[i];
-              
-              try {
-                await chunkClient.query('BEGIN');
-
-                // Получаем эмбеддинг для чанка, используя модель из проекта
-                logger.info(`Getting embedding for chunk ${i + 1} using model ${projectEmbeddingModel}`);
-                const embedding = await getEmbedding(chunk, projectEmbeddingModel);
-                // Сохраняем чанк
-                await chunkClient.query(`
-                  INSERT INTO "${project}".chunks
-                    (document_id, chunk_index, content, embedding)
-                  VALUES
-                    ($1, $2, $3, $4)
-                `, [documentId, i, chunk, `[${embedding.join(',')}]`]);
-
-                // Обновляем количество загруженных чанков
-                await chunkClient.query(`
-                  UPDATE "${project}".documents
-                  SET loaded_chunks = loaded_chunks + 1
-                  WHERE id = $1
-                `, [documentId]);
-
-                await chunkClient.query('COMMIT');
-              } catch (chunkError) {
-                logger.error(`Error processing chunk ${i + 1}:`, chunkError);
-                await chunkClient.query('ROLLBACK');
-                // Продолжаем обработку следующих чанков
-              }
-            }
-
-            logger.info(`Successfully processed all chunks for document ${documentId}`);
-          } catch (processingError) {
-            logger.error('Error in async processing:', processingError);
-          } finally {
-            chunkClient.release();
-          }
-        })();
+        processChunks(project, documentId, chunks, projectEmbeddingModel);
       } catch (dbError) {
         logger.error('Database error:', dbError);
         await client.query('ROLLBACK');
@@ -474,5 +486,52 @@ router.delete('/:id', async (req, res) => {
     });
   }
 });
+
+// Функция для асинхронной обработки чанков
+async function processChunks(project, documentId, chunks, embeddingModel) {
+  const chunkClient = await pool.connect();
+  try {
+    // Сохраняем чанки с эмбеддингами
+    for (let i = 0; i < chunks.length; i++) {
+      logger.info(`Processing chunk ${i + 1}/${chunks.length}`);
+      const chunk = chunks[i];
+      
+      try {
+        await chunkClient.query('BEGIN');
+
+        // Получаем эмбеддинг для чанка
+        logger.info(`Getting embedding for chunk ${i + 1} using model ${embeddingModel}`);
+        const embedding = await getEmbedding(chunk, embeddingModel);
+        
+        // Сохраняем чанк
+        await chunkClient.query(`
+          INSERT INTO "${project}".chunks
+            (document_id, chunk_index, content, embedding)
+          VALUES
+            ($1, $2, $3, $4)
+        `, [documentId, i, chunk, `[${embedding.join(',')}]`]);
+
+        // Обновляем количество загруженных чанков
+        await chunkClient.query(`
+          UPDATE "${project}".documents
+          SET loaded_chunks = loaded_chunks + 1
+          WHERE id = $1
+        `, [documentId]);
+
+        await chunkClient.query('COMMIT');
+      } catch (chunkError) {
+        logger.error(`Error processing chunk ${i + 1}:`, chunkError);
+        await chunkClient.query('ROLLBACK');
+        // Продолжаем обработку следующих чанков
+      }
+    }
+
+    logger.info(`Successfully processed all chunks for document ${documentId}`);
+  } catch (processingError) {
+    logger.error('Error in async processing:', processingError);
+  } finally {
+    chunkClient.release();
+  }
+}
 
 export default router;

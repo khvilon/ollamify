@@ -29,6 +29,7 @@ async function createProjectSchema(project, dimension) {
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         content_hash TEXT NOT NULL,
+        external_id TEXT,
         total_chunks INTEGER NOT NULL,
         loaded_chunks INTEGER NOT NULL DEFAULT 0,
         metadata JSONB DEFAULT '{}',
@@ -36,6 +37,14 @@ async function createProjectSchema(project, dimension) {
       )
     `);
     logger.info(`Created documents table for project ${project}`);
+
+    // Создаем индекс для external_id
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_documents_external_id
+      ON "${project}".documents (external_id)
+      WHERE external_id IS NOT NULL
+    `);
+    logger.info(`Created index for external_id`);
 
     // Create chunks table if not exists
     await client.query(`
