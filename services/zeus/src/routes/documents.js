@@ -47,7 +47,64 @@ const uploadWithEncoding = (req, res, next) => {
   });
 };
 
-// Получение списка всех документов
+/**
+ * @swagger
+ * /documents:
+ *   get:
+ *     tags: [Documents]
+ *     summary: Get list of documents
+ *     description: Retrieve a paginated list of documents with optional filtering and search
+ *     parameters:
+ *       - in: query
+ *         name: project
+ *         schema:
+ *           type: string
+ *         description: Project name to filter documents
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
+ *       - in: query
+ *         name: order_by
+ *         schema:
+ *           type: string
+ *           enum: [created_at, name, total_chunks, loaded_chunks]
+ *           default: created_at
+ *         description: Field to sort by
+ *       - in: query
+ *         name: order
+ *         schema:
+ *           type: string
+ *           enum: [ASC, DESC]
+ *           default: DESC
+ *         description: Sort order
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Search query for document names
+ *     responses:
+ *       200:
+ *         description: List of documents
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/DocumentList'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/', async (req, res) => {
   const { 
     project, 
@@ -284,7 +341,80 @@ router.get('/projects', async (req, res) => {
     }
 });
 
-// Загрузка документа (файл или текст)
+/**
+ * @swagger
+ * /documents:
+ *   post:
+ *     tags: [Documents]
+ *     summary: Upload a new document
+ *     description: Upload a new document (file or text content)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         multipart/form-data:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               file:
+ *                 type: string
+ *                 format: binary
+ *                 description: Document file (PDF, DOCX, or TXT)
+ *               project:
+ *                 type: string
+ *                 description: Project name
+ *               name:
+ *                 type: string
+ *                 description: Document name (optional)
+ *               external_id:
+ *                 type: string
+ *                 description: External document ID (optional)
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - project
+ *               - content
+ *             properties:
+ *               project:
+ *                 type: string
+ *                 description: Project name
+ *               content:
+ *                 type: string
+ *                 description: Document content
+ *               name:
+ *                 type: string
+ *                 description: Document name (optional)
+ *               external_id:
+ *                 type: string
+ *                 description: External document ID (optional)
+ *     responses:
+ *       200:
+ *         description: Document created or updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               allOf:
+ *                 - $ref: '#/components/schemas/Document'
+ *                 - type: object
+ *                   properties:
+ *                     status:
+ *                       type: string
+ *                       enum: [created, updated, exists]
+ *                     message:
+ *                       type: string
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/', uploadWithEncoding, async (req, res) => {
   try {
     logger.info('POST /documents request received');
@@ -538,7 +668,46 @@ router.post('/', uploadWithEncoding, async (req, res) => {
   }
 });
 
-// Получение конкретного документа
+/**
+ * @swagger
+ * /documents/{id}:
+ *   get:
+ *     tags: [Documents]
+ *     summary: Get document by ID
+ *     description: Retrieve a specific document by its ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Document ID
+ *       - in: query
+ *         name: project
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Project name
+ *     responses:
+ *       200:
+ *         description: Document details
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Document'
+ *       404:
+ *         description: Document not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/:id', async (req, res) => {
   const { id } = req.params;
   const { project } = req.query;
@@ -580,7 +749,42 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-// Удаление документа
+/**
+ * @swagger
+ * /documents/{id}:
+ *   delete:
+ *     tags: [Documents]
+ *     summary: Delete a document
+ *     description: Delete a document by its ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *         description: Document ID
+ *       - in: query
+ *         name: project
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Project name
+ *     responses:
+ *       204:
+ *         description: Document deleted successfully
+ *       404:
+ *         description: Document not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.delete('/:id', async (req, res) => {
   const { id } = req.params;
   const { project } = req.query;

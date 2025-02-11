@@ -17,7 +17,9 @@
     "jsdom": "^23.0.1",
     "bcrypt": "^5.1.1",
     "mammoth": "^1.6.0",
-    "winston": "^3.11.0"
+    "winston": "^3.11.0",
+    "swagger-ui-express": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

@@ -229,7 +229,62 @@ router.post('/embed', async (req, res) => {
   }
 });
 
-// Получение completion от модели в формате OpenAI API
+/**
+ * @swagger
+ * /ai/complete:
+ *   post:
+ *     tags: [AI]
+ *     summary: Generate text completion
+ *     description: Generate text using AI model with optional streaming
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ChatCompletion'
+ *     responses:
+ *       200:
+ *         description: Generated completion
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: string
+ *                   description: Response ID
+ *                 object:
+ *                   type: string
+ *                   enum: [chat.completion]
+ *                 created:
+ *                   type: integer
+ *                   description: Unix timestamp
+ *                 model:
+ *                   type: string
+ *                   description: Model used
+ *                 choices:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       index:
+ *                         type: integer
+ *                       message:
+ *                         $ref: '#/components/schemas/ChatMessage'
+ *                       finish_reason:
+ *                         type: string
+ *                         enum: [stop, length]
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: Server-sent events stream for streaming responses
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/complete', async (req, res) => {
   const { 
     model = process.env.OPENROUTER_MODEL,
@@ -372,7 +427,54 @@ async function getRelevantChunks(question, project, model, limit) {
   return allRelevantDocs;
 }
 
-// RAG (Retrieval Augmented Generation) endpoint
+/**
+ * @swagger
+ * /ai/rag:
+ *   post:
+ *     tags: [AI]
+ *     summary: RAG-enhanced completion
+ *     description: Generate answer using Retrieval Augmented Generation
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/RagRequest'
+ *     responses:
+ *       200:
+ *         description: Generated answer with context
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 answer:
+ *                   type: string
+ *                   description: Generated answer
+ *                 context:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       filename:
+ *                         type: string
+ *                       content:
+ *                         type: string
+ *                       similarity:
+ *                         type: number
+ *       404:
+ *         description: No relevant documents found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/rag', async (req, res) => {
   const { question, project, model } = req.body;
 
@@ -436,6 +538,63 @@ Question: ${question}`
   }
 });
 
+/**
+ * @swagger
+ * /ai/rag/chunks:
+ *   post:
+ *     tags: [AI]
+ *     summary: Get relevant document chunks
+ *     description: Retrieve relevant document chunks for a question
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - question
+ *             properties:
+ *               question:
+ *                 type: string
+ *                 description: User question
+ *               project:
+ *                 type: string
+ *                 description: Project name
+ *               limit:
+ *                 type: integer
+ *                 description: Maximum number of chunks to return
+ *     responses:
+ *       200:
+ *         description: List of relevant document chunks
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 relevantDocuments:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       filename:
+ *                         type: string
+ *                       content:
+ *                         type: string
+ *                       similarity:
+ *                         type: number
+ *       404:
+ *         description: No relevant documents found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/rag/chunks', async (req, res) => {
   const { question, project, limit } = req.body;
 

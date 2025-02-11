@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import swaggerUi from 'swagger-ui-express';
+import { specs } from './swagger.js';
 import documentsRouter from './routes/documents.js';
 import modelsRouter from './routes/models.js';
 import usersRouter from './routes/users.js';
@@ -40,6 +42,13 @@ app.use('/api/models', modelsRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/ai', aiRouter);
+
+// API Documentation
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(specs, {
+  swaggerOptions: {
+    persistAuthorization: true
+  }
+}));
 
 // Глобальный обработчик ошибок
 app.use(errorHandler);
