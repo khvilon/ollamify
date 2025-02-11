@@ -86,27 +86,37 @@ router.get('/', async (req, res) => {
         });
       }
       
+      // Формируем параметры запроса
+      const queryParams = [];
+      let paramIndex = 1;
+
+      // Добавляем LIMIT и OFFSET
+      queryParams.push(limit);
+      queryParams.push(offset);
+
       // Формируем условия WHERE для поиска
       const whereConditions = [];
-      const queryParams = [limit, offset];
-      let paramIndex = 3;
 
       if (search) {
         whereConditions.push(`name ILIKE $${paramIndex}`);
         queryParams.push(`%${search}%`);
         paramIndex++;
+        logger.info(`Search condition added: search="${search}", paramIndex=${paramIndex-1}`);
       }
 
       const whereClause = whereConditions.length > 0 
         ? `WHERE ${whereConditions.join(' AND ')}` 
         : '';
+      
+      logger.info(`Executing search query with conditions: ${whereClause}`);
+      logger.info(`Query params: ${JSON.stringify(queryParams)}`);
 
       // Получаем общее количество документов с учетом поиска
       const countResult = await pool.query(`
         SELECT COUNT(*) as total
         FROM "${project}".documents
         ${whereClause}
-      `, queryParams.slice(2));
+      `, whereConditions.length > 0 ? queryParams.slice(2) : []);
       
       const total = parseInt(countResult.rows[0].total);
       const total_pages = Math.ceil(total / limit);
@@ -161,8 +171,8 @@ router.get('/', async (req, res) => {
       
       // Формируем условия WHERE для поиска
       const whereConditions = [];
-      const queryParams = [limit, offset];
-      let paramIndex = 3;
+      const queryParams = [];
+      let paramIndex = 1;
 
       if (search) {
         whereConditions.push(`name ILIKE $${paramIndex}`);
@@ -174,6 +184,9 @@ router.get('/', async (req, res) => {
         ? `WHERE ${whereConditions.join(' AND ')}` 
         : '';
       
+      logger.info(`Executing search query with conditions: ${whereClause}`);
+      logger.info(`Query params: ${JSON.stringify(queryParams)}`);
+
       for (const schema of schemas.rows) {
         const projectName = schema.schema_name;
         try {
@@ -196,7 +209,7 @@ router.get('/', async (req, res) => {
             SELECT COUNT(*) as total
             FROM "${projectName}".documents
             ${whereClause}
-          `, queryParams.slice(2));
+          `, queryParams);
           
           total += parseInt(countResult.rows[0].total);
           
@@ -215,7 +228,7 @@ router.get('/', async (req, res) => {
             FROM "${projectName}".documents
             ${whereClause}
             ORDER BY ${orderByField} ${orderDirection}
-            LIMIT $1 OFFSET $2
+            LIMIT ${parseInt(limit)} OFFSET ${offset}
           `, queryParams);
           
           allDocuments.push(...docs.rows);
