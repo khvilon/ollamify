@@ -58,10 +58,13 @@ function Documents() {
     const fileInputRef = useRef(null);
     const theme = useTheme();
 
+    // Состояния для пагинации и сортировки
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [orderBy, setOrderBy] = useState('created_at');
     const [order, setOrder] = useState('desc');
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
 
     const handleDelete = async (docId, docProject) => {
         try {
@@ -154,16 +157,30 @@ function Documents() {
 
     const fetchDocuments = async (selectedProject = '') => {
         try {
-            // Don't set loading on regular updates
-            const isInitialLoad = documents.length === 0;
-            if (isInitialLoad) {
-                setLoading(true);
-            }
+            setLoading(true);
             
             const timestamp = Date.now();
-            const url = selectedProject 
-                ? `/api/documents?project=${encodeURIComponent(selectedProject)}&t=${timestamp}`
-                : `/api/documents?t=${timestamp}`;
+            const params = new URLSearchParams({
+                page: page + 1,
+                limit: rowsPerPage,
+                order_by: orderBy,
+                order: order,
+                t: timestamp
+            });
+            
+            if (selectedProject) {
+                params.append('project', selectedProject);
+            }
+            
+            // Добавляем параметры поиска и фильтрации
+            if (searchQuery) {
+                params.append('search', searchQuery);
+            }
+            if (projectFilter) {
+                params.append('project_filter', projectFilter);
+            }
+            
+            const url = `/api/documents?${params.toString()}`;
             const response = await window.api.fetch(url);
             
             if (!response) return; // Был редирект на логин
@@ -171,37 +188,10 @@ function Documents() {
             if (!response.ok) throw new Error('Failed to fetch documents');
             const data = await response.json();
 
-            setDocuments(prevDocs => {
-                const updatedDocs = [...prevDocs];
-                let hasChanges = false;
-                
-                data.forEach(newDoc => {
-                    const index = updatedDocs.findIndex(doc => 
-                        doc.id === newDoc.id && doc.project === newDoc.project
-                    );
-                    if (index === -1) {
-                        updatedDocs.push(newDoc);
-                        hasChanges = true;
-                    } else if (JSON.stringify(updatedDocs[index]) !== JSON.stringify(newDoc)) {
-                        updatedDocs[index] = newDoc;
-                        hasChanges = true;
-                    }
-                });
-                
-                // Remove deleted documents
-                const beforeLength = updatedDocs.length;
-                const filteredDocs = updatedDocs.filter(doc => 
-                    data.some(newDoc => 
-                        doc.id === newDoc.id && doc.project === newDoc.project
-                    )
-                );
-                if (beforeLength !== filteredDocs.length) {
-                    hasChanges = true;
-                }
-                
-                // Only update state if there are actual changes
-                return hasChanges ? filteredDocs : prevDocs;
-            });
+            setDocuments(data.documents);
+            setTotal(data.total);
+            setTotalPages(data.total_pages);
+            setError('');
         } catch (err) {
             setError(err.message);
         } finally {
@@ -209,22 +199,10 @@ function Documents() {
         }
     };
 
+    // Обновляем эффект для обновления при изменении фильтров
     useEffect(() => {
         fetchDocuments(project);
-    }, [project]);
-
-    // Добавляем интервал обновления для незагруженных документов
-    useEffect(() => {
-        const hasIncompleteDocuments = documents.some(doc => doc.loaded_chunks < doc.total_chunks);
-        
-        if (hasIncompleteDocuments) {
-            const interval = setInterval(() => {
-                fetchDocuments(project);
-            }, 1000);
-            
-            return () => clearInterval(interval);
-        }
-    }, [documents, project]);
+    }, [project, page, rowsPerPage, orderBy, order, searchQuery, projectFilter]);
 
     const handleUpload = async (e) => {
         e.preventDefault();
@@ -295,6 +273,7 @@ function Documents() {
         const isAsc = orderBy === property && order === 'asc';
         setOrder(isAsc ? 'desc' : 'asc');
         setOrderBy(property);
+        setPage(0);
     };
 
     const filteredDocuments = documents
@@ -609,15 +588,19 @@ function Documents() {
                                     </Grid>
                                 </Box>
                                     
-                                {loading && documents.length === 0 && (
+                                {loading && documents.length === 0 ? (
                                     <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
                                         <CircularProgress />
                                     </Box>
-                                )}
-                                
-                                {sortedDocuments.length > 0 && (
-                                    <Box>
-                                        <TableContainer component={Paper}>
+                                ) : documents.length === 0 ? (
+                                    <Box sx={{ display: 'flex', justifyContent: 'center', mt: 4 }}>
+                                        <Typography color="text.secondary">
+                                            No documents found
+                                        </Typography>
+                                    </Box>
+                                ) : (
+                                    <>
+                                        <TableContainer>
                                             <Table>
                                                 <TableHead>
                                                     <TableRow>
@@ -630,16 +613,16 @@ function Documents() {
                                                                 Name
                                                             </TableSortLabel>
                                                         </TableCell>
+                                                        <TableCell>Project</TableCell>
                                                         <TableCell>
                                                             <TableSortLabel
-                                                                active={orderBy === 'project'}
-                                                                direction={orderBy === 'project' ? order : 'asc'}
-                                                                onClick={() => handleSort('project')}
+                                                                active={orderBy === 'total_chunks'}
+                                                                direction={orderBy === 'total_chunks' ? order : 'asc'}
+                                                                onClick={() => handleSort('total_chunks')}
                                                             >
-                                                                Project
+                                                                Chunks
                                                             </TableSortLabel>
                                                         </TableCell>
-                                                        <TableCell>Chunks</TableCell>
                                                         <TableCell>
                                                             <TableSortLabel
                                                                 active={orderBy === 'created_at'}
@@ -653,73 +636,71 @@ function Documents() {
                                                     </TableRow>
                                                 </TableHead>
                                                 <TableBody>
-                                                    {sortedDocuments
-                                                        .slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-                                                        .map((doc) => (
-                                                            <TableRow 
-                                                                key={doc.id}
-                                                                sx={{
-                                                                    transition: 'all 0.2s ease-in-out',
-                                                                    '&:hover': {
-                                                                        backgroundColor: 'action.hover',
-                                                                        transform: 'translateY(-2px)',
-                                                                        boxShadow: 1
-                                                                    }
-                                                                }}
-                                                            >
-                                                                <TableCell>
-                                                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                                        <Icon sx={{ mr: 1 }}>description</Icon>
-                                                                        <Typography variant="subtitle2">
-                                                                            {doc.name || 'Untitled Document'}
+                                                    {documents.map((doc) => (
+                                                        <TableRow 
+                                                            key={`${doc.project}-${doc.id}`}
+                                                            sx={{
+                                                                transition: 'all 0.2s ease-in-out',
+                                                                '&:hover': {
+                                                                    backgroundColor: 'action.hover',
+                                                                    transform: 'translateY(-2px)',
+                                                                    boxShadow: 1
+                                                                }
+                                                            }}
+                                                        >
+                                                            <TableCell>
+                                                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                                                    <Icon sx={{ mr: 1 }}>description</Icon>
+                                                                    <Typography variant="subtitle2">
+                                                                        {doc.name || 'Untitled Document'}
+                                                                    </Typography>
+                                                                </Box>
+                                                            </TableCell>
+                                                            <TableCell>{doc.project}</TableCell>
+                                                            <TableCell>
+                                                                {doc.loaded_chunks < doc.total_chunks ? (
+                                                                    <Box sx={{ width: '100%', maxWidth: 150 }}>
+                                                                        <Typography variant="body2" color="text.secondary">
+                                                                            {doc.loaded_chunks}/{doc.total_chunks}
                                                                         </Typography>
+                                                                        <LinearProgress 
+                                                                            variant="determinate" 
+                                                                            value={(doc.loaded_chunks / doc.total_chunks) * 100}
+                                                                            sx={{ 
+                                                                                mt: 0.5,
+                                                                                height: 6,
+                                                                                borderRadius: 1
+                                                                            }}
+                                                                        />
                                                                     </Box>
-                                                                </TableCell>
-                                                                <TableCell>{doc.project}</TableCell>
-                                                                <TableCell>
-                                                                    {doc.loaded_chunks < doc.total_chunks ? (
-                                                                        <Box sx={{ width: '100%', maxWidth: 150 }}>
-                                                                            <Typography variant="body2" color="text.secondary">
-                                                                                {doc.loaded_chunks}/{doc.total_chunks}
-                                                                            </Typography>
-                                                                            <LinearProgress 
-                                                                                variant="determinate" 
-                                                                                value={(doc.loaded_chunks / doc.total_chunks) * 100}
-                                                                                sx={{ 
-                                                                                    mt: 0.5,
-                                                                                    height: 6,
-                                                                                    borderRadius: 1
-                                                                                }}
-                                                                            />
-                                                                        </Box>
-                                                                    ) : doc.total_chunks}
-                                                                </TableCell>
-                                                                <TableCell>
-                                                                    {new Date(doc.created_at).toLocaleString()}
-                                                                </TableCell>
-                                                                <TableCell align="right">
-                                                                    <IconButton
-                                                                        onClick={() => handleDelete(doc.id, doc.project)}
-                                                                        size="small"
-                                                                        sx={{
-                                                                            color: theme.palette.error.main,
-                                                                            '&:hover': {
-                                                                                backgroundColor: alpha(theme.palette.error.main, 0.1),
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        <Icon>delete</Icon>
-                                                                    </IconButton>
-                                                                </TableCell>
-                                                            </TableRow>
-                                                        ))}
+                                                                ) : doc.total_chunks}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                {new Date(doc.created_at).toLocaleString()}
+                                                            </TableCell>
+                                                            <TableCell align="right">
+                                                                <IconButton
+                                                                    onClick={() => handleDelete(doc.id, doc.project)}
+                                                                    size="small"
+                                                                    sx={{
+                                                                        color: theme.palette.error.main,
+                                                                        '&:hover': {
+                                                                            backgroundColor: alpha(theme.palette.error.main, 0.1),
+                                                                        }
+                                                                    }}
+                                                                >
+                                                                    <Icon>delete</Icon>
+                                                                </IconButton>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
                                                 </TableBody>
                                             </Table>
                                         </TableContainer>
                                         <TablePagination
-                                            rowsPerPageOptions={[5, 10, 25]}
+                                            rowsPerPageOptions={[5, 10, 25, 50, 100]}
                                             component="div"
-                                            count={filteredDocuments.length}
+                                            count={total}
                                             rowsPerPage={rowsPerPage}
                                             page={page}
                                             onPageChange={handleChangePage}
@@ -729,7 +710,7 @@ function Documents() {
                                                 mt: 2
                                             }}
                                         />
-                                    </Box>
+                                    </>
                                 )}
                             </Paper>
                         </Box>
@@ -742,3 +723,4 @@ function Documents() {
 
 // Export for browser environment
 window.Documents = Documents;
+

@@ -49,7 +49,22 @@ const uploadWithEncoding = (req, res, next) => {
 
 // Получение списка всех документов
 router.get('/', async (req, res) => {
-  const { project } = req.query;
+  const { 
+    project, 
+    page = 1, 
+    limit = 10, 
+    order_by = 'created_at', 
+    order = 'DESC',
+    search = '',
+    project_filter = ''
+  } = req.query;
+  
+  const offset = (page - 1) * limit;
+  
+  // Проверяем допустимые значения для сортировки
+  const allowedOrderBy = ['created_at', 'name', 'total_chunks', 'loaded_chunks'];
+  const orderByField = allowedOrderBy.includes(order_by) ? order_by : 'created_at';
+  const orderDirection = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
   
   try {
     if (project) {
@@ -62,10 +77,41 @@ router.get('/', async (req, res) => {
       
       if (schemaExists.rows.length === 0) {
         logger.info(`Project "${project}" not found, returning empty array`);
-        return res.json([]);
+        return res.json({
+          documents: [],
+          total: 0,
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total_pages: 0
+        });
       }
       
-      // Получаем документы конкретного проекта
+      // Формируем условия WHERE для поиска
+      const whereConditions = [];
+      const queryParams = [limit, offset];
+      let paramIndex = 3;
+
+      if (search) {
+        whereConditions.push(`name ILIKE $${paramIndex}`);
+        queryParams.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      const whereClause = whereConditions.length > 0 
+        ? `WHERE ${whereConditions.join(' AND ')}` 
+        : '';
+
+      // Получаем общее количество документов с учетом поиска
+      const countResult = await pool.query(`
+        SELECT COUNT(*) as total
+        FROM "${project}".documents
+        ${whereClause}
+      `, queryParams.slice(2));
+      
+      const total = parseInt(countResult.rows[0].total);
+      const total_pages = Math.ceil(total / limit);
+      
+      // Получаем документы с пагинацией и поиском
       const result = await pool.query(`
         SELECT 
           id,
@@ -75,15 +121,25 @@ router.get('/', async (req, res) => {
           loaded_chunks,
           metadata,
           created_at,
+          external_id,
           '${project}' as project
         FROM "${project}".documents
-        ORDER BY created_at DESC
-      `);
-      logger.info(`Found ${result.rows.length} documents in project "${project}"`);
-      res.json(result.rows);
+        ${whereClause}
+        ORDER BY ${orderByField} ${orderDirection}
+        LIMIT $1 OFFSET $2
+      `, queryParams);
+      
+      logger.info(`Found ${result.rows.length} documents in project "${project}" (page ${page} of ${total_pages})`);
+      
+      res.json({
+        documents: result.rows,
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total_pages
+      });
     } else {
-      // Получаем все документы из всех проектов
-      logger.info('Fetching documents from all projects');
+      // Для всех проектов
       const schemas = await pool.query(`
         SELECT schema_name
         FROM information_schema.schemata
@@ -95,10 +151,28 @@ router.get('/', async (req, res) => {
           'admin'
         )
         AND schema_name NOT LIKE 'pg_%'
-      `);
+        ${project_filter ? `AND schema_name = $1` : ''}
+      `, project_filter ? [project_filter] : []);
       
       logger.info(`Found ${schemas.rows.length} project schemas`);
+      
+      let total = 0;
       const allDocuments = [];
+      
+      // Формируем условия WHERE для поиска
+      const whereConditions = [];
+      const queryParams = [limit, offset];
+      let paramIndex = 3;
+
+      if (search) {
+        whereConditions.push(`name ILIKE $${paramIndex}`);
+        queryParams.push(`%${search}%`);
+        paramIndex++;
+      }
+
+      const whereClause = whereConditions.length > 0 
+        ? `WHERE ${whereConditions.join(' AND ')}` 
+        : '';
       
       for (const schema of schemas.rows) {
         const projectName = schema.schema_name;
@@ -117,6 +191,16 @@ router.get('/', async (req, res) => {
             continue;
           }
           
+          // Получаем количество документов в проекте
+          const countResult = await pool.query(`
+            SELECT COUNT(*) as total
+            FROM "${projectName}".documents
+            ${whereClause}
+          `, queryParams.slice(2));
+          
+          total += parseInt(countResult.rows[0].total);
+          
+          // Получаем документы с пагинацией
           const docs = await pool.query(`
             SELECT 
               id,
@@ -126,21 +210,42 @@ router.get('/', async (req, res) => {
               loaded_chunks,
               metadata,
               created_at,
+              external_id,
               '${projectName}' as project
             FROM "${projectName}".documents
-            ORDER BY created_at DESC
-          `);
-          logger.info(`Found ${docs.rows.length} documents in project "${projectName}"`);
+            ${whereClause}
+            ORDER BY ${orderByField} ${orderDirection}
+            LIMIT $1 OFFSET $2
+          `, queryParams);
+          
           allDocuments.push(...docs.rows);
         } catch (err) {
           logger.error(`Error fetching documents from project "${projectName}":`, err);
-          // Продолжаем с следующим проектом
           continue;
         }
       }
       
-      logger.info(`Returning ${allDocuments.length} documents in total`);
-      res.json(allDocuments);
+      // Сортируем все документы
+      allDocuments.sort((a, b) => {
+        const aValue = a[orderByField];
+        const bValue = b[orderByField];
+        if (orderDirection === 'ASC') {
+          return aValue > bValue ? 1 : -1;
+        }
+        return aValue < bValue ? 1 : -1;
+      });
+      
+      const total_pages = Math.ceil(total / limit);
+      
+      logger.info(`Returning ${allDocuments.length} documents (page ${page} of ${total_pages})`);
+      
+      res.json({
+        documents: allDocuments,
+        total,
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total_pages
+      });
     }
   } catch (error) {
     logger.error('Error in GET /documents:', error);
