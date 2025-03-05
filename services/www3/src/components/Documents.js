@@ -157,7 +157,7 @@ function Documents() {
 
     const fetchDocuments = async (selectedProject = '') => {
         try {
-            setLoading(true);
+                setLoading(true);
             
             const timestamp = Date.now();
             const params = new URLSearchParams({
@@ -637,63 +637,63 @@ function Documents() {
                                                 </TableHead>
                                                 <TableBody>
                                                     {documents.map((doc) => (
-                                                        <TableRow 
+                                                            <TableRow 
                                                             key={`${doc.project}-${doc.id}`}
-                                                            sx={{
-                                                                transition: 'all 0.2s ease-in-out',
-                                                                '&:hover': {
-                                                                    backgroundColor: 'action.hover',
-                                                                    transform: 'translateY(-2px)',
-                                                                    boxShadow: 1
-                                                                }
-                                                            }}
-                                                        >
-                                                            <TableCell>
-                                                                <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                                                    <Icon sx={{ mr: 1 }}>description</Icon>
-                                                                    <Typography variant="subtitle2">
-                                                                        {doc.name || 'Untitled Document'}
-                                                                    </Typography>
-                                                                </Box>
-                                                            </TableCell>
-                                                            <TableCell>{doc.project}</TableCell>
-                                                            <TableCell>
-                                                                {doc.loaded_chunks < doc.total_chunks ? (
-                                                                    <Box sx={{ width: '100%', maxWidth: 150 }}>
-                                                                        <Typography variant="body2" color="text.secondary">
-                                                                            {doc.loaded_chunks}/{doc.total_chunks}
+                                                                sx={{
+                                                                    transition: 'all 0.2s ease-in-out',
+                                                                    '&:hover': {
+                                                                        backgroundColor: 'action.hover',
+                                                                        transform: 'translateY(-2px)',
+                                                                        boxShadow: 1
+                                                                    }
+                                                                }}
+                                                            >
+                                                                <TableCell>
+                                                                    <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                                                                        <Icon sx={{ mr: 1 }}>description</Icon>
+                                                                        <Typography variant="subtitle2">
+                                                                            {doc.name || 'Untitled Document'}
                                                                         </Typography>
-                                                                        <LinearProgress 
-                                                                            variant="determinate" 
-                                                                            value={(doc.loaded_chunks / doc.total_chunks) * 100}
-                                                                            sx={{ 
-                                                                                mt: 0.5,
-                                                                                height: 6,
-                                                                                borderRadius: 1
-                                                                            }}
-                                                                        />
                                                                     </Box>
-                                                                ) : doc.total_chunks}
-                                                            </TableCell>
-                                                            <TableCell>
-                                                                {new Date(doc.created_at).toLocaleString()}
-                                                            </TableCell>
-                                                            <TableCell align="right">
-                                                                <IconButton
-                                                                    onClick={() => handleDelete(doc.id, doc.project)}
-                                                                    size="small"
-                                                                    sx={{
-                                                                        color: theme.palette.error.main,
-                                                                        '&:hover': {
-                                                                            backgroundColor: alpha(theme.palette.error.main, 0.1),
-                                                                        }
-                                                                    }}
-                                                                >
-                                                                    <Icon>delete</Icon>
-                                                                </IconButton>
-                                                            </TableCell>
-                                                        </TableRow>
-                                                    ))}
+                                                                </TableCell>
+                                                                <TableCell>{doc.project}</TableCell>
+                                                                <TableCell>
+                                                                    {doc.loaded_chunks < doc.total_chunks ? (
+                                                                        <Box sx={{ width: '100%', maxWidth: 150 }}>
+                                                                            <Typography variant="body2" color="text.secondary">
+                                                                                {doc.loaded_chunks}/{doc.total_chunks}
+                                                                            </Typography>
+                                                                            <LinearProgress 
+                                                                                variant="determinate" 
+                                                                                value={(doc.loaded_chunks / doc.total_chunks) * 100}
+                                                                                sx={{ 
+                                                                                    mt: 0.5,
+                                                                                    height: 6,
+                                                                                    borderRadius: 1
+                                                                                }}
+                                                                            />
+                                                                        </Box>
+                                                                    ) : doc.total_chunks}
+                                                                </TableCell>
+                                                                <TableCell>
+                                                                    {new Date(doc.created_at).toLocaleString()}
+                                                                </TableCell>
+                                                                <TableCell align="right">
+                                                                    <IconButton
+                                                                        onClick={() => handleDelete(doc.id, doc.project)}
+                                                                        size="small"
+                                                                        sx={{
+                                                                            color: theme.palette.error.main,
+                                                                            '&:hover': {
+                                                                                backgroundColor: alpha(theme.palette.error.main, 0.1),
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <Icon>delete</Icon>
+                                                                    </IconButton>
+                                                                </TableCell>
+                                                            </TableRow>
+                                                        ))}
                                                 </TableBody>
                                             </Table>
                                         </TableContainer>
@@ -723,5 +723,6 @@ function Documents() {
 
 // Export for browser environment
 window.Documents = Documents;
+
 
 

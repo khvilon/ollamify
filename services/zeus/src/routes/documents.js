@@ -426,7 +426,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       fileSize: req.file ? req.file.size : null
     });
 
-    const { project, content, metadata = {}, name, model, external_id } = req.body;
+    const { project, content, metadata = {}, name, model, external_id, single_chunk } = req.body;
     
     if (!project) {
       logger.error('Missing project parameter');
@@ -547,7 +547,13 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         }
 
         logger.info('Splitting text into chunks...');
-        const chunks = splitIntoChunks(documentContent);
+        let chunks;
+        if (single_chunk === 'true' || single_chunk === true) {
+          logger.info('Using single chunk mode');
+          chunks = [documentContent];
+        } else {
+          chunks = splitIntoChunks(documentContent);
+        }
         logger.info(`Document "${metadata.name}" content length: ${documentContent.length}`);
         logger.info(`Split into ${chunks.length} chunks`);
 
