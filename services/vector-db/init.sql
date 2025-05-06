@@ -48,3 +48,20 @@ ALTER USER khvilon WITH SUPERUSER;
 
 -- Create vector extension
 CREATE EXTENSION IF NOT EXISTS vector;
+
+-- Create user_logs table
+CREATE TABLE IF NOT EXISTS admin.user_logs (
+    id SERIAL PRIMARY KEY,
+    user_name TEXT,
+    user_key TEXT,
+    request_method TEXT NOT NULL,
+    request_path TEXT NOT NULL,
+    request_body JSONB,
+    ip_address TEXT,
+    response_body JSONB,
+    response_time INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create index on created_at for efficient querying
+CREATE INDEX IF NOT EXISTS user_logs_created_at_idx ON admin.user_logs(created_at);
