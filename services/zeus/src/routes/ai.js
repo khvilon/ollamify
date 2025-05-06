@@ -101,6 +101,7 @@ Question: ${question}`
 
 // Отправка запроса к OpenRouter API или Ollama
 async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
+  const maxTokens = 8192;
   const isOpenRouter = model.startsWith('openrouter/');
   const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
 
@@ -124,7 +125,7 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
           model: actualModel,
           messages: messages,
           temperature: 0.7,
-          max_tokens: 1024
+          max_tokens: maxTokens
         })
       });
 
@@ -152,7 +153,10 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
         body: JSON.stringify({
           model: actualModel,
           messages: messages,
-          stream: false
+          stream: false,
+          "options": {
+            "num_ctx": maxTokens
+          }
         })
       });
 
