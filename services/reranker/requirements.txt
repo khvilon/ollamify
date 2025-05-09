@@ -1,6 +1,12 @@
 fastapi==0.103.1
 uvicorn==0.23.2
-transformers==4.35.0
-sentencepiece==0.1.99
+transformers>=4.36.0
+torch>=2.0.0
+sentencepiece>=0.1.99
+protobuf>=3.20.0
 pydantic==2.0.3
-numpy==1.25.2 
+numpy>=1.25.2
+accelerate>=0.25.0
+einops>=0.7.0
+tokenizers>=0.15.0
+tiktoken>=0.5.0 
