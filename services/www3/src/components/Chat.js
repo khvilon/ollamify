@@ -17,7 +17,8 @@ const {
     Select,
     MenuItem,
     FormControl,
-    InputLabel
+    InputLabel,
+    Switch
 } = window.MaterialUI;
 
 const {
@@ -43,6 +44,7 @@ function Chat() {
     const [modelSearch, setModelSearch] = useState('');
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
+    const [useReranker, setUseReranker] = useState(true);
     const searchInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const chatContainerRef = useRef(null);
@@ -187,7 +189,8 @@ function Chat() {
                 body: JSON.stringify({ 
                     question: userMessage,
                     project: selectedProject,
-                    model: selectedModel
+                    model: selectedModel,
+                    useReranker: useReranker
                 })
             });
 
@@ -209,7 +212,7 @@ function Chat() {
         } finally {
             setIsLoading(false);
         }
-    }, [messageText, isLoading, selectedProject, selectedModel]);
+    }, [messageText, isLoading, selectedProject, selectedModel, useReranker]);
 
     if (isLoadingProjects || isLoadingModels) {
         return (
@@ -329,6 +332,15 @@ function Chat() {
                                     </MenuItem>
                                 ))}
                             </Select>
+                        </FormControl>
+
+                        <FormControl sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ mr: 1 }}>Использовать Reranker:</Typography>
+                            <Switch
+                                checked={useReranker}
+                                onChange={(e) => setUseReranker(e.target.checked)}
+                                color="primary"
+                            />
                         </FormControl>
                     </Box>
 

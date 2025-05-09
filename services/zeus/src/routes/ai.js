@@ -105,6 +105,15 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
   const isOpenRouter = model.startsWith('openrouter/');
   const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
 
+  // Проверяем, не является ли модель моделью для эмбеддингов
+  const embeddingModels = ['all-minilm', 'nomic-embed-text', 'all-MiniLM-L6-v2'];
+  const embeddingModel = process.env.EMBEDDING_MODEL || 'all-minilm';
+  
+  if (embeddingModels.includes(actualModel) || actualModel === embeddingModel || 
+      actualModel === `${embeddingModel}:latest`) {
+    throw new Error(`"${actualModel}" is an embedding model and cannot be used for text generation`);
+  }
+
   logger.info('Getting completion:', {
     service: isOpenRouter ? 'OpenRouter' : 'Ollama',
     model: actualModel,
@@ -431,6 +440,241 @@ async function getRelevantChunks(question, project, model, limit) {
   return allRelevantDocs;
 }
 
+// Функция для переранжирования документов с использованием внешнего reranker сервиса
+async function rerankDocuments(question, relevantDocs) {
+  try {
+    // Логируем исходные документы и их рейтинги
+    logger.info('Original documents ranking:');
+    relevantDocs.forEach((doc, index) => {
+      logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)})`);
+    });
+
+    logger.info('Sending documents to reranker service');
+    const response = await fetch('http://reranker:8001/rerank', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        query: question,
+        documents: relevantDocs
+      })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      logger.error(`Reranker service error: ${error}`);
+      // Если reranker недоступен, возвращаем оригинальные документы
+      return relevantDocs;
+    }
+
+    const data = await response.json();
+    let rerankedDocs = data.reranked_documents;
+    
+    // Проверяем и исправляем отрицательные значения similarity
+    const hasNegative = rerankedDocs.some(doc => doc.similarity < 0);
+    const needsNormalization = hasNegative || rerankedDocs.some(doc => doc.similarity > 1);
+    
+    if (needsNormalization) {
+      logger.info('Normalizing reranker scores to [0, 1] range using absolute scale...');
+      
+      // Получаем текущие значения, выданные реранкером
+      const newSimilarities = rerankedDocs.map(doc => doc.similarity);
+      const minNewSim = Math.min(...newSimilarities);
+      const maxNewSim = Math.max(...newSimilarities);
+      
+      // Находим минимальное и максимальное значение исходных similarity для информации
+      const origSimilarities = relevantDocs.map(doc => doc.similarity);
+      const minOrigSim = Math.min(...origSimilarities);
+      const maxOrigSim = Math.max(...origSimilarities);
+      
+      // Фиксированные границы для реранкера
+      // Обновлено на основе реальных данных: оценки примерно от -8 до 0
+      const RERANKER_MIN_SCORE = -10;
+      const RERANKER_MAX_SCORE = 0;
+      
+      logger.info(`Original similarity range: [${minOrigSim.toFixed(4)}, ${maxOrigSim.toFixed(4)}]`);
+      logger.info(`Reranker similarity range: [${minNewSim.toFixed(4)}, ${maxNewSim.toFixed(4)}]`);
+      logger.info(`Using fixed reranker scale: [${RERANKER_MIN_SCORE}, ${RERANKER_MAX_SCORE}]`);
+      
+      // Создаем таблицу соответствия для лучшего понимания
+      logger.info('Reference scale:');
+      [RERANKER_MIN_SCORE, -8, -6, -4, -2, -1, -0.5, RERANKER_MAX_SCORE].forEach(score => {
+        const normalized = (score - RERANKER_MIN_SCORE) / (RERANKER_MAX_SCORE - RERANKER_MIN_SCORE);
+        const clamped = Math.max(0, Math.min(1, normalized));
+        logger.info(`Reranker score ${score.toFixed(1)} => similarity ${clamped.toFixed(4)}`);
+      });
+      
+      // Нормализуем с учетом абсолютной шкалы
+      rerankedDocs = rerankedDocs.map(doc => {
+        // Создаем новый объект, чтобы не модифицировать оригинальный
+        const newDoc = { ...doc };
+        
+        // Нормализуем в абсолютную шкалу [0, 1], где 0 соответствует RERANKER_MIN_SCORE,
+        // а 1 соответствует RERANKER_MAX_SCORE
+        newDoc.similarity = (doc.similarity - RERANKER_MIN_SCORE) / (RERANKER_MAX_SCORE - RERANKER_MIN_SCORE);
+        
+        // Ограничиваем значение, чтобы оно точно было в [0, 1]
+        newDoc.similarity = Math.max(0, Math.min(1, newDoc.similarity));
+        
+        return newDoc;
+      });
+      
+      // Логируем результаты нормализации
+      const normalizedSimilarities = rerankedDocs.map(doc => doc.similarity);
+      const minNormSim = Math.min(...normalizedSimilarities);
+      const maxNormSim = Math.max(...normalizedSimilarities);
+      logger.info(`Normalized similarity range (absolute scale): [${minNormSim.toFixed(4)}, ${maxNormSim.toFixed(4)}]`);
+      
+      // Показываем детальную информацию о нормализации для каждого документа
+      logger.info('Detailed normalization results:');
+      
+      // Создаем таблицу для более читаемого вывода
+      logger.info('| Документ | Оценка реранкера | Нормализованная | Векторная |');
+      logger.info('|----------|-----------------|-----------------|-----------|');
+      
+      rerankedDocs.forEach((doc, index) => {
+        const origDoc = relevantDocs.find(d => d.filename === doc.filename);
+        const origScore = origDoc ? origDoc.similarity : 0;
+        const origRawScore = data.reranked_documents[index].similarity; // Исходное значение до нормализации
+        
+        // Формируем строку таблицы
+        logger.info(`| ${doc.filename.substring(0, 20)}${doc.filename.length > 20 ? '...' : ''} | ${origRawScore.toFixed(4)} | ${doc.similarity.toFixed(4)} | ${origScore.toFixed(4)} |`);
+        
+        // Также логируем в прежнем формате для совместимости
+        logger.info(`${doc.filename}: Raw score ${origRawScore.toFixed(4)} => Normalized ${doc.similarity.toFixed(4)} (Original vector similarity: ${origScore.toFixed(4)})`);
+      });
+    }
+    
+    // Логируем результаты ререранкинга
+    logger.info('Reranked documents ranking:');
+    rerankedDocs.forEach((doc, index) => {
+      // Добавляем пометку для очень низких скоров
+      const scoreNote = doc.similarity < 0.01 ? ' [очень низкая релевантность]' : '';
+      logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)})${scoreNote}`);
+    });
+    
+    // Логируем изменения в порядке документов
+    if (rerankedDocs.length > 0) {
+      logger.info('Changes in document ranking:');
+      // Создаем карту исходных позиций
+      const originalPositions = new Map();
+      relevantDocs.forEach((doc, index) => {
+        originalPositions.set(doc.filename, index);
+      });
+      
+      // Статистика изменений
+      let totalPositionChanges = 0;
+      let improvedPositions = 0;
+      let loweredPositions = 0;
+      let unchangedPositions = 0;
+      let maxImprovement = 0;
+      let maxDrop = 0;
+      let totalSimilarityChange = 0;
+      
+      // Показываем изменения в позициях
+      rerankedDocs.forEach((doc, newIndex) => {
+        const oldIndex = originalPositions.get(doc.filename);
+        const change = oldIndex - newIndex;
+        let changeText = "";
+        
+        if (change > 0) {
+          changeText = `↑${change} (improved)`;
+          improvedPositions++;
+          maxImprovement = Math.max(maxImprovement, change);
+        } else if (change < 0) {
+          changeText = `↓${Math.abs(change)} (lowered)`;
+          loweredPositions++;
+          maxDrop = Math.max(maxDrop, Math.abs(change));
+        } else {
+          changeText = "no change";
+          unchangedPositions++;
+        }
+        
+        totalPositionChanges += Math.abs(change);
+        
+        // Найти оригинальный документ для сравнения similarity
+        const originalDoc = relevantDocs.find(d => d.filename === doc.filename);
+        const originalSimilarity = originalDoc ? originalDoc.similarity : 0;
+        
+        // Вместо прямого сравнения нормализованных значений, отображаем
+        // изменение ранга в списке документов (более высокий ранг = лучше)
+        let rankChangeText = "";
+        if (change > 0) {
+          rankChangeText = `улучшен на ${change} позиций`;
+        } else if (change < 0) {
+          rankChangeText = `понижен на ${Math.abs(change)} позиций`;
+        } else {
+          rankChangeText = "без изменений";
+        }
+        
+        // Для similarity просто показываем новое значение, так как оно уже в диапазоне [0, 1]
+        logger.info(`${doc.filename}: с позиции ${oldIndex + 1} на ${newIndex + 1} (${rankChangeText}), новая релевантность: ${doc.similarity.toFixed(4)} (исходная была ${originalSimilarity.toFixed(4)})`);
+        
+        // Для статистики по-прежнему используем разницу, но учитываем, что шкалы разные
+        const similarityChange = 0; // мы не можем напрямую сравнивать оценки в разных шкалах
+        totalSimilarityChange += Math.abs(change) / rerankedDocs.length; // используем изменение позиции как прокси
+      });
+      
+      // Логируем общую статистику
+      logger.info('Reranking statistics:');
+      logger.info(`Total documents: ${rerankedDocs.length}`);
+      logger.info(`Documents with improved position: ${improvedPositions} (${((improvedPositions / rerankedDocs.length) * 100).toFixed(1)}%)`);
+      logger.info(`Documents with lowered position: ${loweredPositions} (${((loweredPositions / rerankedDocs.length) * 100).toFixed(1)}%)`);
+      logger.info(`Documents with unchanged position: ${unchangedPositions} (${((unchangedPositions / rerankedDocs.length) * 100).toFixed(1)}%)`);
+      logger.info(`Average position change: ${(totalPositionChanges / rerankedDocs.length).toFixed(2)}`);
+      logger.info(`Maximum position improvement: ${maxImprovement}`);
+      logger.info(`Maximum position drop: ${maxDrop}`);
+      
+      // Уже не вычисляем среднее изменение similarity, так как шкалы несопоставимы
+      // logger.info(`Average similarity change: ${(totalSimilarityChange / rerankedDocs.length).toFixed(4)}`);
+      
+      // Создаем карту новых позиций для вычисления метрики Кендалла тау
+      const newPositions = new Map();
+      rerankedDocs.forEach((doc, index) => {
+        newPositions.set(doc.filename, index);
+      });
+      
+      // Вычисляем корреляцию Кендалла тау
+      let concordantPairs = 0;
+      let discordantPairs = 0;
+      
+      for (let i = 0; i < relevantDocs.length; i++) {
+        for (let j = i + 1; j < relevantDocs.length; j++) {
+          const filenameI = relevantDocs[i].filename;
+          const filenameJ = relevantDocs[j].filename;
+          
+          const origOrderI = originalPositions.get(filenameI);
+          const origOrderJ = originalPositions.get(filenameJ);
+          const newOrderI = newPositions.get(filenameI);
+          const newOrderJ = newPositions.get(filenameJ);
+          
+          const originalOrder = origOrderI < origOrderJ;
+          const newOrder = newOrderI < newOrderJ;
+          
+          if (originalOrder === newOrder) {
+            concordantPairs++;
+          } else {
+            discordantPairs++;
+          }
+        }
+      }
+      
+      const totalPairs = concordantPairs + discordantPairs;
+      const kendallTau = totalPairs > 0 ? (concordantPairs - discordantPairs) / totalPairs : 0;
+      
+      logger.info(`Kendall's Tau correlation: ${kendallTau.toFixed(4)} (1.0 means identical ranking, -1.0 means completely reversed, 0 means no correlation)`);
+    }
+
+    logger.info('Documents reranked successfully');
+    return rerankedDocs;
+  } catch (error) {
+    logger.error('Error calling reranker service:', error);
+    // В случае ошибки возвращаем оригинальные документы
+    return relevantDocs;
+  }
+}
+
 /**
  * @swagger
  * /ai/rag:
@@ -480,7 +724,7 @@ async function getRelevantChunks(question, project, model, limit) {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag', async (req, res) => {
-  const { question, project, model } = req.body;
+  const { question, project, model, useReranker = true } = req.body;
 
   if (!question || !project || !model) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -490,8 +734,19 @@ router.post('/rag', async (req, res) => {
     logger.info('POST /ai/rag request received:', {
       question,
       project,
-      model
+      model,
+      useReranker
     });
+
+    // Проверяем, не является ли выбранная модель моделью для эмбеддингов
+    if (model === 'all-minilm' || model === 'all-minilm:latest' || 
+        model === process.env.EMBEDDING_MODEL || 
+        (process.env.EMBEDDING_MODEL && model === `${process.env.EMBEDDING_MODEL}:latest`)) {
+      return res.status(400).json({ 
+        error: 'Invalid model selection',
+        details: `"${model}" is an embedding model and cannot be used for text generation. Please select a text generation model.`
+      });
+    }
 
     const relevantDocs = await getRelevantChunks(question, project, model);
     
@@ -502,9 +757,41 @@ router.post('/rag', async (req, res) => {
       });
     }
 
+    // Сохраняем исходные документы и их similarity для возможности анализа и отладки
+    const originalDocs = relevantDocs.map(doc => ({
+      filename: doc.filename,
+      similarity: doc.similarity,
+      project: doc.project
+    }));
+
     logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
 
-    const context = `Найденные релевантные фрагменты:\n\n${relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n')}\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
+    // Логируем первоначальный контекст
+    const originalContext = relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n');
+    logger.info('Original context order:');
+    relevantDocs.forEach((doc, index) => {
+      // Выводим только первые 100 символов содержимого для более компактных логов
+      const contentPreview = doc.content.trim().substring(0, 100) + (doc.content.length > 100 ? '...' : '');
+      logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)}): ${contentPreview}`);
+    });
+
+    // Добавляем шаг переранжирования, если параметр useReranker включен
+    let processedDocs = relevantDocs;
+    if (useReranker) {
+      logger.info('Applying reranking to documents');
+      processedDocs = await rerankDocuments(question, relevantDocs);
+      logger.info('Documents reranked');
+
+      // Логируем контекст после реранкинга
+      logger.info('Reranked context order:');
+      processedDocs.forEach((doc, index) => {
+        // Выводим только первые 100 символов содержимого для более компактных логов
+        const contentPreview = doc.content.trim().substring(0, 100) + (doc.content.length > 100 ? '...' : '');
+        logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)}): ${contentPreview}`);
+      });
+    }
+
+    const context = `Найденные релевантные фрагменты:\n\n${processedDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n')}\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
 
     logger.info('Getting answer from LLM...');
     // Получаем ответ от LLM
@@ -526,11 +813,12 @@ Question: ${question}`
     logger.info('Sending response to client');
     res.json({
       answer,
-      relevantDocuments: relevantDocs.map(doc => ({
+      relevantDocuments: processedDocs.map(doc => ({
         filename: doc.filename,
         similarity: doc.similarity,
         project: doc.project
-      }))
+      })),
+      originalDocuments: originalDocs // Добавляем исходные документы для сравнения
     });
 
   } catch (error) {

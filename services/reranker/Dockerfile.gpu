@@ -1,0 +1,35 @@
+FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+
+WORKDIR /app
+
+# Устанавливаем необходимые зависимости
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Копируем и устанавливаем зависимости Python
+COPY services/reranker/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Создаем директорию для кеша моделей
+RUN mkdir -p /app/models
+ENV TRANSFORMERS_CACHE=/app/models
+
+# Устанавливаем переменные окружения
+ENV PORT=8001
+ENV RERANKER_MODEL=BAAI/bge-reranker-v2-m3
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Копируем приложение
+COPY services/reranker/app.py .
+
+# Открываем порт
+EXPOSE 8001
+
+# Проверяем доступность CUDA
+RUN python -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('CUDA device count:', torch.cuda.device_count())"
+
+# Запускаем приложение
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8001"] 

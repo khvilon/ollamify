@@ -27,5 +27,34 @@ services:
     networks:
       - app-network
 
+  reranker:
+    build:
+      context: ./services/reranker
+      dockerfile: Dockerfile.gpu
+    volumes:
+      - reranker_models:/app/models
+      - ./services/reranker/app.py:/app/app.py
+    ports:
+      - "8001:8001"
+    expose:
+      - "8001"
+    environment:
+      - RERANKER_MODEL=${RERANKER_MODEL}
+      - PORT=8001
+      - TRANSFORMERS_CACHE=/app/models
+      - NVIDIA_VISIBLE_DEVICES=all
+    container_name: reranker
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - app-network
+
 volumes:
   ollama_data:
+  reranker_models:
+    name: ollamify-reranker-models
