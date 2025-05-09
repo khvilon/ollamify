@@ -675,6 +675,55 @@ async function rerankDocuments(question, relevantDocs) {
   }
 }
 
+// Функция для извлечения смысловой части запроса
+async function extractQueryIntent(originalQuery) {
+  try {
+    logger.info('Extracting semantic intent from query:', originalQuery);
+    
+    const messages = [
+      {
+        role: "system",
+        content: `Твоя задача - извлечь смысловую часть запроса, которая подходит для поиска релевантных документов.
+        Выдели только фактическую информационную потребность, отбросив все вводные фразы, вежливые формулировки и избыточные детали.
+        Сфокусируйся на ключевых словах и терминах, которые важны для поиска.
+        Твой ответ должен содержать ТОЛЬКО переформулированный запрос - без объяснений, комментариев или дополнительного текста.
+        Ответ должен быть на том же языке, что и исходный запрос.
+        
+        Примеры:
+        Исходный запрос: "Не могли бы вы, пожалуйста, рассказать мне подробнее о том, как работает векторный поиск в современных RAG системах?"
+        Выделенная часть: "векторный поиск в RAG системах"
+        
+        Исходный запрос: "Я ищу информацию о конфигурации PostgreSQL для хранения векторных эмбеддингов. Можете помочь?"
+        Выделенная часть: "конфигурация PostgreSQL для хранения векторных эмбеддингов"
+        
+        Исходный запрос: "Мне очень интересно узнать про архитектуру микросервисов в современных приложениях. Что это такое и с чем его едят?"
+        Выделенная часть: "архитектура микросервисов в современных приложениях"
+        `
+      },
+      {
+        role: "user",
+        content: originalQuery
+      }
+    ];
+    
+    // Используем ту же функцию getCompletion для получения ответа
+    const intentQuery = await getCompletion(messages);
+    logger.info('Extracted intent query:', intentQuery);
+    
+    return {
+      originalQuery,
+      intentQuery
+    };
+  } catch (error) {
+    logger.error('Error extracting query intent:', error);
+    // В случае ошибки возвращаем исходный запрос
+    return {
+      originalQuery,
+      intentQuery: originalQuery
+    };
+  }
+}
+
 /**
  * @swagger
  * /ai/rag:
@@ -747,8 +796,16 @@ router.post('/rag', async (req, res) => {
         details: `"${model}" is an embedding model and cannot be used for text generation. Please select a text generation model.`
       });
     }
+    
+    // Извлекаем смысловую часть запроса для поиска
+    const { originalQuery, intentQuery } = await extractQueryIntent(question);
+    logger.info('Query intent extraction:', {
+      originalQuery: question,
+      extractedIntent: intentQuery
+    });
 
-    const relevantDocs = await getRelevantChunks(question, project, model);
+    // Используем извлеченный запрос для поиска релевантных документов
+    const relevantDocs = await getRelevantChunks(intentQuery, project, model);
     
     if (relevantDocs.length === 0) {
       logger.info('No relevant documents found');
@@ -764,7 +821,7 @@ router.post('/rag', async (req, res) => {
       project: doc.project
     }));
 
-    logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
+    logger.info('Found relevant documents using intent query:', relevantDocs.map(doc => doc.filename));
 
     // Логируем первоначальный контекст
     const originalContext = relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n');
@@ -778,7 +835,8 @@ router.post('/rag', async (req, res) => {
     // Добавляем шаг переранжирования, если параметр useReranker включен
     let processedDocs = relevantDocs;
     if (useReranker) {
-      logger.info('Applying reranking to documents');
+      logger.info('Applying reranking to documents using original query');
+      // Для переранжирования используем исходный запрос, чтобы сохранить нюансы формулировки
       processedDocs = await rerankDocuments(question, relevantDocs);
       logger.info('Documents reranked');
 
@@ -794,7 +852,7 @@ router.post('/rag', async (req, res) => {
     const context = `Найденные релевантные фрагменты:\n\n${processedDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n')}\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
 
     logger.info('Getting answer from LLM...');
-    // Получаем ответ от LLM
+    // Для получения ответа используем оригинальный запрос пользователя
     const answer = await getCompletion([
       {
         role: "system",
@@ -818,7 +876,8 @@ Question: ${question}`
         similarity: doc.similarity,
         project: doc.project
       })),
-      originalDocuments: originalDocs // Добавляем исходные документы для сравнения
+      originalDocuments: originalDocs, // Добавляем исходные документы для сравнения
+      intentQuery: intentQuery // Добавляем извлеченный запрос для отладки
     });
 
   } catch (error) {
@@ -896,16 +955,40 @@ router.post('/rag/chunks', async (req, res) => {
 
   try {
     logger.info('POST /ai/rag/chunks request received:', { question, project, limit });
-    const relevantDocs = await getRelevantChunks(question, project, null, limit ? Number(limit) : undefined);
+    
+    // Извлекаем смысловую часть запроса для поиска
+    const { originalQuery, intentQuery } = await extractQueryIntent(question);
+    logger.info('Query intent extraction for chunks:', {
+      originalQuery: question,
+      extractedIntent: intentQuery
+    });
+    
+    // Используем извлеченный запрос для поиска релевантных документов
+    const relevantDocs = await getRelevantChunks(intentQuery, project, null, limit ? Number(limit) : undefined);
+    
     if (relevantDocs.length === 0) {
-      logger.info('No relevant documents found');
-      return res.status(404).json({ error: 'No relevant documents found for this question' });
+      logger.info('No relevant documents found for chunks');
+      return res.status(404).json({ 
+        error: 'No relevant documents found for this question' 
+      });
     }
-    logger.info('Found relevant documents:', relevantDocs.map(doc => doc.filename));
-    res.json({ relevantDocuments: relevantDocs });
+
+    logger.info('Sending chunks to client');
+    res.json({
+      relevantDocuments: relevantDocs.map(doc => ({
+        filename: doc.filename,
+        content: doc.content,
+        similarity: doc.similarity,
+        project: doc.project
+      })),
+      intentQuery: intentQuery // Добавляем извлеченный запрос для отладки
+    });
   } catch (error) {
     logger.error('Error in ai/rag/chunks:', error);
-    res.status(500).json({ error: 'Failed to get relevant documents', details: error.message });
+    res.status(500).json({
+      error: 'Failed to get relevant chunks',
+      details: error.message
+    });
   }
 });
 
