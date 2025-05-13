@@ -8,4 +8,11 @@ service:
   grpc_port: 6334
   telemetry_disabled: false
   
-log_level: INFO 
+log_level: INFO
+
+embeddings:
+  frida:
+    model_path: "ai-forever/FRIDA"
+    tokenizer_path: "ai-forever/FRIDA"
+    pooling: "cls"
+    type: "huggingface" 

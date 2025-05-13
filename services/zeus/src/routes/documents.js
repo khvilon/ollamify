@@ -831,6 +831,19 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     
     const documentName = docResult.rows[0].name;
     
+    // Проверяем, что модель эмбеддинга правильная
+    if (!embeddingModel) {
+      logger.error(`No embedding model specified for project ${project}, trying to get from database`);
+      const projectModelInfo = await qdrantClient.getProjectEmbeddingModel(project);
+      if (!projectModelInfo) {
+        logger.error(`Could not determine embedding model for project ${project}`);
+        return;
+      }
+      embeddingModel = projectModelInfo;
+    }
+    
+    logger.info(`Using embedding model: ${embeddingModel} for project ${project}`);
+    
     // Сохраняем чанки с эмбеддингами
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`Processing chunk ${i + 1}/${chunks.length}`);

@@ -3,6 +3,12 @@ import logger from './utils/logger.js';
 
 export async function getEmbeddingDimension(model) {
     try {
+      // Если модель FRIDA, у нее фиксированная размерность 1536
+      if (model === 'frida') {
+        logger.info(`Model ${model} has fixed dimension of 1536`);
+        return 1536;
+      }
+      
       const response = await fetch('http://ollama:11434/api/embeddings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -24,6 +30,11 @@ export async function getEmbeddingDimension(model) {
 
 export async function getEmbedding(text, model) {
   try {
+    // Если используется FRIDA, получаем эмбеддинги из отдельного сервиса
+    if (model === 'frida') {
+      return getEmbeddingFromFrida(text);
+    }
+    
     const response = await fetch('http://ollama:11434/api/embeddings', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -44,6 +55,43 @@ export async function getEmbedding(text, model) {
   }
 }
 
+// Функция для получения эмбеддингов от сервиса FRIDA
+async function getEmbeddingFromFrida(text) {
+  try {
+    // Для текста поиска используем префикс search_query, для документов search_document
+    const isQuery = text.length < 200; // Эвристика: короткие тексты считаем запросами
+    const prompt_name = isQuery ? 'search_query' : 'search_document';
+    
+    // Используем новый сервис FRIDA
+    const response = await fetch('http://frida:8002/embed', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        texts: [text],
+        prompt_name: prompt_name
+      })
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Failed to get FRIDA embedding. Status: ${response.status}, Response: ${errText}`);
+    }
+
+    const data = await response.json();
+    
+    // Проверка размерности вектора
+    if (data.dimension !== 1536) {
+      logger.error(`FRIDA returned embedding with unexpected dimension: ${data.dimension}, expected 1536`);
+      throw new Error(`FRIDA dimension mismatch: expected 1536, got ${data.dimension}`);
+    }
+    
+    logger.info(`Got FRIDA embedding with dimension ${data.dimension}`);
+    return data.embeddings[0]; // Возвращаем первый эмбеддинг (для одного текста)
+  } catch (error) {
+    logger.error('Error getting FRIDA embedding:', error);
+    throw error;
+  }
+}
 
 export function splitIntoChunks(text, maxChunkSize = 1500) {
   const chunks = [];

@@ -10,7 +10,7 @@ class QdrantClient {
     this.url = `http://${this.host}:${this.port}`;
     
     // Создаем клиент Qdrant
-    this.client = new QdrantRestClient({ url: this.url });
+    this.client = new QdrantRestClient({ url: this.url, checkCompatibility: false });
     
     logger.info(`QdrantClient initialized with URL: ${this.url}`);
   }
@@ -18,13 +18,9 @@ class QdrantClient {
   // Проверка статуса Qdrant
   async healthCheck() {
     try {
-      // В новой версии клиента Qdrant метод перенесен
-      const response = await fetch(`${this.url}/health`);
-      if (response.ok) {
-        return { status: 'ok' };
-      } else {
-        throw new Error(`Health check failed with status ${response.status}`);
-      }
+      // Запрашиваем коллекции как способ проверки здоровья вместо /health
+      await this.client.getCollections();
+      return { status: 'ok' };
     } catch (error) {
       logger.error('Qdrant health check failed:', error);
       throw error;
@@ -36,7 +32,7 @@ class QdrantClient {
     try {
       logger.info(`Creating collection ${collectionName} with dimension ${dimension}`);
       
-      // Определяем схему коллекции
+      // Стандартная конфигурация для всех коллекций - эмбеддинги создаются внешним сервисом
       const vectorsConfig = {
         size: dimension,
         distance
@@ -77,6 +73,29 @@ class QdrantClient {
     }
   }
 
+  // Получить модель эмбеддингов для проекта из базы данных
+  async getProjectEmbeddingModel(projectName) {
+    try {
+      // Используем pool из импорта, чтобы не создавать циклическую зависимость
+      const { pool } = await import('./conf.js');
+      const { rows } = await pool.query(`
+        SELECT embedding_model 
+        FROM admin.projects 
+        WHERE name = $1
+        LIMIT 1
+      `, [projectName]);
+      
+      if (rows.length === 0) {
+        return null;
+      }
+      
+      return rows[0].embedding_model;
+    } catch (error) {
+      logger.error(`Error getting embedding model for project ${projectName}:`, error);
+      return null;
+    }
+  }
+
   // Проверка существования коллекции
   async collectionExists(collectionName) {
     try {
@@ -105,31 +124,25 @@ class QdrantClient {
     try {
       // Преобразуем ID в числовой формат, который требует Qdrant
       const formattedPoints = points.map(point => {
+        let formattedPoint = { ...point };
+        
         // Если id уже число, используем его напрямую
         if (typeof point.id === 'number') {
-          return point;
-        }
-        
-        // Если ID в формате "documentId_chunkIndex", преобразуем в числовой ID
-        if (typeof point.id === 'string' && point.id.includes('_')) {
-          // Создаем уникальный числовой ID, объединяя documentId и chunkIndex
-          // Например, для document_id=1, chunk_index=462, создадим ID вида 1000462
+          // ничего не делаем
+        } else if (typeof point.id === 'string' && point.id.includes('_')) {
+          // Если ID в формате "documentId_chunkIndex", преобразуем в числовой ID
           const [docId, chunkIndex] = point.id.split('_').map(Number);
-          // Убедимся, что оба компонента - числа
           if (!isNaN(docId) && !isNaN(chunkIndex)) {
-            const numericId = docId * 1000000 + chunkIndex; // Это даст нам уникальный числовой ID
-            return {
-              ...point,
-              id: numericId
-            };
+            formattedPoint.id = docId * 1000000 + chunkIndex;
+          } else {
+            formattedPoint.id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
           }
+        } else {
+          // В крайнем случае, генерируем случайный числовой ID
+          formattedPoint.id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
         }
         
-        // В крайнем случае, генерируем случайный числовой ID
-        return {
-          ...point,
-          id: Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
-        };
+        return formattedPoint;
       });
       
       const result = await this.client.upsert(collectionName, {

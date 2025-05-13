@@ -1,3 +1,7 @@
+#!/bin/bash
+
+# Код для патча Projects.js
+cat > frida-patch.js << 'EOL'
 // Get dependencies from global scope
 const {
     Container,
@@ -136,7 +140,6 @@ function Projects() {
 
         try {
             setLoading(true);
-            console.log("Creating project with model:", selectedModel);
             const response = await window.api.fetch('/api/projects', {
                 method: 'POST',
                 headers: {
@@ -407,3 +410,12 @@ function Projects() {
 
 // Export for browser environment
 window.Projects = Projects;
+EOL
+
+# Копируем патч в контейнер
+docker cp frida-patch.js www3:/usr/share/nginx/html/src/components/Projects.js
+
+# Перезапускаем контейнер
+docker restart www3
+
+echo "FRIDA patch applied. Restarting www3 container..." 

@@ -16,6 +16,8 @@ services:
         condition: service_healthy
       reranker:
         condition: service_started
+      frida:
+        condition: service_started
     environment:
       - ZEUS_PORT=80
       - POSTGRES_PORT=${POSTGRES_PORT}
@@ -72,6 +74,20 @@ services:
       - "6333"
       - "6334"
     container_name: vector-db
+    networks:
+      - app-network
+
+  frida:
+    build:
+      context: ./services/frida
+      dockerfile: Dockerfile
+    volumes:
+      - frida_models:/app/models
+    ports:
+      - "8002:8002"
+    expose:
+      - "8002"
+    container_name: frida
     networks:
       - app-network
 
@@ -162,6 +178,7 @@ volumes:
   pg_data:
   qdrant_data:
   ollama_data:
+  frida_models:
   reranker_models:
     name: ollamify-reranker-models
 

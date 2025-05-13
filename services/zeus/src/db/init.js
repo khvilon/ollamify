@@ -15,11 +15,11 @@ async function createProjectSchema(project, dimension) {
   try {
     logger.info(`Using embedding dimension ${dimension} for model ${EMBEDDING_MODEL}`);
 
+    logger.info(`Creating schema for project ${project} with embedding dimension ${dimension}`);
+    
     // Create vector extension if not exists
     await client.query('CREATE EXTENSION IF NOT EXISTS vector');
 
-    logger.info(`Creating schema for project ${project} with embedding dimension ${dimension}`);
-    
     // Create schema if not exists
     await client.query(`CREATE SCHEMA IF NOT EXISTS "${project}"`);
     logger.info(`Created schema for project ${project}`);
