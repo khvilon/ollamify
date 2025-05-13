@@ -9,4 +9,6 @@ numpy>=1.25.2
 accelerate>=0.25.0
 einops>=0.7.0
 tokenizers>=0.15.0
-tiktoken>=0.5.0 
+tiktoken>=0.5.0
+# Опциональные зависимости для ускорения
+# flash-attn>=2.5.0  # Раскомментируйте для использования Flash Attention 
