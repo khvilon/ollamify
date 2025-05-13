@@ -1,6 +1,7 @@
 import pool from './conf.js';
 import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
+import qdrantClient from './qdrant.js';
 
 dotenv.config();
 
@@ -46,28 +47,20 @@ async function createProjectSchema(project, dimension) {
     `);
     logger.info(`Created index for external_id`);
 
-    // Create chunks table if not exists
-    await client.query(`
-      CREATE TABLE IF NOT EXISTS "${project}".chunks (
-        id SERIAL PRIMARY KEY,
-        document_id INTEGER REFERENCES "${project}".documents(id) ON DELETE CASCADE,
-        chunk_index INTEGER NOT NULL,
-        content TEXT NOT NULL,
-        embedding VECTOR(${dimension}),
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(document_id, chunk_index)
-      )
-    `);
-    logger.info(`Created chunks table with embedding vector(${dimension})`);
-
-    // Create index on embedding vector with the same dimension
-    await client.query(`
-      CREATE INDEX IF NOT EXISTS chunks_embedding_idx_${dimension}
-      ON "${project}".chunks 
-      USING ivfflat (embedding vector_cosine_ops)
-      WITH (lists = ${Math.ceil(dimension / 10)})
-    `);
-    logger.info(`Created index on chunks table for project ${project}`);
+    // Создаем коллекцию в Qdrant, если она не существует
+    try {
+      const collectionExists = await qdrantClient.collectionExists(project);
+      if (!collectionExists) {
+        logger.info(`Creating Qdrant collection for project ${project}`);
+        await qdrantClient.createCollection(project, dimension);
+        logger.info(`Created Qdrant collection for project ${project}`);
+      } else {
+        logger.info(`Qdrant collection for project ${project} already exists`);
+      }
+    } catch (error) {
+      logger.error(`Error creating Qdrant collection for project ${project}:`, error);
+      // Не блокируем создание проекта, если не удалось создать коллекцию
+    }
 
     logger.info(`Project schema "${project}" initialized successfully`);
   } catch (error) {

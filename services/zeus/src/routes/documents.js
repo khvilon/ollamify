@@ -10,6 +10,7 @@ import { render_page, sanitizeText } from '../documentsTools.js';
 import DocumentQueries from '../db/documents.js';
 import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
+import qdrantClient from '../db/qdrant.js';
 
 dotenv.config();
 
@@ -817,39 +818,55 @@ router.delete('/:id', async (req, res) => {
 
 // Функция для асинхронной обработки чанков
 async function processChunks(project, documentId, chunks, embeddingModel) {
-  const chunkClient = await pool.connect();
   try {
+    // Получаем информацию о документе
+    const docResult = await pool.query(`
+      SELECT name FROM "${project}".documents WHERE id = $1
+    `, [documentId]);
+    
+    if (docResult.rows.length === 0) {
+      logger.error(`Document ${documentId} not found`);
+      return;
+    }
+    
+    const documentName = docResult.rows[0].name;
+    
     // Сохраняем чанки с эмбеддингами
     for (let i = 0; i < chunks.length; i++) {
       logger.info(`Processing chunk ${i + 1}/${chunks.length}`);
       const chunk = chunks[i];
       
       try {
-        await chunkClient.query('BEGIN');
-
         // Получаем эмбеддинг для чанка
         logger.info(`Getting embedding for chunk ${i + 1} using model ${embeddingModel}`);
         const embedding = await getEmbedding(chunk, embeddingModel);
         
-        // Сохраняем чанк
-        await chunkClient.query(`
-          INSERT INTO "${project}".chunks
-            (document_id, chunk_index, content, embedding)
-          VALUES
-            ($1, $2, $3, $4)
-        `, [documentId, i, chunk, `[${embedding.join(',')}]`]);
-
-        // Обновляем количество загруженных чанков
-        await chunkClient.query(`
+        // Готовим точку для Qdrant
+        const point = {
+          id: `${documentId}_${i}`, // Уникальный ID для точки
+          vector: embedding,
+          payload: {
+            document_id: documentId,
+            chunk_index: i,
+            content: chunk,
+            filename: documentName,
+            project: project,
+            created_at: new Date().toISOString()
+          }
+        };
+        
+        // Сохраняем в Qdrant
+        await qdrantClient.upsertPoints(project, [point]);
+        
+        // Обновляем количество загруженных чанков в PostgreSQL
+        await pool.query(`
           UPDATE "${project}".documents
           SET loaded_chunks = loaded_chunks + 1
           WHERE id = $1
         `, [documentId]);
 
-        await chunkClient.query('COMMIT');
       } catch (chunkError) {
         logger.error(`Error processing chunk ${i + 1}:`, chunkError);
-        await chunkClient.query('ROLLBACK');
         // Продолжаем обработку следующих чанков
       }
     }
@@ -857,8 +874,6 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     logger.info(`Successfully processed all chunks for document ${documentId}`);
   } catch (processingError) {
     logger.error('Error in async processing:', processingError);
-  } finally {
-    chunkClient.release();
   }
 }
 

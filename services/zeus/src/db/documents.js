@@ -3,19 +3,18 @@ import { NotFoundError } from '../errors.js';
 import { createProjectSchema } from './init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import crypto from 'crypto';
+import qdrantClient from './qdrant.js';
+import logger from '../utils/logger.js';
 
 export const DocumentQueries = {
-
 
   // Получение документа по ID
   async findById(project, id) {
     const { rows } = await pool.query(`
       SELECT 
         d.*,
-        c.content,
         '${project}' as project
       FROM "${project}".documents d
-      LEFT JOIN "${project}".chunks c ON c.document_id = d.id
       WHERE d.id = $1
     `, [id]);
     
@@ -23,9 +22,25 @@ export const DocumentQueries = {
       throw new NotFoundError('Document');
     }
     
+    // Получаем первый чанк документа из Qdrant для отображения содержимого
+    try {
+      const filter = {
+        must: [
+          { key: 'document_id', match: { value: id } },
+          { key: 'chunk_index', match: { value: 0 } }
+        ]
+      };
+      
+      const results = await qdrantClient.search(project, null, 1, filter);
+      if (results.length > 0) {
+        rows[0].content = results[0].content;
+      }
+    } catch (error) {
+      console.error(`Error getting document content from Qdrant:`, error);
+    }
+    
     return rows[0];
   },
-
 
   // Удаление документа
   async delete(project, id) {
@@ -33,13 +48,7 @@ export const DocumentQueries = {
     try {
       await client.query('BEGIN');
 
-      // Удаляем чанки
-      await client.query(`
-        DELETE FROM "${project}".chunks
-        WHERE document_id = $1
-      `, [id]);
-
-      // Удаляем документ
+      // Удаляем документ из PostgreSQL
       const { rows } = await client.query(`
         DELETE FROM "${project}".documents
         WHERE id = $1
@@ -51,6 +60,15 @@ export const DocumentQueries = {
       }
 
       await client.query('COMMIT');
+      
+      // Удаляем документ из Qdrant
+      try {
+        await qdrantClient.deleteDocument(project, id);
+      } catch (qdrantError) {
+        logger.error(`Error deleting document from Qdrant:`, qdrantError);
+        // Не блокируем выполнение, так как основные данные уже удалены из PostgreSQL
+      }
+      
       return rows[0];
     } catch (error) {
       await client.query('ROLLBACK');

@@ -1,6 +1,8 @@
 import pool from './conf.js';
 import { createProjectSchema } from './init.js';
 import { getEmbeddingDimension } from '../embeddings.js';
+import qdrantClient from './qdrant.js';
+import logger from '../utils/logger.js';
 
 class ProjectQueries {
   // Получение всех проектов с информацией о создателе
@@ -82,6 +84,19 @@ class ProjectQueries {
 
       // Удаляем схему проекта
       await client.query(`DROP SCHEMA IF EXISTS "${projectName}" CASCADE`);
+      
+      // Удаляем коллекцию в Qdrant
+      try {
+        const collectionExists = await qdrantClient.collectionExists(projectName);
+        if (collectionExists) {
+          logger.info(`Deleting Qdrant collection for project ${projectName}`);
+          await qdrantClient.deleteCollection(projectName);
+          logger.info(`Deleted Qdrant collection for project ${projectName}`);
+        }
+      } catch (error) {
+        logger.error(`Error deleting Qdrant collection for project ${projectName}:`, error);
+        // Не блокируем удаление проекта, если не удалось удалить коллекцию
+      }
 
       // Удаляем запись из admin.projects
       await client.query(`
@@ -107,7 +122,28 @@ class ProjectQueries {
         MAX(created_at) as last_document
       FROM "${projectName}".documents
     `);
-    return rows[0];
+    
+    // Добавляем информацию о векторной базе
+    let qdrantStats = null;
+    try {
+      const collectionExists = await qdrantClient.collectionExists(projectName);
+      if (collectionExists) {
+        // Реализация метода получения статистики зависит от версии Qdrant API
+        // Обычно нужно получить информацию о количестве точек в коллекции
+        // Т.к. у нас клиент не поддерживает это напрямую, просто отмечаем, что коллекция существует
+        qdrantStats = { 
+          exists: true,
+          collection_name: projectName
+        };
+      }
+    } catch (error) {
+      logger.error(`Error getting Qdrant stats for project ${projectName}:`, error);
+    }
+    
+    return {
+      ...rows[0],
+      vector_db: qdrantStats
+    };
   }
 }
 

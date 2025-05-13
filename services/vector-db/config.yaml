@@ -1,0 +1,11 @@
+storage:
+  storage_path: ./storage
+  optimizers:
+    default_segment_number: 2
+    
+service:
+  http_port: 6333
+  grpc_port: 6334
+  telemetry_disabled: false
+  
+log_level: INFO 

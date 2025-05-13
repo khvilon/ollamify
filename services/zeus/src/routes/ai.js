@@ -4,46 +4,30 @@ import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import logger from '../utils/logger.js';
+import qdrantClient from '../db/qdrant.js';
 
 const router = express.Router();
 
 // Поиск релевантных документов по эмбеддингу вопроса
 async function findRelevantDocuments(questionEmbedding, project, embeddingModel, limit) {
-  const client = await pool.connect();
   try {
-    // Проверяем существование схемы проекта
-    const schemaExists = await client.query(`
-      SELECT schema_name 
-      FROM information_schema.schemata 
-      WHERE schema_name = $1
-    `, [project]);
-
-    if (schemaExists.rows.length === 0) {
-      logger.info(`Creating new schema for project ${project}`);
+    // Проверяем существование коллекции в Qdrant
+    const collectionExists = await qdrantClient.collectionExists(project);
+    
+    if (!collectionExists) {
+      logger.info(`Creating new collection for project ${project}`);
       const dimension = await getEmbeddingDimension(embeddingModel);
-      await createProjectSchema(project, dimension);
+      await qdrantClient.createCollection(project, dimension);
     }
 
-    // Преобразуем массив в формат вектора PostgreSQL
-    const vectorLiteral = `[${questionEmbedding.join(',')}]`;
-    const similarityThreshold = 0.1;
-
-    const result = await client.query(`
-      SELECT 
-        d.name as filename,
-        c.content,
-        1 - (c.embedding <=> $1::vector) as similarity
-      FROM "${project}".chunks c
-      JOIN "${project}".documents d ON d.id = c.document_id
-      WHERE c.embedding IS NOT NULL 
-        AND 1 - (c.embedding <=> $1::vector) > $2
-      ORDER BY similarity DESC
-      LIMIT $3
-    `, [vectorLiteral, similarityThreshold, limit]);
-
-    return result.rows;
-  } finally {
-    client.release();
+    // Ищем релевантные документы
+    const relevantDocs = await qdrantClient.search(project, questionEmbedding, limit);
+    
+    logger.info(`Found ${relevantDocs.length} relevant documents in Qdrant for project ${project}`);
+    return relevantDocs;
+  } catch (error) {
+    logger.error(`Error finding relevant documents for project ${project}:`, error);
+    throw error;
   }
 }
 

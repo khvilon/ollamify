@@ -20,7 +20,8 @@
     "mammoth": "^1.6.0",
     "winston": "^3.11.0",
     "swagger-ui-express": "^5.0.0",
-    "swagger-jsdoc": "^6.2.8"
+    "swagger-jsdoc": "^6.2.8",
+    "@qdrant/js-client-rest": "^1.7.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"
