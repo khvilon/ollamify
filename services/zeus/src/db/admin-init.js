@@ -18,10 +18,9 @@ async function initializeAdminSchema() {
       CREATE TABLE IF NOT EXISTS admin.projects (
         id SERIAL PRIMARY KEY,
         name TEXT UNIQUE NOT NULL,
+        created_by INTEGER,
         embedding_model TEXT NOT NULL,
-        creator_email TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
     
@@ -31,16 +30,25 @@ async function initializeAdminSchema() {
       ON admin.projects (name)
     `);
     
-    // Модифицируем таблицу проектов в схеме public для обратной совместимости
-    // Создаем таблицу projects, если она еще не существует
+    // Создаем таблицу users, если она не существует
     await client.query(`
-      CREATE TABLE IF NOT EXISTS projects (
+      CREATE TABLE IF NOT EXISTS admin.users (
         id SERIAL PRIMARY KEY,
-        name TEXT UNIQUE NOT NULL,
-        embedding_model TEXT NOT NULL,
-        creator_email TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        username VARCHAR(255) UNIQUE NOT NULL,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash TEXT NOT NULL,
+        is_admin BOOLEAN DEFAULT false,
+        api_keys JSONB DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    
+    // Создаем дефолтного админа, если его нет
+    await client.query(`
+      INSERT INTO admin.users (username, email, password_hash, is_admin)
+      SELECT 'admin', 'admin@example.com', '$2b$10$c0zWIHFrB1MpYcdBkTPkYOY1F3jPUddZ2LzApfaXT4.BcXVqX/L6G', true
+      WHERE NOT EXISTS (
+        SELECT 1 FROM admin.users WHERE is_admin = true
       )
     `);
     

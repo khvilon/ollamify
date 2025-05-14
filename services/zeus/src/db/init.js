@@ -2,6 +2,7 @@ import pool from './conf.js';
 import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
 import qdrantClient from './qdrant.js';
+import { getEmbeddingDimension } from '../embeddings.js';
 
 dotenv.config();
 
@@ -10,12 +11,10 @@ if (!EMBEDDING_MODEL) {
   throw new Error('EMBEDDING_MODEL environment variable is required');
 }
 
-async function createProjectSchema(project, dimension) {
+async function createProjectSchema(project, embeddingModel) {
   const client = await pool.connect();
   try {
-    logger.info(`Using embedding dimension ${dimension} for model ${EMBEDDING_MODEL}`);
-
-    logger.info(`Creating schema for project ${project} with embedding dimension ${dimension}`);
+    logger.info(`Creating schema for project ${project} with embedding model ${embeddingModel}`);
     
     // Create vector extension if not exists
     await client.query('CREATE EXTENSION IF NOT EXISTS vector');
@@ -50,16 +49,43 @@ async function createProjectSchema(project, dimension) {
     // Создаем коллекцию в Qdrant, если она не существует
     try {
       const collectionExists = await qdrantClient.collectionExists(project);
+      
       if (!collectionExists) {
-        logger.info(`Creating Qdrant collection for project ${project}`);
-        await qdrantClient.createCollection(project, dimension);
-        logger.info(`Created Qdrant collection for project ${project}`);
+        logger.info(`Qdrant collection for ${project} doesn't exist, will create it`);
+        
+        // Получаем размерность для модели эмбеддинга
+        let dimension;
+        try {
+          logger.info(`Getting embedding dimension for model ${embeddingModel}`);
+          dimension = await getEmbeddingDimension(embeddingModel);
+          logger.info(`Got embedding dimension: ${dimension} for model ${embeddingModel}`);
+          
+          if (!dimension || dimension <= 0) {
+            logger.error(`Invalid dimension ${dimension} for model ${embeddingModel}, using default 1536`);
+            dimension = 1536; // Используем размерность по умолчанию если не смогли получить
+          }
+        } catch (dimensionError) {
+          logger.error(`Error getting embedding dimension for ${embeddingModel}:`, dimensionError);
+          // Используем безопасное значение по умолчанию
+          dimension = 1536;
+          logger.info(`Using fallback dimension 1536 after error`);
+        }
+        
+        // Создаем коллекцию с полученной или дефолтной размерностью
+        try {
+          logger.info(`Creating Qdrant collection for project ${project} with dimension ${dimension}`);
+          await qdrantClient.createCollection(project, dimension);
+          logger.info(`Successfully created Qdrant collection for project ${project}`);
+        } catch (collectionError) {
+          logger.error(`Failed to create Qdrant collection for project ${project}:`, collectionError);
+          throw new Error(`Failed to create Qdrant collection: ${collectionError.message}`);
+        }
       } else {
         logger.info(`Qdrant collection for project ${project} already exists`);
       }
     } catch (error) {
-      logger.error(`Error creating Qdrant collection for project ${project}:`, error);
-      // Не блокируем создание проекта, если не удалось создать коллекцию
+      logger.error(`Error working with Qdrant for project ${project}:`, error);
+      throw new Error(`Qdrant error: ${error.message}`);
     }
 
     logger.info(`Project schema "${project}" initialized successfully`);

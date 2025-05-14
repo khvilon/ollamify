@@ -93,10 +93,9 @@ router.post('/', async (req, res) => {
   }
   
   try {
-    // Создаем запись проекта
     const result = await pool.query(
-      'INSERT INTO admin.projects (name, embedding_model, creator_email) VALUES ($1, $2, $3) RETURNING *',
-      [name, embeddingModel, req.user?.email || 'admin@example.com']
+      'INSERT INTO admin.projects (name, embedding_model) VALUES ($1, $2) RETURNING *',
+      [name, embeddingModel]
     );
     
     const project = result.rows[0];
