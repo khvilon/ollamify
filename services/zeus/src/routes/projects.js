@@ -87,7 +87,7 @@ router.post('/', async (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'Project name is required' });
   }
-  
+
   if (!embeddingModel) {
     return res.status(400).json({ error: 'Embedding model is required' });
   }
@@ -99,7 +99,7 @@ router.post('/', async (req, res) => {
     );
     
     const project = result.rows[0];
-    
+
     // Создаем схему для проекта
     await createProjectSchema(name, embeddingModel);
     
@@ -168,7 +168,7 @@ router.delete('/:id', async (req, res) => {
     
     // Удаляем схему проекта
     await pool.query(`DROP SCHEMA IF EXISTS "${project.name}" CASCADE`);
-    
+
     // Удаляем запись из таблицы проектов
     await pool.query('DELETE FROM admin.projects WHERE id = $1', [id]);
     
@@ -242,8 +242,8 @@ router.get('/:id/stats', async (req, res) => {
     
     if (!schemaExists.rows[0].exists) {
       return res.json({ document_count: 0 });
-    }
-    
+  }
+
     // Проверяем существование таблицы документов
     const tableExists = await pool.query(`
       SELECT EXISTS (
@@ -268,7 +268,7 @@ router.get('/:id/stats', async (req, res) => {
     // Отправляем статистику через WebSocket
     broadcastProjectStatsUpdate(id, stats);
     
-    res.json(stats);
+  res.json(stats);
   } catch (error) {
     logger.error('Error getting project stats:', error);
     res.status(500).json({ error: error.message });

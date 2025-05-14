@@ -179,25 +179,72 @@ class QdrantClient {
       // Добавляем фильтр, если он есть
       if (filter) {
         searchParams.filter = filter;
+      } else {
+        // Добавляем фильтр по проекту, чтобы возвращать документы только из указанного проекта
+        // collectionName совпадает с именем проекта
+        searchParams.filter = {
+          must: [
+            { key: 'project', match: { value: collectionName } }
+          ]
+        };
+        logger.info(`Added project filter to search: ${collectionName}`);
       }
       
-      const result = vector
-        ? await this.client.search(collectionName, searchParams)
-        : await this.client.scroll(collectionName, { limit, filter, with_payload: true });
+      let points = [];
+      try {
+        if (vector) {
+          const result = await this.client.search(collectionName, searchParams);
+          points = Array.isArray(result) ? result : [];
+        } else {
+          const result = await this.client.scroll(collectionName, { limit, filter, with_payload: true });
+          points = Array.isArray(result.points) ? result.points : [];
+        }
+      } catch (searchError) {
+        logger.error(`Search in collection ${collectionName} failed:`, searchError);
+        return []; // Возвращаем пустой массив в случае ошибки
+      }
       
-      // Приводим формат к единому виду
-      const points = vector ? result : (result.points || []);
+      logger.info(`Found ${points.length} points in collection ${collectionName}`);
+      
+      // Проверяем, что у всех результатов указан проект
+      if (points.length > 0) {
+        const missingProject = points.filter(p => p && p.payload && !p.payload.project);
+        if (missingProject.length > 0) {
+          logger.warn(`${missingProject.length} points in collection ${collectionName} don't have project field`);
+        }
+        
+        const missingScore = points.filter(p => p && typeof p.score === 'undefined');
+        if (missingScore.length > 0) {
+          logger.warn(`${missingScore.length} points in collection ${collectionName} don't have score field`);
+        }
+      }
       
       // Преобразуем формат ответа для совместимости с текущим API
-      return points.map(item => ({
-        filename: item.payload.filename,
-        content: item.payload.content,
-        project: item.payload.project,
-        similarity: item.score || 1.0 // Если нет score (при фильтрации), ставим 1.0
-      }));
+      // И обеспечиваем безопасный доступ к свойствам
+      return points.map(item => {
+        // Проверяем, что item и item.payload существуют
+        if (!item || !item.payload) {
+          logger.warn(`Invalid point returned from Qdrant in collection ${collectionName}`);
+          return {
+            filename: 'unknown',
+            content: '',
+            project: collectionName,
+            similarity: 0.0
+          };
+        }
+        
+        return {
+          filename: item.payload.filename || 'unknown',
+          content: item.payload.content || '',
+          project: item.payload.project || collectionName,
+          // Убедимся, что similarity - это число
+          similarity: typeof item.score === 'number' ? item.score : 0.0
+        };
+      }).filter(item => item.content); // Отфильтровываем пустые результаты
     } catch (error) {
       logger.error(`Error searching in collection ${collectionName}:`, error);
-      throw error;
+      // Возвращаем пустой массив вместо выбрасывания исключения
+      return [];
     }
   }
 

@@ -405,6 +405,7 @@ async function getRelevantChunks(question, project, model, limit = 100) {
       throw new Error('Project not found');
     }
     projects = projectResult.rows;
+    logger.info(`Searching only in project: ${project}, embedding model: ${projects[0].embedding_model}`);
   } else {
     const projectResult = await pool.query(
       'SELECT name, embedding_model FROM admin.projects'
@@ -413,6 +414,7 @@ async function getRelevantChunks(question, project, model, limit = 100) {
     if (projects.length === 0) {
       throw new Error('No projects found');
     }
+    logger.info(`Searching in all projects (${projects.length}): ${projects.map(p => p.name).join(', ')}`);
   }
 
   let allRelevantDocs = [];
@@ -432,12 +434,41 @@ async function getRelevantChunks(question, project, model, limit = 100) {
     allRelevantDocs.push(...relevantDocs);
   }));
   
-  // Можно добавить здесь общее ограничение на количество документов из всех проектов
-  // if (limit && allRelevantDocs.length > limit) {
-  //   allRelevantDocs = allRelevantDocs.sort((a, b) => b.similarity - a.similarity).slice(0, limit);
-  // }
+  // Проверка на дубликаты - НЕ фильтруем разные чанки одного документа
+  // Вместо дедупликации по файлу проверяем полное содержимое чанка
+  const uniqueContentIds = new Set();
+  const uniqueDocs = [];
   
-  return allRelevantDocs;
+  for (const doc of allRelevantDocs) {
+    // Проверяем, что у документа есть содержимое
+    if (!doc.content) {
+      logger.warn(`Document without content detected and filtered: ${doc.project}:${doc.filename}`);
+      continue;
+    }
+    
+    // Создаем уникальный ID на основе содержимого чанка - используем первые 50 символов
+    // это достаточно, чтобы отличить разные чанки, но избежать слишком длинных ключей
+    const contentPreview = doc.content.trim().substring(0, 50);
+    const docId = `${doc.project}:${doc.filename}:${contentPreview}`;
+    
+    if (!uniqueContentIds.has(docId)) {
+      uniqueContentIds.add(docId);
+      uniqueDocs.push(doc);
+    } else {
+      logger.warn(`True duplicate content detected and filtered: ${doc.project}:${doc.filename}`);
+    }
+  }
+  
+  if (uniqueDocs.length < allRelevantDocs.length) {
+    logger.info(`Filtered ${allRelevantDocs.length - uniqueDocs.length} documents with duplicate content`);
+  }
+  
+  // Сортируем по релевантности перед возвратом
+  uniqueDocs.sort((a, b) => b.similarity - a.similarity);
+  
+  logger.info(`Returning ${uniqueDocs.length} relevant documents (after content deduplication) with projects: ${[...new Set(uniqueDocs.map(doc => doc.project))].join(', ')}`);
+  
+  return uniqueDocs;
 }
 
 // Функция для проверки состояния реранкера
@@ -783,13 +814,56 @@ async function extractQueryIntent(originalQuery, model) {
 
 // Функция для умного отбора документов на основе падения релевантности
 function smartDocumentSelection(documents, maxDocs = 8) {
-  if (documents.length === 0) return [];
+  if (!documents || documents.length === 0) {
+    logger.warn('smartDocumentSelection called with empty documents array');
+    return [];
+  }
+  
+  // Если у нас только один документ, просто возвращаем его
+  if (documents.length === 1) {
+    logger.info('smartDocumentSelection: only one document available, returning it without analysis');
+    return documents;
+  }
+  
+  // Проверяем, что во всех документах есть поле similarity и оно является числом
+  const hasInvalidSimilarity = documents.some(doc => 
+    typeof doc !== 'object' || 
+    doc === null ||
+    typeof doc.similarity !== 'number' || 
+    isNaN(doc.similarity)
+  );
+  
+  if (hasInvalidSimilarity) {
+    logger.warn('smartDocumentSelection: some documents have invalid similarity values, using safe sorting');
+    // Если есть проблемные документы, делаем безопасную сортировку
+    const safeDocuments = documents.filter(doc => 
+      doc && typeof doc === 'object' && typeof doc.similarity === 'number' && !isNaN(doc.similarity)
+    );
+    
+    if (safeDocuments.length === 0) {
+      logger.error('No valid documents found for selection');
+      return documents.slice(0, Math.min(documents.length, maxDocs));
+    }
+    
+    const sortedDocs = [...safeDocuments].sort((a, b) => 
+      (b.similarity || 0) - (a.similarity || 0)
+    );
+    
+    return sortedDocs.slice(0, Math.min(sortedDocs.length, maxDocs));
+  }
   
   // Сортируем документы по similarity
   const sortedDocs = [...documents].sort((a, b) => b.similarity - a.similarity);
   
   // Берем не более maxDocs документов для анализа
   const docsToAnalyze = sortedDocs.slice(0, maxDocs);
+  
+  // Если у нас меньше 3 документов, просто возвращаем их все
+  // потому что для алгоритма анализа падений нужно минимум 3 документа
+  if (docsToAnalyze.length < 3) {
+    logger.info(`smartDocumentSelection: only ${docsToAnalyze.length} documents available, returning all without analysis`);
+    return docsToAnalyze;
+  }
   
   // Анализируем локальные падения релевантности
   const LOCAL_DROP_THRESHOLD = 0.2; // 20% падение между соседними документами
@@ -848,6 +922,9 @@ function smartDocumentSelection(documents, maxDocs = 8) {
       }
     }
   }
+  
+  // Убедимся, что cutoffIndex находится в допустимых пределах
+  cutoffIndex = Math.max(1, Math.min(cutoffIndex, docsToAnalyze.length));
   
   const selectedDocs = docsToAnalyze.slice(0, cutoffIndex);
   
@@ -979,9 +1056,14 @@ router.post('/rag', async (req, res) => {
     const originalContext = relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n');
     logger.info('Original context order:');
     relevantDocs.forEach((doc, index) => {
-      // Выводим только первые 100 символов содержимого для более компактных логов
-      const contentPreview = doc.content.trim().substring(0, 100) + (doc.content.length > 100 ? '...' : '');
-      logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)}): ${contentPreview}`);
+      // Выводим полный текст для отладки
+      logger.info(`-------- ORIGINAL CHUNK ${index + 1} --------`);
+      logger.info(`Filename: ${doc.filename}`);
+      logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
+      logger.info(`Project: ${doc.project}`);
+      logger.info(`Content: 
+${doc.content.trim()}`);
+      logger.info(`------- END ORIGINAL CHUNK ${index + 1} -------`);
     });
 
     // Добавляем шаг переранжирования, если параметр useReranker включен
@@ -991,23 +1073,47 @@ router.post('/rag', async (req, res) => {
       // Для переранжирования используем исходный запрос, чтобы сохранить нюансы формулировки
       processedDocs = await rerankDocuments(question, relevantDocs);
       logger.info('Documents reranked');
-
-      // Логируем контекст после реранкинга
       logger.info('Reranked context order:');
       processedDocs.forEach((doc, index) => {
-        // Выводим только первые 100 символов содержимого для более компактных логов
-        const contentPreview = doc.content.trim().substring(0, 100) + (doc.content.length > 100 ? '...' : '');
-        logger.info(`${index + 1}. ${doc.filename} (similarity: ${doc.similarity.toFixed(4)}): ${contentPreview}`);
+        // Выводим полный текст чанка для отладки
+        logger.info(`-------- CHUNK ${index + 1} --------`);
+        logger.info(`Filename: ${doc.filename}`);
+        logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
+        logger.info(`Project: ${doc.project}`);
+        logger.info(`Content: 
+${doc.content.trim()}`);
+        logger.info(`------- END CHUNK ${index + 1} -------`);
       });
     }
     
     // Применяем умный отбор документов
     processedDocs = smartDocumentSelection(processedDocs);
-    
     logger.info(`Selected ${processedDocs.length} documents using smart selection`);
+    
+    // Логируем финальный набор чанков, которые будут отправлены в LLM
+    logger.info('FINAL CHUNKS FOR LLM INPUT:');
+    processedDocs.forEach((doc, index) => {
+      logger.info(`-------- FINAL CHUNK ${index + 1} --------`);
+      logger.info(`Filename: ${doc.filename}`);
+      logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
+      logger.info(`Project: ${doc.project}`);
+      logger.info(`Content: 
+${doc.content.trim()}`);
+      logger.info(`------- END FINAL CHUNK ${index + 1} -------`);
+    });
 
-    const context = `Найденные релевантные фрагменты:\n\n${processedDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n')}\n\nНа основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
+    // Формируем полный контекст для отправки в LLM
+    const context = `Найденные релевантные фрагменты:
 
+${processedDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:
+${doc.content.trim()}`).join('\n\n')}
+
+На основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
+    
+    // Логируем полный контекст, который отправляется в LLM
+    logger.info('FULL CONTEXT FOR LLM:');
+    logger.info(context);
+    
     logger.info('Getting answer from LLM...');
     // Для получения ответа используем оригинальный запрос пользователя
     const answer = await getCompletion([
