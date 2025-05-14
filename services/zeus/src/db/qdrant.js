@@ -176,8 +176,20 @@ class QdrantClient {
         searchParams.vector = vector;
       }
       
-      // Добавляем фильтр, если он есть
+      // Добавляем фильтр, если он есть, всегда включая фильтр по проекту
       if (filter) {
+        // Если передан фильтр, добавляем в него условие проекта
+        if (!filter.must) {
+          filter.must = [];
+        }
+        // Проверяем, чтобы не добавить дублирующееся условие
+        const hasProjectFilter = filter.must.some(cond => 
+          cond.key === 'project' && cond.match && cond.match.value === collectionName
+        );
+        if (!hasProjectFilter) {
+          filter.must.push({ key: 'project', match: { value: collectionName } });
+          logger.info(`Added project filter to existing filter: ${collectionName}`);
+        }
         searchParams.filter = filter;
       } else {
         // Добавляем фильтр по проекту, чтобы возвращать документы только из указанного проекта
@@ -238,7 +250,9 @@ class QdrantClient {
           content: item.payload.content || '',
           project: item.payload.project || collectionName,
           // Убедимся, что similarity - это число
-          similarity: typeof item.score === 'number' ? item.score : 0.0
+          similarity: typeof item.score === 'number' ? item.score : 0.0,
+          // Добавляем метаданные документа если они есть
+          metadata: item.payload.metadata || {}
         };
       }).filter(item => item.content); // Отфильтровываем пустые результаты
     } catch (error) {

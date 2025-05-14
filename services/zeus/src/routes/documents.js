@@ -404,6 +404,9 @@ router.get('/projects', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/', uploadWithEncoding, async (req, res) => {
+  // Объявляем client до try-блока, чтобы он был доступен в catch
+  let client;
+  let clientReleased = false;
   try {
     logger.info('POST /documents request received');
     logger.info('Request body:', {
@@ -499,7 +502,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         .update(documentContent)
         .digest('hex');
 
-      const client = await pool.connect();
+      client = await pool.connect();
       logger.info('Got database connection');
       try {
         await client.query('BEGIN');
@@ -560,6 +563,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               logger.info(`Document with external_id ${external_id} already exists with same content`);
               await client.query('COMMIT');
               client.release();
+              clientReleased = true;
               return res.json({
                 ...doc,
                 project,
@@ -568,11 +572,16 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               });
             } else {
               logger.info(`Updating existing document with external_id ${external_id}`);
-              // Удаляем старые чанки
-              await client.query(`
-                DELETE FROM "${project}".chunks
-                WHERE document_id = $1
-              `, [doc.id]);
+              
+              // Удаляем запрос на удаление из chunks таблицы
+              // Вместо этого удаляем старые векторы только из Qdrant
+              try {
+                await qdrantClient.deleteDocument(project, doc.id);
+                logger.info(`Deleted old vectors from Qdrant for document ${doc.id}`);
+              } catch (qdrantError) {
+                logger.warn(`Failed to delete vectors from Qdrant: ${qdrantError.message}`);
+                // Продолжаем выполнение, даже если удаление из Qdrant не удалось
+              }
 
               // Обновляем документ
               const result = await client.query(`
@@ -585,6 +594,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               const document = result.rows[0];
               await client.query('COMMIT');
               client.release();
+              clientReleased = true;
 
               res.json({
                 ...document,
@@ -617,6 +627,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         await client.query('COMMIT');
         client.release();
+        clientReleased = true;
         logger.info('Database connection released after successful document creation');
 
         res.json({
@@ -656,16 +667,22 @@ router.post('/', uploadWithEncoding, async (req, res) => {
           });
       } catch (dbError) {
         logger.error('Database error:', dbError);
-        await client.query('ROLLBACK');
-        client.release();
-        logger.info('Database connection released after database error');
+        if (!clientReleased) {
+          await client.query('ROLLBACK');
+          client.release();
+          clientReleased = true;
+          logger.info('Database connection released after database error');
+        }
         throw dbError;
       }
     } catch (processingError) {
       logger.error('Error processing document:', processingError);
-      await client.query('ROLLBACK');
-      client.release();
-      logger.info('Database connection released after processing error');
+      if (client && !clientReleased) {
+        await client.query('ROLLBACK');
+        client.release();
+        clientReleased = true;
+        logger.info('Database connection released after processing error');
+      }
       return res.status(500).json({
         error: 'Failed to process document',
         details: processingError.message,
@@ -674,8 +691,9 @@ router.post('/', uploadWithEncoding, async (req, res) => {
     }
   } catch (error) {
     logger.error('Unhandled error in document upload:', error);
-    if (client) {
+    if (client && !clientReleased) {
       client.release();
+      clientReleased = true;
       logger.info('Database connection released after unhandled error');
     }
     res.status(500).json({
@@ -738,15 +756,36 @@ router.get('/:id', async (req, res) => {
   }
   
   try {
+    // Получаем базовую информацию о документе из PostgreSQL
+    logger.info(`Getting document info from PostgreSQL for document ${id} in project "${project}"`);
     const result = await pool.query(`
       SELECT 
         d.*,
-        c.content,
+        NULL as content,
         '${project}' as project
       FROM "${project}".documents d
-      LEFT JOIN "${project}".chunks c ON c.document_id = d.id
       WHERE d.id = $1
     `, [id]);
+    
+    // Если документ найден, пытаемся получить содержимое из Qdrant
+    if (result.rows.length > 0) {
+      try {
+        logger.info(`Getting document content from Qdrant for document ${id}`);
+        const qdrantContent = await qdrantClient.search(project, null, 1, {
+          must: [
+            { key: 'document_id', match: { value: parseInt(id) } }
+          ]
+        });
+        
+        if (qdrantContent && qdrantContent.length > 0) {
+          logger.info(`Found content in Qdrant for document ${id}`);
+          result.rows[0].content = qdrantContent[0].content;
+        }
+      } catch (qdrantError) {
+        logger.warn(`Failed to get content from Qdrant: ${qdrantError.message}`);
+        // Продолжаем выполнение, даже если Qdrant не вернул результат
+      }
+    }
     
     if (result.rows.length === 0) {
       logger.info(`Document with ID ${id} not found in project "${project}"`);
@@ -832,7 +871,7 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
   try {
     // Получаем информацию о документе
     const docResult = await pool.query(`
-      SELECT name FROM "${project}".documents WHERE id = $1
+      SELECT name, metadata FROM "${project}".documents WHERE id = $1
     `, [documentId]);
     
     if (docResult.rows.length === 0) {
@@ -841,6 +880,9 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     }
     
     const documentName = docResult.rows[0].name;
+    const documentMetadata = docResult.rows[0].metadata || {};
+    
+    logger.info(`Document metadata: ${JSON.stringify(documentMetadata)}`);
     
     // Проверяем, что модель эмбеддинга правильная
     if (!embeddingModel) {
@@ -854,6 +896,10 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     }
     
     logger.info(`Using embedding model: ${embeddingModel} for project ${project}`);
+    
+    // Батч точек для оптимизированной загрузки в Qdrant
+    const batchSize = 10; // Размер батча
+    const points = [];
     
     // Сохраняем чанки с эмбеддингами
     for (let i = 0; i < chunks.length; i++) {
@@ -875,35 +921,45 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
             content: chunk,
             filename: documentName,
             project: project,
-            created_at: new Date().toISOString()
+            created_at: new Date().toISOString(),
+            metadata: documentMetadata // Добавляем метаданные документа
           }
         };
         
-        // Сохраняем в Qdrant
-        await qdrantClient.upsertPoints(project, [point]);
+        // Добавляем точку в батч
+        points.push(point);
         
-        // Обновляем количество загруженных чанков в PostgreSQL
-        await pool.query(`
-          UPDATE "${project}".documents
-          SET loaded_chunks = loaded_chunks + 1
-          WHERE id = $1
-        `, [documentId]);
-        
-        // Получаем обновленную информацию о документе
-        const docInfo = await pool.query(`
-          SELECT id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
-          FROM "${project}".documents
-          WHERE id = $1
-        `, [documentId]);
-        
-        if (docInfo.rows.length > 0) {
-          // Отправляем WebSocket уведомление о прогрессе
-          broadcastDocumentUpdate({
-            ...docInfo.rows[0],
-            project
-          });
+        // Если батч достиг нужного размера или это последний чанк, отправляем в Qdrant
+        if (points.length >= batchSize || i === chunks.length - 1) {
+          // Сохраняем батч в Qdrant
+          await qdrantClient.upsertPoints(project, points);
+          logger.info(`Saved batch of ${points.length} points to Qdrant`);
+          
+          // Обновляем количество загруженных чанков в PostgreSQL
+          await pool.query(`
+            UPDATE "${project}".documents
+            SET loaded_chunks = loaded_chunks + ${points.length}
+            WHERE id = $1
+          `, [documentId]);
+          
+          // Очищаем батч
+          points.length = 0;
+          
+          // Получаем обновленную информацию о документе
+          const docInfo = await pool.query(`
+            SELECT id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
+            FROM "${project}".documents
+            WHERE id = $1
+          `, [documentId]);
+          
+          if (docInfo.rows.length > 0) {
+            // Отправляем WebSocket уведомление о прогрессе
+            broadcastDocumentUpdate({
+              ...docInfo.rows[0],
+              project
+            });
+          }
         }
-
       } catch (chunkError) {
         logger.error(`Error processing chunk ${i + 1}:`, chunkError);
         // Продолжаем обработку следующих чанков

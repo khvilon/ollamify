@@ -20,10 +20,25 @@ async function findRelevantDocuments(questionEmbedding, project, embeddingModel,
       await qdrantClient.createCollection(project, dimension);
     }
 
-    // Ищем релевантные документы
-    const relevantDocs = await qdrantClient.search(project, questionEmbedding, limit);
+    // Создаем фильтр проекта
+    const filter = {
+      must: [
+        { key: 'project', match: { value: project } }
+      ]
+    };
+    
+    // Ищем релевантные документы, всегда с фильтром по проекту
+    logger.info(`Searching Qdrant with strict project filter for: ${project}`);
+    const relevantDocs = await qdrantClient.search(project, questionEmbedding, limit, filter);
     
     logger.info(`Found ${relevantDocs.length} relevant documents in Qdrant for project ${project}`);
+    
+    // Дополнительная проверка, что все результаты действительно из нужного проекта
+    const wrongProjectDocs = relevantDocs.filter(doc => doc.project !== project);
+    if (wrongProjectDocs.length > 0) {
+      logger.warn(`Warning: Found ${wrongProjectDocs.length} documents from wrong projects: ${wrongProjectDocs.map(d => d.project).join(', ')}`);
+    }
+    
     return relevantDocs;
   } catch (error) {
     logger.error(`Error finding relevant documents for project ${project}:`, error);
@@ -395,80 +410,147 @@ router.post('/complete', async (req, res) => {
 });
 
 async function getRelevantChunks(question, project, model, limit = 100) {
-  let projects;
+  // Если указан конкретный проект, ищем только в нём
   if (project) {
+    logger.info(`Project specified: ${project}, searching only in this project`);
+    
+    // Получаем информацию о проекте
     const projectResult = await pool.query(
       'SELECT name, embedding_model FROM admin.projects WHERE name = $1',
       [project]
     );
+    
     if (projectResult.rows.length === 0) {
-      throw new Error('Project not found');
+      throw new Error(`Project "${project}" not found`);
     }
-    projects = projectResult.rows;
-    logger.info(`Searching only in project: ${project}, embedding model: ${projects[0].embedding_model}`);
-  } else {
-    const projectResult = await pool.query(
-      'SELECT name, embedding_model FROM admin.projects'
-    );
-    projects = projectResult.rows;
-    if (projects.length === 0) {
-      throw new Error('No projects found');
-    }
-    logger.info(`Searching in all projects (${projects.length}): ${projects.map(p => p.name).join(', ')}`);
-  }
-
-  let allRelevantDocs = [];
-  await Promise.all(projects.map(async (proj) => {
-    logger.info('Getting embedding for question in project:', proj.name);
-    const questionEmbedding = await getEmbedding(question, proj.embedding_model);
-    logger.info('Finding relevant documents in project:', proj.name);
-    let relevantDocs = await findRelevantDocuments(questionEmbedding, proj.name, proj.embedding_model, limit);
+    
+    const projectInfo = projectResult.rows[0];
+    logger.info(`Found project "${project}" with embedding model: ${projectInfo.embedding_model}`);
+    
+    // Получаем эмбеддинг для вопроса, используя модель проекта
+    logger.info(`Getting embedding for question in project: ${project}`);
+    const questionEmbedding = await getEmbedding(question, projectInfo.embedding_model);
+    
+    // Ищем документы только в указанном проекте
+    logger.info(`Finding relevant documents in project: ${project}`);
+    let relevantDocs = await findRelevantDocuments(questionEmbedding, project, projectInfo.embedding_model, limit);
+    
     if (limit && relevantDocs.length > limit) {
       relevantDocs = relevantDocs.slice(0, limit);
     }
-    // Добавляем информацию о проекте к каждому документу
+    
+    // Убеждаемся, что у всех документов указан правильный проект
     relevantDocs = relevantDocs.map(doc => ({
       ...doc,
-      project: proj.name
+      project: project
     }));
-    allRelevantDocs.push(...relevantDocs);
-  }));
-  
-  // Проверка на дубликаты - НЕ фильтруем разные чанки одного документа
-  // Вместо дедупликации по файлу проверяем полное содержимое чанка
-  const uniqueContentIds = new Set();
-  const uniqueDocs = [];
-  
-  for (const doc of allRelevantDocs) {
-    // Проверяем, что у документа есть содержимое
-    if (!doc.content) {
-      logger.warn(`Document without content detected and filtered: ${doc.project}:${doc.filename}`);
-      continue;
+    
+    // ДОПОЛНИТЕЛЬНО: фильтруем документы, которые могли прийти из других проектов
+    const originalCount = relevantDocs.length;
+    relevantDocs = relevantDocs.filter(doc => {
+      if (!doc.project || doc.project === project) {
+        return true;
+      }
+      logger.warn(`Filtering out document from wrong project: ${doc.filename} (${doc.project}) - should be in ${project}`);
+      return false;
+    });
+    
+    if (originalCount !== relevantDocs.length) {
+      logger.info(`Filtered out ${originalCount - relevantDocs.length} documents from other projects`);
     }
     
-    // Создаем уникальный ID на основе содержимого чанка - используем первые 50 символов
-    // это достаточно, чтобы отличить разные чанки, но избежать слишком длинных ключей
-    const contentPreview = doc.content.trim().substring(0, 50);
-    const docId = `${doc.project}:${doc.filename}:${contentPreview}`;
+    logger.info(`Found ${relevantDocs.length} documents in project "${project}"`);
     
-    if (!uniqueContentIds.has(docId)) {
-      uniqueContentIds.add(docId);
-      uniqueDocs.push(doc);
-    } else {
-      logger.warn(`True duplicate content detected and filtered: ${doc.project}:${doc.filename}`);
+    return relevantDocs;
+  } 
+  // Если проект не указан, ищем во всех проектах
+  else {
+    logger.info('No specific project provided, searching across all projects');
+    
+    const projectResult = await pool.query(
+      'SELECT name, embedding_model FROM admin.projects'
+    );
+    
+    const projects = projectResult.rows;
+    if (projects.length === 0) {
+      throw new Error('No projects found');
     }
+    
+    logger.info(`Searching in all projects (${projects.length}): ${projects.map(p => p.name).join(', ')}`);
+    
+    let allRelevantDocs = [];
+    await Promise.all(projects.map(async (proj) => {
+      logger.info('Getting embedding for question in project:', proj.name);
+      const questionEmbedding = await getEmbedding(question, proj.embedding_model);
+      logger.info('Finding relevant documents in project:', proj.name);
+      let relevantDocs = await findRelevantDocuments(questionEmbedding, proj.name, proj.embedding_model, limit);
+      if (limit && relevantDocs.length > limit) {
+        relevantDocs = relevantDocs.slice(0, limit);
+      }
+      // Добавляем информацию о проекте к каждому документу
+      relevantDocs = relevantDocs.map(doc => ({
+        ...doc,
+        project: proj.name
+      }));
+      allRelevantDocs.push(...relevantDocs);
+    }));
+    
+    // Проверка на дубликаты и неправильные проекты
+    // Вместо дедупликации по файлу проверяем полное содержимое чанка
+    const uniqueContentIds = new Set();
+    const uniqueDocs = [];
+    
+    // Логируем распределение по проектам до дедупликации
+    const projectStats = {};
+    allRelevantDocs.forEach(doc => {
+      if (!projectStats[doc.project]) {
+        projectStats[doc.project] = 0;
+      }
+      projectStats[doc.project]++;
+    });
+    logger.info(`Documents by project before deduplication: ${JSON.stringify(projectStats)}`);
+    
+    for (const doc of allRelevantDocs) {
+      // Проверяем, что у документа есть содержимое
+      if (!doc.content) {
+        logger.warn(`Document without content detected and filtered: ${doc.project}:${doc.filename}`);
+        continue;
+      }
+      
+      // Создаем уникальный ID на основе содержимого чанка - используем первые 50 символов
+      // это достаточно, чтобы отличить разные чанки, но избежать слишком длинных ключей
+      const contentPreview = doc.content.trim().substring(0, 50);
+      const docId = `${doc.project}:${doc.filename}:${contentPreview}`;
+      
+      if (!uniqueContentIds.has(docId)) {
+        uniqueContentIds.add(docId);
+        uniqueDocs.push(doc);
+      } else {
+        logger.warn(`True duplicate content detected and filtered: ${doc.project}:${doc.filename}`);
+      }
+    }
+    
+    if (uniqueDocs.length < allRelevantDocs.length) {
+      logger.info(`Filtered ${allRelevantDocs.length - uniqueDocs.length} documents with duplicate content`);
+    }
+    
+    // Сортируем по релевантности перед возвратом
+    uniqueDocs.sort((a, b) => b.similarity - a.similarity);
+    
+    // Логируем распределение по проектам после дедупликации
+    const finalProjectStats = {};
+    uniqueDocs.forEach(doc => {
+      if (!finalProjectStats[doc.project]) {
+        finalProjectStats[doc.project] = 0;
+      }
+      finalProjectStats[doc.project]++;
+    });
+    logger.info(`Documents by project after deduplication: ${JSON.stringify(finalProjectStats)}`);
+    
+    logger.info(`Returning ${uniqueDocs.length} relevant documents (after content deduplication) with projects: ${[...new Set(uniqueDocs.map(doc => doc.project))].join(', ')}`);
+    
+    return uniqueDocs;
   }
-  
-  if (uniqueDocs.length < allRelevantDocs.length) {
-    logger.info(`Filtered ${allRelevantDocs.length - uniqueDocs.length} documents with duplicate content`);
-  }
-  
-  // Сортируем по релевантности перед возвратом
-  uniqueDocs.sort((a, b) => b.similarity - a.similarity);
-  
-  logger.info(`Returning ${uniqueDocs.length} relevant documents (after content deduplication) with projects: ${[...new Set(uniqueDocs.map(doc => doc.project))].join(', ')}`);
-  
-  return uniqueDocs;
 }
 
 // Функция для проверки состояния реранкера
@@ -767,21 +849,22 @@ async function extractQueryIntent(originalQuery, model) {
     const messages = [
       {
         role: "system",
-        content: `Твоя задача - извлечь смысловую часть запроса, которая подходит для поиска релевантных документов.
-        Выдели только фактическую информационную потребность, отбросив все вводные фразы, вежливые формулировки и избыточные детали.
-        Сфокусируйся на ключевых словах и терминах, которые важны для поиска.
-        Твой ответ должен содержать ТОЛЬКО переформулированный запрос - без объяснений, комментариев или дополнительного текста.
-        Ответ должен быть на том же языке, что и исходный запрос.
-        
-        Примеры:
-        Исходный запрос: "Не могли бы вы, пожалуйста, рассказать мне подробнее о том, как работает векторный поиск в современных RAG системах?"
-        Выделенная часть: "векторный поиск в RAG системах"
-        
-        Исходный запрос: "Я ищу информацию о конфигурации PostgreSQL для хранения векторных эмбеддингов. Можете помочь?"
-        Выделенная часть: "конфигурация PostgreSQL для хранения векторных эмбеддингов"
-        
-        Исходный запрос: "Мне очень интересно узнать про архитектуру микросервисов в современных приложениях. Что это такое и с чем его едят?"
-        Выделенная часть: "архитектура микросервисов в современных приложениях"
+        content: `Your task is to extract the core information need from the user query for document retrieval.
+
+          Ignore polite phrases, introductions, excess detail, or task instructions. Do not generate SQL, code, or answers. Focus only on the keywords or phrase that capture the user's true intent.
+
+          Reply with only the reformulated query fragment — no comments or explanations. Use the same language as the original query.
+
+          Examples:
+          Query: "Could you please explain how vector search works in RAG?"
+          Output: "vector search in RAG"
+
+          Query: "What's the best way to store embeddings in PostgreSQL?"
+          Output: "embedding storage in PostgreSQL"
+
+          Query: "Generate an SQL query to find which products are in stock"
+          Output: "SQL query: products in stock"
+
         `
       },
       {
@@ -1097,18 +1180,30 @@ ${doc.content.trim()}`);
       logger.info(`Filename: ${doc.filename}`);
       logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
       logger.info(`Project: ${doc.project}`);
+      if (doc.metadata && Object.keys(doc.metadata).length > 0) {
+        logger.info(`Metadata: ${JSON.stringify(doc.metadata, null, 2)}`);
+      }
       logger.info(`Content: 
 ${doc.content.trim()}`);
       logger.info(`------- END FINAL CHUNK ${index + 1} -------`);
     });
 
-    // Формируем полный контекст для отправки в LLM
+    // Формируем полный контекст для отправки в LLM с включением метаданных
     const context = `Найденные релевантные фрагменты:
 
-${processedDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:
-${doc.content.trim()}`).join('\n\n')}
-
-На основе этих фрагментов, пожалуйста, ответь на вопрос пользователя. Если информации недостаточно, так и скажи.`;
+${processedDocs.map((doc, index) => {
+  // Формируем строку с метаданными, если они есть
+  let metadataStr = '';
+  if (doc.metadata && Object.keys(doc.metadata).length > 0) {
+    metadataStr = '\nМетаданные документа:\n' + 
+      Object.entries(doc.metadata)
+        .map(([key, value]) => `- ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join('\n');
+  }
+  
+  return `${index + 1}. Из документа ${doc.filename}:${metadataStr}
+${doc.content.trim()}`;
+}).join('\n\n')}`;
     
     // Логируем полный контекст, который отправляется в LLM
     logger.info('FULL CONTEXT FOR LLM:');
@@ -1119,7 +1214,8 @@ ${doc.content.trim()}`).join('\n\n')}
     const answer = await getCompletion([
       {
         role: "system",
-        content: `You are a helpful assistant that answers questions based on the provided context. 
+        content: `You are a helpful assistant that answers questions based on the provided context, including document content and metadata.
+                  Pay attention to metadata fields like dates, authors, categories, and other attributes that might help you provide a more accurate answer.
                   Always answer in the same language as the question.`
       },
       {
@@ -1136,12 +1232,17 @@ Question: ${question}`
       answer,
       relevantDocuments: processedDocs.map(doc => ({
         filename: doc.filename,
+        content: doc.content,
         similarity: doc.similarity,
-        project: doc.project
+        project: doc.project,
+        metadata: doc.metadata || {}
       })),
-      originalDocuments: originalDocs, // Добавляем исходные документы для сравнения
-      intentQuery: intentQuery, // Добавляем извлеченный запрос для отладки
-      limitApplied: numLimit // Добавляем информацию о примененном лимите
+      originalDocuments: originalDocs.map(doc => ({
+        ...doc,
+        metadata: doc.metadata || {}
+      })),
+      intentQuery: intentQuery,
+      limitApplied: numLimit
     });
 
   } catch (error) {
@@ -1251,10 +1352,11 @@ router.post('/rag/chunks', async (req, res) => {
         filename: doc.filename,
         content: doc.content,
         similarity: doc.similarity,
-        project: doc.project
+        project: doc.project,
+        metadata: doc.metadata || {}
       })),
-      intentQuery: intentQuery, // Добавляем извлеченный запрос для отладки
-      limitApplied: numLimit // Добавляем информацию о примененном лимите
+      intentQuery: intentQuery,
+      limitApplied: numLimit
     });
   } catch (error) {
     logger.error('Error in ai/rag/chunks:', error);
