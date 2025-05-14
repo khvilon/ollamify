@@ -573,7 +573,7 @@ router.post('/pull', async (req, res) => {
   if (!name) {
     return res.status(400).json({ error: 'Model name is required' });
   }
-
+  
   try {
     // Формируем полное имя модели с учетом размера
     const modelName = size ? `${name}:${size}` : name;
@@ -589,11 +589,8 @@ router.post('/pull', async (req, res) => {
     logger.info(`Broadcasting initial download status for model ${modelName}`);
     broadcastModelUpdate({
       name: modelName,
-      downloadStatus: {
-        status: 'starting',
-        progress: 0,
-        message: 'Starting download'
-      }
+      status: 'starting',
+      progress: 0
     });
     
     // Запускаем скачивание
@@ -622,11 +619,22 @@ router.post('/pull', async (req, res) => {
       let lastProgressBroadcast = 0;
       const BROADCAST_INTERVAL = 1000; // минимальный интервал между отправками через WebSocket в мс
       
-      // Читаем поток ответа построчно через современный асинхронный итератор
-      for await (const chunk of ollamaResponse.body) {
-        const lines = chunk.toString().split('\n').filter(Boolean);
+      // Используем обработчик потока данных на основе pipe() и TextDecoder
+      const decoder = new TextDecoder();
+      let buffer = '';
+      
+      ollamaResponse.body.on('data', (chunk) => {
+        buffer += decoder.decode(chunk, { stream: true });
+        
+        // Разбиваем буфер на строки и обрабатываем полные строки
+        const lines = buffer.split('\n');
+        
+        // Оставляем последнюю (возможно неполную) строку в буфере
+        buffer = lines.pop();
         
         for (const line of lines) {
+          if (!line.trim()) continue;
+          
           try {
             const data = JSON.parse(line);
             const now = Date.now();
@@ -649,11 +657,8 @@ router.post('/pull', async (req, res) => {
                 logger.info(`Broadcasting progress update for ${modelName}: ${progress}%`);
                 broadcastModelUpdate({
                   name: modelName,
-                  downloadStatus: {
-                    status: 'downloading',
-                    progress,
-                    message: `Downloading: ${progress}%`
-                  }
+                  status: 'downloading',
+                  progress,
                 });
               }
             }
@@ -669,11 +674,8 @@ router.post('/pull', async (req, res) => {
               logger.info(`Broadcasting completion for model ${modelName}`);
               broadcastModelUpdate({
                 name: modelName,
-                downloadStatus: {
-                  status: 'ready',
-                  progress: 100,
-                  message: 'Model is ready'
-                }
+                status: 'ready',
+                progress: 100
               });
             }
           } catch (e) {
@@ -681,16 +683,69 @@ router.post('/pull', async (req, res) => {
             logger.error('Error parsing response line:', e);
           }
         }
-      }
+      });
+      
+      // Обработка завершения потока
+      ollamaResponse.body.on('end', () => {
+        // Обрабатываем данные, которые могли остаться в буфере
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            if (data.status === 'success') {
+              modelDownloadStatus.set(modelName, {
+                status: 'ready',
+                progress: 100,
+                message: 'Model is ready'
+              });
+              
+              broadcastModelUpdate({
+                name: modelName,
+                status: 'ready',
+                progress: 100
+              });
+            }
+          } catch (e) {
+            // Игнорируем ошибки парсинга
+          }
+        }
+        
+        res.write('data: {"status": "done"}\n\n');
+        res.end();
+      });
+      
+      // Обработка ошибок чтения потока
+      ollamaResponse.body.on('error', (err) => {
+        logger.error('Error reading stream:', err);
+        
+        modelDownloadStatus.set(modelName, {
+          status: 'error',
+          progress: 0,
+          message: err.message
+        });
+        
+        broadcastModelUpdate({
+          name: modelName,
+          status: 'error',
+          progress: 0
+        });
+        
+        res.write(`data: {"error": "${err.message}"}\n\n`);
+        res.end();
+      });
+      
     } catch (streamError) {
       logger.error('Error reading stream:', streamError);
       // Даже при ошибке чтения потока отправляем сообщение об ошибке, но продолжаем
       // мониторить состояние модели через существующий механизм
       startModelMonitoring(modelName);
+      
+      if (!res.headersSent) {
+        res.status(500).json({ error: `Stream error: ${streamError.message}` });
+      } else {
+        res.write(`data: {"error": "${streamError.message}"}\n\n`);
+        res.end();
+      }
     }
-
-    res.write('data: {"status": "done"}\n\n');
-    res.end();
 
   } catch (error) {
     logger.error('Error pulling model:', error);
@@ -706,11 +761,8 @@ router.post('/pull', async (req, res) => {
     logger.info(`Broadcasting error for model ${name}: ${error.message}`);
     broadcastModelUpdate({
       name,
-      downloadStatus: {
-        status: 'error',
-        progress: 0,
-        message: error.message
-      }
+      status: 'error',
+      progress: 0
     });
     
     if (!res.headersSent) {

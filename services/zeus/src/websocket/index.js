@@ -115,17 +115,27 @@ export function broadcastModelUpdate(model) {
     return;
   }
   
-  const data = JSON.stringify({
+  // Обеспечиваем совместимость с обоими форматами обновлений
+  const updateData = {
     type: 'model_update',
-    model,
+    model: {
+      name: model.name,
+      downloadStatus: model.downloadStatus ? model.downloadStatus : {
+        status: model.status || 'downloading',
+        progress: model.progress || 0,
+        message: model.message || `Progress: ${model.progress || 0}%`
+      }
+    },
     timestamp: Date.now()
-  });
+  };
+  
+  const data = JSON.stringify(updateData);
   
   logger.info(`Broadcasting to channel: models`);
   logger.info(`Model update data: ${JSON.stringify({
     name: model.name,
-    status: model.downloadStatus?.status,
-    progress: model.downloadStatus?.progress
+    status: updateData.model.downloadStatus.status,
+    progress: updateData.model.downloadStatus.progress
   })}`);
   
   return sendWebSocketMessage('models', data);

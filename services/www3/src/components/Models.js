@@ -310,16 +310,16 @@ function Models() {
             
             if (reader) {
                 // Обработка для современных браузеров
-                const decoder = new TextDecoder();
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
+            const decoder = new TextDecoder();
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
 
-                    const chunk = decoder.decode(value);
-                    const lines = chunk.split('\n').filter(Boolean);
+                const chunk = decoder.decode(value);
+                const lines = chunk.split('\n').filter(Boolean);
 
-                    for (const line of lines) {
-                        try {
+                for (const line of lines) {
+                    try {
                             const text = line.replace('data: ', '');
                             // Пропускаем [DONE] или пустые строки
                             if (text === '[DONE]' || !text.trim()) continue;
@@ -327,26 +327,26 @@ function Models() {
                             const data = JSON.parse(text);
                             console.log('Stream data:', data);
                             
-                            if (data.completed && data.total) {
+                        if (data.completed && data.total) {
                                 const progressPercent = Math.round((data.completed / data.total) * 100);
                                 console.log('Setting progress:', modelName, progressPercent);
                                 
-                                setModelProgress(prev => ({
-                                    ...prev,
+                            setModelProgress(prev => ({
+                                ...prev,
                                     [newModelName]: progressPercent
-                                }));
-                            }
+                            }));
+                        }
                             
                             // Обрабатываем успешное завершение
                             if (data.status === 'done' || data.status === 'success') {
-                                setTimeout(() => {
-                                    loadModels(); // Обновляем список установленных моделей
-                                }, 1000);
-                            }
-                        } catch (e) {
-                            console.error('Error parsing stream data:', e, 'Raw line:', line);
+                            setTimeout(() => {
+                                loadModels(); // Обновляем список установленных моделей
+                            }, 1000);
                         }
+                    } catch (e) {
+                            console.error('Error parsing stream data:', e, 'Raw line:', line);
                     }
+                }
                 }
             } else {
                 // Альтернативный подход для обработки потока, если getReader недоступен
