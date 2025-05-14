@@ -30,7 +30,7 @@ const {
     Autocomplete
 } = window.MaterialUI;
 
-const { useState, useEffect } = window.React;
+const { useState, useEffect, useRef, useCallback } = window.React;
 
 function Projects() {
     const [projects, setProjects] = useState([]);
@@ -47,6 +47,74 @@ function Projects() {
     const [formData, setFormData] = useState({
         name: ''
     });
+    
+    // Ссылка на WebSocket соединение
+    const socketRef = useRef(null);
+
+    // Функция для подключения к WebSocket
+    const connectWebSocket = useCallback(() => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const socket = new WebSocket(`${protocol}//${host}/ws/projects`);
+        
+        socket.addEventListener('open', () => {
+            console.log('WebSocket connected for projects');
+        });
+        
+        socket.addEventListener('message', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket message:', data);
+                
+                if (data.type === 'project_update' && data.project) {
+                    // Если проект удален
+                    if (data.project.deleted) {
+                        setProjects(prevProjects => 
+                            prevProjects.filter(p => p.id !== data.project.id)
+                        );
+                        return;
+                    }
+                    
+                    // Обновляем проект в списке или добавляем новый
+                    setProjects(prevProjects => {
+                        const projectIndex = prevProjects.findIndex(p => p.id === data.project.id);
+                        
+                        if (projectIndex >= 0) {
+                            const newProjects = [...prevProjects];
+                            newProjects[projectIndex] = data.project;
+                            return newProjects;
+                        } else {
+                            return [...prevProjects, data.project];
+                        }
+                    });
+                }
+                
+                if (data.type === 'project_stats_update' && data.projectId && data.stats) {
+                    // Обновляем статистику проекта
+                    setStats(prevStats => ({
+                        ...prevStats,
+                        [data.projectId]: data.stats
+                    }));
+                }
+            } catch (err) {
+                console.error('Error parsing WebSocket message:', err);
+            }
+        });
+        
+        socket.addEventListener('close', () => {
+            console.log('WebSocket connection closed for projects');
+            // Попытка переподключения через 2 секунды
+            setTimeout(() => {
+                connectWebSocket();
+            }, 2000);
+        });
+        
+        socket.addEventListener('error', (error) => {
+            console.error('WebSocket error:', error);
+        });
+        
+        socketRef.current = socket;
+    }, []);
 
     const fetchModels = async () => {
         try {
@@ -101,6 +169,30 @@ function Projects() {
         }
     };
 
+    useEffect(() => {
+        fetchProjects();
+        fetchModels();
+        
+        // Устанавливаем WebSocket соединение
+        connectWebSocket();
+        
+        // Очистка при размонтировании
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.close();
+            }
+        };
+    }, [connectWebSocket]);
+
+    useEffect(() => {
+        // При первоначальной загрузке получаем статистику для каждого проекта
+        projects.forEach(project => {
+            if (!stats[project.id]) {
+                fetchProjectStats(project.id);
+            }
+        });
+    }, [projects, stats]);
+
     const fetchProjectStats = async (projectId) => {
         try {
             const response = await window.api.fetch(`/api/projects/${projectId}/stats`);
@@ -114,19 +206,6 @@ function Projects() {
             setStats(prev => ({ ...prev, [projectId]: { document_count: '?' } }));
         }
     };
-
-    useEffect(() => {
-        fetchProjects();
-        fetchModels();
-    }, []);
-
-    useEffect(() => {
-        projects.forEach(project => {
-            if (!stats[project.id]) {
-                fetchProjectStats(project.id);
-            }
-        });
-    }, [projects]);
 
     const handleCreateProject = async () => {
         if (!selectedModel) {

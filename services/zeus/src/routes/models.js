@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
+import { broadcastModelUpdate } from '../websocket/index.js';
 
 const router = express.Router();
 
@@ -210,6 +211,15 @@ async function checkModelStatus(modelName) {
               progress: 100,
               message: 'Model is ready'
             });
+            // Оповещаем через WebSocket
+            broadcastModelUpdate({
+              name: modelName,
+              downloadStatus: {
+                status: 'ready',
+                progress: 100,
+                message: 'Model is ready'
+              }
+            });
             return;
           }
           
@@ -220,6 +230,16 @@ async function checkModelStatus(modelName) {
               status: 'downloading',
               progress,
               message: `Downloading: ${progress}%`
+            });
+            
+            // Оповещаем через WebSocket
+            broadcastModelUpdate({
+              name: modelName,
+              downloadStatus: {
+                status: 'downloading',
+                progress,
+                message: `Downloading: ${progress}%`
+              }
             });
           }
         } catch (e) {
@@ -233,6 +253,16 @@ async function checkModelStatus(modelName) {
       status: 'error',
       progress: 0,
       message: error.message
+    });
+    
+    // Оповещаем через WebSocket
+    broadcastModelUpdate({
+      name: modelName,
+      downloadStatus: {
+        status: 'error',
+        progress: 0,
+        message: error.message
+      }
     });
   }
 }
@@ -502,28 +532,193 @@ router.get('/models', async (req, res) => {
   }
 });
 
-// Запуск скачивания модели
+/**
+ * @swagger
+ * /models/pull:
+ *   post:
+ *     tags: [Models]
+ *     summary: Pull a model from Ollama
+ *     description: Start downloading a model from Ollama
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: The name of the model to pull
+ *               size:
+ *                 type: string
+ *                 description: The size variant of the model
+ *     responses:
+ *       200:
+ *         description: Success response with stream of download progress
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.post('/pull', async (req, res) => {
   const { name, size } = req.body;
-  
+  if (!name) {
+    return res.status(400).json({ error: 'Model name is required' });
+  }
+
   try {
-    logger.info(`Starting to pull model: ${name} (size: ${size})`);
-    
-    // Формируем полное имя модели с размером
+    // Формируем полное имя модели с учетом размера
     const modelName = size ? `${name}:${size}` : name;
     
-    // Запускаем мониторинг скачивания
-    startModelMonitoring(modelName);
-
-    res.json({ 
-      status: 'pulling',
-      message: `Started pulling model: ${modelName}`,
-      model: modelName
+    // Устанавливаем начальный статус скачивания
+    modelDownloadStatus.set(modelName, {
+      status: 'starting',
+      progress: 0,
+      message: 'Starting download'
     });
+    
+    // Отправляем начальное уведомление через WebSocket
+    logger.info(`Broadcasting initial download status for model ${modelName}`);
+    broadcastModelUpdate({
+      name: modelName,
+      downloadStatus: {
+        status: 'starting',
+        progress: 0,
+        message: 'Starting download'
+      }
+    });
+    
+    // Запускаем скачивание
+    const pullUrl = 'http://ollama:11434/api/pull';
+    logger.info(`Pulling model ${modelName} from Ollama`);
+    
+    const ollamaResponse = await fetch(pullUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name: modelName, stream: true })
+    });
+
+    if (!ollamaResponse.ok) {
+      throw new Error(`Failed to pull model: ${ollamaResponse.statusText}`);
+    }
+
+    // Настраиваем заголовки для серверных событий
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    try {
+      // Инициализируем слежение за прогрессом
+      let lastProgressBroadcast = 0;
+      const BROADCAST_INTERVAL = 1000; // минимальный интервал между отправками через WebSocket в мс
+      
+      // Читаем поток ответа построчно через современный асинхронный итератор
+      for await (const chunk of ollamaResponse.body) {
+        const lines = chunk.toString().split('\n').filter(Boolean);
+        
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+            const now = Date.now();
+            
+            // Обновляем статус модели
+            if (data.completed && data.total) {
+              const progress = Math.round((data.completed / data.total) * 100);
+              modelDownloadStatus.set(modelName, {
+                status: 'downloading',
+                progress,
+                message: `Downloading: ${progress}%`
+              });
+              
+              // Отправляем данные клиенту через SSE
+              res.write(`data: ${line}\n\n`);
+              
+              // Оповещаем через WebSocket не чаще чем раз в секунду
+              if (now - lastProgressBroadcast > BROADCAST_INTERVAL) {
+                lastProgressBroadcast = now;
+                logger.info(`Broadcasting progress update for ${modelName}: ${progress}%`);
+                broadcastModelUpdate({
+                  name: modelName,
+                  downloadStatus: {
+                    status: 'downloading',
+                    progress,
+                    message: `Downloading: ${progress}%`
+                  }
+                });
+              }
+            }
+            
+            if (data.status === 'success') {
+              modelDownloadStatus.set(modelName, {
+                status: 'ready',
+                progress: 100,
+                message: 'Model is ready'
+              });
+              
+              // Оповещаем через WebSocket
+              logger.info(`Broadcasting completion for model ${modelName}`);
+              broadcastModelUpdate({
+                name: modelName,
+                downloadStatus: {
+                  status: 'ready',
+                  progress: 100,
+                  message: 'Model is ready'
+                }
+              });
+            }
+          } catch (e) {
+            // Игнорируем ошибки парсинга JSON
+            logger.error('Error parsing response line:', e);
+          }
+        }
+      }
+    } catch (streamError) {
+      logger.error('Error reading stream:', streamError);
+      // Даже при ошибке чтения потока отправляем сообщение об ошибке, но продолжаем
+      // мониторить состояние модели через существующий механизм
+      startModelMonitoring(modelName);
+    }
+
+    res.write('data: {"status": "done"}\n\n');
+    res.end();
 
   } catch (error) {
     logger.error('Error pulling model:', error);
-    res.status(500).json({ error: error.message || 'Failed to pull model' });
+    
+    // Обновляем статус на ошибку
+    modelDownloadStatus.set(name, {
+      status: 'error',
+      progress: 0,
+      message: error.message
+    });
+    
+    // Оповещаем через WebSocket
+    logger.info(`Broadcasting error for model ${name}: ${error.message}`);
+    broadcastModelUpdate({
+      name,
+      downloadStatus: {
+        status: 'error',
+        progress: 0,
+        message: error.message
+      }
+    });
+    
+    if (!res.headersSent) {
+      res.status(500).json({ error: `Failed to pull model: ${error.message}` });
+    } else {
+      res.write(`data: {"error": "${error.message}"}\n\n`);
+      res.end();
+    }
   }
 });
 

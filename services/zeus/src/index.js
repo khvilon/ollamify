@@ -13,11 +13,15 @@ import { errorHandler } from './errors.js';
 import logger from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import initializeQdrantCollections from './db/init-qdrant.js';
+import initializeAdminSchema from './db/admin-init.js';
+import http from 'http';
+import { initWebSocketServer } from './websocket/index.js';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.ZEUS_PORT || 3000;
+const server = http.createServer(app);
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
@@ -59,8 +63,20 @@ app.get('/health', (req, res) => {
 // Глобальный обработчик ошибок
 app.use(errorHandler);
 
-app.listen(port, () => {
+// Инициализируем WebSocket сервер
+initWebSocketServer(server);
+
+server.listen(port, () => {
   logger.info(`Zeus server running on port ${port}`);
+  
+  // Инициализируем административную схему сразу
+  initializeAdminSchema()
+    .then(() => {
+      logger.info('Admin schema initialization completed');
+    })
+    .catch(error => {
+      logger.error('Error initializing admin schema:', error);
+    });
   
   // Инициализируем Qdrant после запуска сервера
   setTimeout(async () => {

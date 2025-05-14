@@ -158,6 +158,94 @@
             }
         }
 
+        // Custom snackbar implementation to replace notistack
+        window.enqueueSnackbar = (message, options = {}) => {
+            const { variant = 'default', autoHideDuration = 3000 } = options;
+            
+            // Создаем элемент для уведомления
+            const snackbar = document.createElement('div');
+            snackbar.style.position = 'fixed';
+            snackbar.style.bottom = '20px';
+            snackbar.style.left = '50%';
+            snackbar.style.transform = 'translateX(-50%)';
+            snackbar.style.zIndex = '9999';
+            snackbar.style.minWidth = '300px';
+            snackbar.style.maxWidth = '500px';
+            snackbar.style.padding = '10px 16px';
+            snackbar.style.borderRadius = '4px';
+            snackbar.style.display = 'flex';
+            snackbar.style.alignItems = 'center';
+            snackbar.style.justifyContent = 'space-between';
+            snackbar.style.boxShadow = '0 3px 5px -1px rgba(0,0,0,0.2), 0 6px 10px 0 rgba(0,0,0,0.14), 0 1px 18px 0 rgba(0,0,0,0.12)';
+            
+            // Устанавливаем цвет в зависимости от варианта
+            switch (variant) {
+                case 'success':
+                    snackbar.style.backgroundColor = '#4caf50';
+                    snackbar.style.color = '#fff';
+                    break;
+                case 'error':
+                    snackbar.style.backgroundColor = '#f44336';
+                    snackbar.style.color = '#fff';
+                    break;
+                case 'warning':
+                    snackbar.style.backgroundColor = '#ff9800';
+                    snackbar.style.color = '#fff';
+                    break;
+                case 'info':
+                    snackbar.style.backgroundColor = '#2196f3';
+                    snackbar.style.color = '#fff';
+                    break;
+                default:
+                    snackbar.style.backgroundColor = '#323232';
+                    snackbar.style.color = '#fff';
+            }
+            
+            // Добавляем сообщение
+            snackbar.textContent = message;
+            
+            // Добавляем уведомление в DOM
+            document.body.appendChild(snackbar);
+            
+            // Анимация появления
+            snackbar.style.animation = 'fadeIn 0.3s';
+            snackbar.style.opacity = '1';
+            
+            // Удаляем уведомление через указанное время
+            setTimeout(() => {
+                snackbar.style.animation = 'fadeOut 0.3s';
+                snackbar.style.opacity = '0';
+                setTimeout(() => {
+                    if (document.body.contains(snackbar)) {
+                        document.body.removeChild(snackbar);
+                    }
+                }, 300);
+            }, autoHideDuration);
+            
+            // Добавляем стили для анимаций
+            if (!document.getElementById('snackbar-styles')) {
+                const style = document.createElement('style');
+                style.id = 'snackbar-styles';
+                style.textContent = `
+                    @keyframes fadeIn {
+                        from { opacity: 0; transform: translate(-50%, 20px); }
+                        to { opacity: 1; transform: translate(-50%, 0); }
+                    }
+                    @keyframes fadeOut {
+                        from { opacity: 1; transform: translate(-50%, 0); }
+                        to { opacity: 0; transform: translate(-50%, 20px); }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            return () => {
+                if (document.body.contains(snackbar)) {
+                    document.body.removeChild(snackbar);
+                }
+            };
+        };
+
         // Components
         const Models = window.Models;
         const Users = window.Users;

@@ -39,32 +39,136 @@ const {
     Autocomplete
 } = window.MaterialUI;
 
-const { useState, useEffect, useRef } = window.React;
+const { useState, useEffect, useRef, useCallback } = window.React;
 const { useNavigate } = window.ReactRouterDOM;
 
 function Documents() {
     const navigate = useNavigate();
     const [documents, setDocuments] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
-    const [project, setProject] = useState(null);
-    const [projects, setProjects] = useState([]);
-    const [isLoadingProjects, setIsLoadingProjects] = useState(true);
-    const [uploadType, setUploadType] = useState('file');
-    const [content, setContent] = useState('');
-    const [selectedFile, setSelectedFile] = useState(null);
-    const [projectFilter, setProjectFilter] = useState('');
-    const [searchQuery, setSearchQuery] = useState('');
-    const fileInputRef = useRef(null);
-    const theme = useTheme();
-
-    // Состояния для пагинации и сортировки
+    const [total, setTotal] = useState(0);
+    const [totalPages, setTotalPages] = useState(0);
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(10);
     const [orderBy, setOrderBy] = useState('created_at');
     const [order, setOrder] = useState('desc');
-    const [total, setTotal] = useState(0);
-    const [totalPages, setTotalPages] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState(null);
+    const [dialogOpen, setDialogOpen] = useState(false);
+    const [projects, setProjects] = useState([]);
+    const [project, setProject] = useState('');
+    const [projectFilter, setProjectFilter] = useState('');
+    const [searchQuery, setSearchQuery] = useState('');
+    const [uploadType, setUploadType] = useState('file');
+    const [textContent, setTextContent] = useState('');
+    const [customName, setCustomName] = useState('');
+    const [selectedFile, setSelectedFile] = useState(null);
+    const fileInputRef = useRef(null);
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [documentToDelete, setDocumentToDelete] = useState(null);
+    
+    // Ссылка на WebSocket соединение
+    const socketRef = useRef(null);
+
+    const theme = useTheme();
+
+    // Функция для подключения к WebSocket
+    const connectWebSocket = useCallback(() => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const host = window.location.host;
+        const socket = new WebSocket(`${protocol}//${host}/ws/documents`);
+        
+        socket.addEventListener('open', () => {
+            console.log('WebSocket connected for documents');
+        });
+        
+        socket.addEventListener('message', (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                console.log('WebSocket message:', data);
+                
+                if (data.type === 'document_update' && data.document) {
+                    const updatedDoc = data.document;
+                    
+                    // Обновляем документ в списке, если он там есть
+                    setDocuments(prevDocs => {
+                        // Если документ уже есть, обновляем его
+                        const docIndex = prevDocs.findIndex(d => 
+                            d.id === updatedDoc.id && d.project === updatedDoc.project
+                        );
+                        
+                        if (docIndex >= 0) {
+                            const newDocs = [...prevDocs];
+                            newDocs[docIndex] = {
+                                ...newDocs[docIndex],
+                                ...updatedDoc
+                            };
+                            return newDocs;
+                        } 
+                        
+                        // Если документа нет и он соответствует текущему проекту, добавляем его
+                        if (!project || updatedDoc.project === project) {
+                            if (prevDocs.length < rowsPerPage) {
+                                return [...prevDocs, updatedDoc];
+                            }
+                        }
+                        
+                        return prevDocs;
+                    });
+                    
+                    // Если документ был завершен, обновляем список для актуальности
+                    if (updatedDoc.loaded_chunks === updatedDoc.total_chunks) {
+                        // Задержка, чтобы пользователь видел 100%
+                        setTimeout(() => {
+                            fetchDocuments(project);
+                        }, 1000);
+                    }
+                }
+            } catch (err) {
+                console.error('Error parsing WebSocket message:', err);
+            }
+        });
+        
+        socket.addEventListener('close', () => {
+            console.log('WebSocket connection closed for documents');
+            // Попытка переподключения через 2 секунды
+            setTimeout(() => {
+                connectWebSocket();
+            }, 2000);
+        });
+        
+        socket.addEventListener('error', (error) => {
+            console.error('WebSocket error:', error);
+        });
+        
+        socketRef.current = socket;
+    }, [project, rowsPerPage]);
+
+    useEffect(() => {
+        // Загрузка списка проектов
+        const fetchProjects = async () => {
+            try {
+                const response = await window.api.fetch('/api/projects');
+                if (!response.ok) throw new Error('Failed to fetch projects');
+                const data = await response.json();
+                setProjects(Array.isArray(data) ? data : []);
+            } catch (err) {
+                console.error('Error fetching projects:', err);
+                setError(err.message);
+            }
+        };
+
+        fetchProjects();
+        
+        // Устанавливаем WebSocket соединение
+        connectWebSocket();
+        
+        // Очистка при размонтировании
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.close();
+            }
+        };
+    }, [connectWebSocket]);
 
     const handleDelete = async (docId, docProject) => {
         try {
@@ -93,44 +197,6 @@ function Documents() {
             navigate('/login');
         }
     }, [navigate]);
-
-    useEffect(() => {
-        // Load projects when component mounts
-        const loadProjects = async () => {
-            try {
-                setIsLoadingProjects(true);
-                const response = await window.api.fetch('/api/documents/projects');
-                if (!response.ok) throw new Error('Failed to load projects');
-                const data = await response.json();
-                setProjects(data || []);
-                setError('');
-            } catch (err) {
-                console.error('Error loading projects:', err);
-                setError(err.message || 'Failed to load projects');
-            } finally {
-                setIsLoadingProjects(false);
-            }
-        };
-
-        loadProjects();
-    }, []);
-
-    // Функция для обновления списка проектов
-    const refreshProjects = async () => {
-        try {
-            setIsLoadingProjects(true);
-            const response = await window.api.fetch('/api/documents/projects');
-            if (!response.ok) throw new Error('Failed to load projects');
-            const data = await response.json();
-            setProjects(data || []);
-            setError('');
-        } catch (err) {
-            console.error('Error loading projects:', err);
-            setError(err.message || 'Failed to load projects');
-        } finally {
-            setIsLoadingProjects(false);
-        }
-    };
 
     const handleProjectCreate = async (projectName) => {
         try {
@@ -233,14 +299,14 @@ function Documents() {
                 }
                 
                 data = await uploadResponse.json();
-            } else if (uploadType === 'text' && content) {
+            } else if (uploadType === 'text' && textContent) {
                 const response = await window.api.fetch('/api/documents', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        content,
+                        content: textContent,
                         project
                     })
                 });
@@ -257,7 +323,7 @@ function Documents() {
             
             // Очищаем форму
             setSelectedFile(null);
-            setContent('');
+            setTextContent('');
             
             // Обновляем список документов
             await fetchDocuments(project);
@@ -505,8 +571,8 @@ function Documents() {
                                                 label="Content"
                                                 multiline
                                                 rows={4}
-                                                value={content}
-                                                onChange={(e) => setContent(e.target.value)}
+                                                value={textContent}
+                                                onChange={(e) => setTextContent(e.target.value)}
                                                 variant="outlined"
                                             />
                                         )}

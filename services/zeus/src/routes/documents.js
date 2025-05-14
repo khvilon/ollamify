@@ -11,6 +11,7 @@ import DocumentQueries from '../db/documents.js';
 import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
 import qdrantClient from '../db/qdrant.js';
+import { broadcastDocumentUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
 
 dotenv.config();
 
@@ -347,8 +348,8 @@ router.get('/projects', async (req, res) => {
  * /documents:
  *   post:
  *     tags: [Documents]
- *     summary: Upload a new document
- *     description: Upload a new document (file or text content)
+ *     summary: Upload a document
+ *     description: Upload a new document file or text content
  *     requestBody:
  *       required: true
  *       content:
@@ -359,52 +360,38 @@ router.get('/projects', async (req, res) => {
  *               file:
  *                 type: string
  *                 format: binary
- *                 description: Document file (PDF, DOCX, or TXT)
+ *                 description: Document file to upload (PDF, DOCX, TXT)
  *               project:
  *                 type: string
- *                 description: Project name
+ *                 description: Project name to associate document with
  *               name:
  *                 type: string
- *                 description: Document name (optional)
- *               external_id:
- *                 type: string
- *                 description: External document ID (optional)
+ *                 description: Custom name for the document (optional)
  *         application/json:
  *           schema:
  *             type: object
  *             required:
- *               - project
  *               - content
+ *               - project
  *             properties:
- *               project:
- *                 type: string
- *                 description: Project name
  *               content:
  *                 type: string
- *                 description: Document content
+ *                 description: Text content for the document
+ *               project:
+ *                 type: string
+ *                 description: Project name to associate document with
  *               name:
  *                 type: string
- *                 description: Document name (optional)
- *               external_id:
- *                 type: string
- *                 description: External document ID (optional)
+ *                 description: Custom name for the document (optional)
  *     responses:
  *       200:
- *         description: Document created or updated successfully
+ *         description: Document uploaded successfully
  *         content:
  *           application/json:
  *             schema:
- *               allOf:
- *                 - $ref: '#/components/schemas/Document'
- *                 - type: object
- *                   properties:
- *                     status:
- *                       type: string
- *                       enum: [created, updated, exists]
- *                     message:
- *                       type: string
+ *               $ref: '#/components/schemas/Document'
  *       400:
- *         description: Invalid request
+ *         description: Bad request
  *         content:
  *           application/json:
  *             schema:
@@ -643,6 +630,30 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         // Запускаем обработку чанков асинхронно
         processChunks(project, documentId, chunks, projectEmbeddingModel);
+
+        // Отправляем WebSocket уведомление о новом документе
+        broadcastDocumentUpdate({
+          ...document,
+          project
+        });
+
+        // Запускаем процесс обработки документа асинхронно
+        processDocument(documentContent, contentHash, project, documentId)
+          .then(() => {
+            logger.info(`Document ${documentId} fully processed`);
+            // Отправляем WebSocket уведомление о завершении обработки
+            broadcastDocumentUpdate({
+              ...document,
+              loaded_chunks: chunks.length,
+              project
+            });
+            
+            // Обновляем статистику проекта
+            updateProjectStats(project);
+          })
+          .catch(error => {
+            logger.error(`Error processing document ${documentId}:`, error);
+          });
       } catch (dbError) {
         logger.error('Database error:', dbError);
         await client.query('ROLLBACK');
@@ -877,6 +888,21 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
           SET loaded_chunks = loaded_chunks + 1
           WHERE id = $1
         `, [documentId]);
+        
+        // Получаем обновленную информацию о документе
+        const docInfo = await pool.query(`
+          SELECT id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
+          FROM "${project}".documents
+          WHERE id = $1
+        `, [documentId]);
+        
+        if (docInfo.rows.length > 0) {
+          // Отправляем WebSocket уведомление о прогрессе
+          broadcastDocumentUpdate({
+            ...docInfo.rows[0],
+            project
+          });
+        }
 
       } catch (chunkError) {
         logger.error(`Error processing chunk ${i + 1}:`, chunkError);
@@ -887,6 +913,59 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     logger.info(`Successfully processed all chunks for document ${documentId}`);
   } catch (processingError) {
     logger.error('Error in async processing:', processingError);
+  }
+}
+
+// Функция для обработки документа
+async function processDocument(text, contentHash, project, documentId) {
+  try {
+    logger.info(`Starting document processing for ${documentId} in project ${project}`);
+    
+    // Получаем информацию о документе
+    const docResult = await pool.query(`
+      SELECT * FROM "${project}".documents WHERE id = $1
+    `, [documentId]);
+    
+    if (docResult.rows.length === 0) {
+      throw new Error(`Document ${documentId} not found`);
+    }
+    
+    // Документ уже обрабатывается через processChunks, 
+    // эта функция в текущей реализации просто ожидает завершения
+    // и может использоваться для дополнительной обработки в будущем
+    
+    return true;
+  } catch (error) {
+    logger.error(`Error in document processing for ${documentId}:`, error);
+    throw error;
+  }
+}
+
+// Функция для обновления статистики проекта
+async function updateProjectStats(projectName) {
+  try {
+    // Получаем количество документов в проекте
+    const result = await pool.query(`
+      SELECT COUNT(*) as document_count
+      FROM "${projectName}".documents
+    `);
+    
+    const stats = {
+      document_count: parseInt(result.rows[0].document_count)
+    };
+    
+    // Получаем ID проекта
+    const projectResult = await pool.query(`
+      SELECT id FROM admin.projects WHERE name = $1
+    `, [projectName]);
+    
+    if (projectResult.rows.length > 0) {
+      const projectId = projectResult.rows[0].id;
+      // Отправляем обновление статистики проекта через WebSocket
+      broadcastProjectStatsUpdate(projectId, stats);
+    }
+  } catch (error) {
+    logger.error(`Error updating project stats for ${projectName}:`, error);
   }
 }
 

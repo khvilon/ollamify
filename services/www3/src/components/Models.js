@@ -35,9 +35,98 @@ function Models() {
 
     // Храним состояние прогресса отдельно
     const [modelProgress, setModelProgress] = useState({});
+    // Ссылка на WebSocket соединение
+    const socketRef = useRef(null);
+
+    // Функция для подключения к WebSocket
+    const connectWebSocket = useCallback(() => {
+        try {
+            // Закрываем предыдущее соединение, если оно существует
+            if (socketRef.current && 
+                (socketRef.current.readyState === WebSocket.OPEN || 
+                 socketRef.current.readyState === WebSocket.CONNECTING)) {
+                console.log('Closing existing WebSocket connection');
+                socketRef.current.close();
+            }
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            // Используем window.location.hostname вместо localhost
+            const host = window.location.host;
+            const wsUrl = `${protocol}//${host}/ws/models`;
+            
+            console.log(`Connecting to WebSocket: ${wsUrl}`);
+            const socket = new WebSocket(wsUrl);
+            
+            socket.addEventListener('open', () => {
+                console.log('WebSocket connected for models');
+                // Отправляем пинг для проверки соединения
+                socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+            });
+            
+            socket.addEventListener('message', (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('WebSocket message received:', data);
+                    
+                    if (data.type === 'model_update' && data.model) {
+                        // Обновляем статус загрузки модели
+                        if (data.model.downloadStatus) {
+                            console.log('WebSocket progress update:', data.model.name, data.model.downloadStatus);
+                            
+                            setModelProgress(prev => ({
+                                ...prev,
+                                [data.model.name]: data.model.downloadStatus.progress || 0
+                            }));
+                            
+                            // Перезагружаем список моделей при завершении
+                            if (data.model.downloadStatus.status === 'ready') {
+                                loadModels();
+                            }
+                        }
+                    }
+                } catch (err) {
+                    console.error('Error parsing WebSocket message:', err);
+                }
+            });
+            
+            socket.addEventListener('close', (event) => {
+                console.log(`WebSocket connection closed for models with code ${event.code}, reason: ${event.reason}`);
+                // Попытка переподключения через 2 секунды
+                setTimeout(() => {
+                    connectWebSocket();
+                }, 2000);
+            });
+            
+            socket.addEventListener('error', (error) => {
+                console.error('WebSocket error:', error);
+                // Не нужно здесь закрывать соединение, так как 'close' будет вызван автоматически после 'error'
+            });
+            
+            socketRef.current = socket;
+            
+            // Периодически отправляем пинг, чтобы поддерживать соединение активным
+            const pingInterval = setInterval(() => {
+                if (socket.readyState === WebSocket.OPEN) {
+                    socket.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+                } else if (socket.readyState !== WebSocket.CONNECTING) {
+                    clearInterval(pingInterval);
+                }
+            }, 30000);
+            
+            // Очистка интервала при размонтировании или переподключении
+            return () => clearInterval(pingInterval);
+        } catch (e) {
+            console.error('Error setting up WebSocket:', e);
+            // Попытка переподключения после ошибки
+            setTimeout(() => {
+                connectWebSocket();
+            }, 3000);
+        }
+    }, [loadModels]);
 
     const loadModels = useCallback(async () => {
         try {
+            setLoadingInstalled(true);
             const response = await window.api.fetch(`/api/models?timestamp=${Date.now()}`);
             if (!response.ok) {
                 throw new Error('Failed to load models');
@@ -67,6 +156,8 @@ function Models() {
         } catch (err) {
             console.error('Error loading models:', err);
             setError(err.message || 'Failed to load models');
+        } finally {
+            setLoadingInstalled(false);
         }
     }, []);
 
@@ -88,12 +179,17 @@ function Models() {
     useEffect(() => {
         loadModels();
         loadAvailableModels();
-    }, [loadModels]);
-
-    useEffect(() => {
-        const interval = setInterval(loadModels, 1000);
-        return () => clearInterval(interval);
-    }, [loadModels]);
+        
+        // Устанавливаем WebSocket соединение
+        connectWebSocket();
+        
+        // Очистка при размонтировании
+        return () => {
+            if (socketRef.current) {
+                socketRef.current.close();
+            }
+        };
+    }, [loadModels, loadAvailableModels, connectWebSocket]);
 
     // Мемоизируем обогащенные модели
     const enrichedModels = useMemo(() => {
@@ -101,10 +197,19 @@ function Models() {
             const availableModel = availableModels.find(m => m.name === installedModel.name) || {};
             const progress = modelProgress[installedModel.name];
             
+            // Обогащаем модель данными о прогрессе загрузки
+            let downloadStatus = installedModel.downloadStatus || {};
+            if (downloadStatus.status === 'downloading' && progress !== undefined) {
+                downloadStatus = {
+                    ...downloadStatus,
+                    progress: progress
+                };
+            }
+            
             return {
                 ...availableModel,  
                 ...installedModel,  
-                progress: progress || installedModel.downloadStatus?.progress,
+                downloadStatus,
                 capabilities: installedModel.capabilities || availableModel.capabilities || [],
             };
         });
@@ -138,6 +243,53 @@ function Models() {
         }
 
         try {
+            // Сразу устанавливаем начальный прогресс
+            setModelProgress(prev => ({
+                ...prev,
+                [modelName]: 0
+            }));
+            
+            // Немедленно обновляем модель в списке, чтобы показать прогресс загрузки
+            const newModelName = selectedSize ? `${modelName}:${selectedSize}` : modelName;
+            
+            // Сначала добавляем модель в список моделей с начальным статусом
+            setModels(prevModels => {
+                // Проверяем, есть ли уже такая модель
+                const existingModel = prevModels.find(m => m.name === newModelName);
+                if (existingModel) {
+                    // Обновляем статус существующей модели
+                    return prevModels.map(model => 
+                        model.name === newModelName
+                            ? { 
+                                ...model, 
+                                downloadStatus: { 
+                                    status: 'downloading', 
+                                    progress: 0, 
+                                    message: 'Starting download' 
+                                } 
+                              }
+                            : model
+                    );
+                } else {
+                    // Добавляем новую модель
+                    const availableModel = availableModels.find(m => m.name === modelName) || {};
+                    const newModel = {
+                        name: newModelName,
+                        description: availableModel.description || `Model ${newModelName}`,
+                        capabilities: availableModel.capabilities || [],
+                        downloadStatus: {
+                            status: 'downloading',
+                            progress: 0,
+                            message: 'Starting download'
+                        }
+                    };
+                    return [...prevModels, newModel];
+                }
+            });
+            
+            // Показываем уведомление о начале загрузки
+            window.enqueueSnackbar(`Starting download of ${newModelName}`, { variant: 'info' });
+            
             const response = await window.api.fetch('/api/models/pull', {
                 method: 'POST',
                 headers: {
@@ -151,45 +303,72 @@ function Models() {
 
             if (!response || !response.ok) throw new Error('Failed to pull model');
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
+            // Обрабатываем поток событий
+            const reader = response.body.getReader 
+                ? response.body.getReader() // Если доступен метод getReader (для браузеров)
+                : null;
+            
+            if (reader) {
+                // Обработка для современных браузеров
+                const decoder = new TextDecoder();
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
 
-            while (true) {
-                const { done, value } = await reader.read();
-                if (done) break;
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n').filter(Boolean);
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n').filter(Boolean);
-
-                for (const line of lines) {
-                    try {
-                        const data = JSON.parse(line.replace('data: ', ''));
-                        if (data.completed && data.total) {
-                            setModelProgress(prev => ({
-                                ...prev,
-                                [modelName]: {
-                                    percent: Math.round((data.completed / data.total) * 100),
-                                    downloaded: data.completed,
-                                    total: data.total
-                                }
-                            }));
+                    for (const line of lines) {
+                        try {
+                            const text = line.replace('data: ', '');
+                            // Пропускаем [DONE] или пустые строки
+                            if (text === '[DONE]' || !text.trim()) continue;
+                            
+                            const data = JSON.parse(text);
+                            console.log('Stream data:', data);
+                            
+                            if (data.completed && data.total) {
+                                const progressPercent = Math.round((data.completed / data.total) * 100);
+                                console.log('Setting progress:', modelName, progressPercent);
+                                
+                                setModelProgress(prev => ({
+                                    ...prev,
+                                    [newModelName]: progressPercent
+                                }));
+                            }
+                            
+                            // Обрабатываем успешное завершение
+                            if (data.status === 'done' || data.status === 'success') {
+                                setTimeout(() => {
+                                    loadModels(); // Обновляем список установленных моделей
+                                }, 1000);
+                            }
+                        } catch (e) {
+                            console.error('Error parsing stream data:', e, 'Raw line:', line);
                         }
-                        if (data.status === 'success') {
-                            setTimeout(() => {
-                                loadModels(); // Обновляем список установленных моделей
-                            }, 1000);
-                        }
-                    } catch (e) {
-                        console.error('Error parsing stream data:', e);
                     }
                 }
+            } else {
+                // Альтернативный подход для обработки потока, если getReader недоступен
+                // Ожидаем завершения загрузки через WebSocket
+                console.log("Using WebSocket for model progress tracking");
+                
+                // Показываем пользователю, что процесс начался
+                window.enqueueSnackbar(`Started downloading ${newModelName}. Progress will be updated via WebSocket.`, {
+                    variant: 'info',
+                    autoHideDuration: 5000
+                });
+                
+                setTimeout(() => {
+                    loadModels(); // Обновляем список установленных моделей через некоторое время
+                }, 5000);
             }
         } catch (err) {
             console.error('Error pulling model:', err);
             setError(err.message || 'Failed to pull model');
             window.enqueueSnackbar(err.message || 'Failed to pull model', { variant: 'error' });
         }
-    }, [selectedVersions, loadModels]);
+    }, [selectedVersions, loadModels, availableModels]);
 
     const handleVersionSelect = useCallback((modelName, size) => {
         setSelectedVersions(prev => ({
@@ -230,6 +409,7 @@ function Models() {
         const isInstalled = model.downloadStatus?.status === 'ready';
         const isDownloading = model.downloadStatus?.status === 'downloading';
         const isAvailable = !model.downloadStatus || model.downloadStatus.status === 'not_installed';
+        const progress = model.downloadStatus?.progress || 0;
         
         // Для доступных моделей используем sizes, для установленных - size
         const modelSizes = isAvailable ? model.sizes : [model.size];
@@ -261,7 +441,7 @@ function Models() {
                         )}
                         {isDownloading && (
                             <Chip 
-                                label={`${model.downloadStatus.progress}%`}
+                                label={`${progress}%`}
                                 color="primary" 
                                 size="small"
                                 icon={<Icon>downloading</Icon>}
@@ -281,7 +461,7 @@ function Models() {
                         <Box sx={{ width: '100%', mb: 2 }}>
                             <LinearProgress 
                                 variant="determinate" 
-                                value={model.downloadStatus.progress} 
+                                value={progress} 
                                 sx={{ 
                                     height: 8, 
                                     borderRadius: 4,

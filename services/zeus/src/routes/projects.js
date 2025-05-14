@@ -1,92 +1,279 @@
 import express from 'express';
-import ProjectQueries from '../db/projects.js';
-import { asyncHandler } from '../errors.js';
+import pool from '../db/conf.js';
+import { createProjectSchema } from '../db/init.js';
+import logger from '../utils/logger.js';
+import { broadcastProjectUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
 
 const router = express.Router();
 
-// Получение списка проектов
-router.get('/', asyncHandler(async (req, res) => {
-  const projects = await ProjectQueries.findAll();
-  res.json(projects);
-}));
-
-// Получение проекта по ID
-router.get('/:id', asyncHandler(async (req, res) => {
-  const project = await ProjectQueries.findById(req.params.id);
-  if (!project) {
-    return res.status(404).json({ 
-      error: 'Project not found',
-      code: 'PROJECT_NOT_FOUND'
-    });
+/**
+ * @swagger
+ * /projects:
+ *   get:
+ *     tags: [Projects]
+ *     summary: Get all projects
+ *     description: Retrieve a list of all projects
+ *     responses:
+ *       200:
+ *         description: A list of projects
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Project'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM admin.projects ORDER BY created_at DESC');
+    res.json(result.rows);
+  } catch (error) {
+    logger.error('Error fetching projects:', error);
+    res.status(500).json({ error: error.message });
   }
-  res.json(project);
-}));
+});
 
-// Создание нового проекта
-router.post('/', asyncHandler(async (req, res) => {
+/**
+ * @swagger
+ * /projects:
+ *   post:
+ *     tags: [Projects]
+ *     summary: Create a new project
+ *     description: Create a new project with the given name
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - name
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Project name
+ *               embeddingModel:
+ *                 type: string
+ *                 description: Name of embedding model to use
+ *     responses:
+ *       201:
+ *         description: Project created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Project'
+ *       400:
+ *         description: Invalid request
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.post('/', async (req, res) => {
   const { name, embeddingModel } = req.body;
-  const userId = req.user?.id;
-
-  if (!name || !embeddingModel) {
-    return res.status(400).json({
-      error: 'Name and embedding model are required',
-      code: 'MISSING_REQUIRED_FIELDS'
-    });
-  }
-
-  const project = await ProjectQueries.create(name, embeddingModel, userId);
-  res.status(201).json(project);
-}));
-
-// Обновление проекта
-router.put('/:id', asyncHandler(async (req, res) => {
-  const { name } = req.body;
   
   if (!name) {
-    return res.status(400).json({
-      error: 'Name is required',
-      code: 'MISSING_REQUIRED_FIELDS'
-    });
+    return res.status(400).json({ error: 'Project name is required' });
   }
-
-  const project = await ProjectQueries.update(req.params.id, name);
-  if (!project) {
-    return res.status(404).json({ 
-      error: 'Project not found',
-      code: 'PROJECT_NOT_FOUND'
-    });
+  
+  if (!embeddingModel) {
+    return res.status(400).json({ error: 'Embedding model is required' });
   }
-  res.json(project);
-}));
-
-// Удаление проекта
-router.delete('/:id', asyncHandler(async (req, res) => {
+  
   try {
-    await ProjectQueries.delete(req.params.id);
-    res.status(204).end();
+    // Создаем запись проекта
+    const result = await pool.query(
+      'INSERT INTO admin.projects (name, embedding_model, creator_email) VALUES ($1, $2, $3) RETURNING *',
+      [name, embeddingModel, req.user?.email || 'admin@example.com']
+    );
+    
+    const project = result.rows[0];
+    
+    // Создаем схему для проекта
+    await createProjectSchema(name, embeddingModel);
+    
+    // Отправляем уведомление через WebSocket
+    broadcastProjectUpdate(project);
+    
+    // Отправляем статистику проекта
+    broadcastProjectStatsUpdate(project.id, { document_count: 0 });
+    
+    res.status(201).json(project);
   } catch (error) {
-    if (error.message === 'Project not found') {
-      return res.status(404).json({ 
-        error: 'Project not found',
-        code: 'PROJECT_NOT_FOUND'
-      });
+    logger.error('Error creating project:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * @swagger
+ * /projects/{id}:
+ *   delete:
+ *     tags: [Projects]
+ *     summary: Delete a project
+ *     description: Delete a project by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Project ID
+ *     responses:
+ *       200:
+ *         description: Project deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *       404:
+ *         description: Project not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.delete('/:id', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Получаем информацию о проекте перед удалением
+    const projectInfo = await pool.query('SELECT * FROM admin.projects WHERE id = $1', [id]);
+    
+    if (projectInfo.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
     }
-    throw error;
+    
+    const project = projectInfo.rows[0];
+    
+    // Удаляем схему проекта
+    await pool.query(`DROP SCHEMA IF EXISTS "${project.name}" CASCADE`);
+    
+    // Удаляем запись из таблицы проектов
+    await pool.query('DELETE FROM admin.projects WHERE id = $1', [id]);
+    
+    // Отправляем уведомление через WebSocket
+    broadcastProjectUpdate({ ...project, deleted: true });
+    
+    res.json({ message: 'Project deleted successfully' });
+  } catch (error) {
+    logger.error('Error deleting project:', error);
+    res.status(500).json({ error: error.message });
   }
-}));
+});
 
-// Получение статистики проекта
-router.get('/:id/stats', asyncHandler(async (req, res) => {
-  const project = await ProjectQueries.findById(req.params.id);
-  if (!project) {
-    return res.status(404).json({ 
-      error: 'Project not found',
-      code: 'PROJECT_NOT_FOUND'
-    });
+/**
+ * @swagger
+ * /projects/{id}/stats:
+ *   get:
+ *     tags: [Projects]
+ *     summary: Get project statistics
+ *     description: Get statistics for a project by ID
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Project ID
+ *     responses:
+ *       200:
+ *         description: Project statistics
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 document_count:
+ *                   type: integer
+ *                   description: Number of documents in the project
+ *       404:
+ *         description: Project not found
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
+router.get('/:id/stats', async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    // Получаем информацию о проекте
+    const projectInfo = await pool.query('SELECT * FROM admin.projects WHERE id = $1', [id]);
+    
+    if (projectInfo.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+    
+    const project = projectInfo.rows[0];
+    
+    // Проверяем существование схемы
+    const schemaExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.schemata WHERE schema_name = $1
+      )
+    `, [project.name]);
+    
+    if (!schemaExists.rows[0].exists) {
+      return res.json({ document_count: 0 });
+    }
+    
+    // Проверяем существование таблицы документов
+    const tableExists = await pool.query(`
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.tables 
+        WHERE table_schema = $1 AND table_name = 'documents'
+      )
+    `, [project.name]);
+    
+    if (!tableExists.rows[0].exists) {
+      return res.json({ document_count: 0 });
+    }
+    
+    // Получаем количество документов
+    const documentCount = await pool.query(`
+      SELECT COUNT(*) as document_count FROM "${project.name}".documents
+    `);
+    
+    const stats = {
+      document_count: parseInt(documentCount.rows[0].document_count)
+    };
+    
+    // Отправляем статистику через WebSocket
+    broadcastProjectStatsUpdate(id, stats);
+    
+    res.json(stats);
+  } catch (error) {
+    logger.error('Error getting project stats:', error);
+    res.status(500).json({ error: error.message });
   }
-
-  const stats = await ProjectQueries.getStats(project.name);
-  res.json(stats);
-}));
+});
 
 export default router;

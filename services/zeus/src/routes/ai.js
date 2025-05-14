@@ -316,37 +316,46 @@ router.post('/complete', async (req, res) => {
         })
       });
 
-      // Читаем ответ построчно
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) {
-          res.write('data: [DONE]\n\n');
-          res.end();
-          break;
+      // Читаем ответ построчно через современный асинхронный итератор
+      for await (const chunk of response.body) {
+        const decoder = new TextDecoder();
+        const decodedChunk = decoder.decode(chunk);
+        
+        try {
+          const data = JSON.parse(decodedChunk);
+          
+          // Проверяем, нужно ли завершить поток
+          if (data.done) {
+            res.write('data: [DONE]\n\n');
+            res.end();
+            break;
+          }
+          
+          // Форматируем ответ в стиле OpenAI
+          const openAIChunk = {
+            id: 'cmpl-' + Math.random().toString(36).substr(2, 9),
+            object: 'chat.completion.chunk',
+            created: Date.now(),
+            model: model,
+            choices: [{
+              index: 0,
+              delta: {
+                content: data.response
+              },
+              finish_reason: data.done ? 'stop' : null
+            }]
+          };
+          
+          res.write(`data: ${JSON.stringify(openAIChunk)}\n\n`);
+        } catch (e) {
+          logger.error('Error parsing streaming response:', e);
+          continue; // Пропускаем ошибки парсинга - некоторые строки могут не быть валидным JSON
         }
-        const chunk = decoder.decode(value);
-        const data = JSON.parse(chunk);
-        
-        // Форматируем ответ в стиле OpenAI
-        const openAIChunk = {
-          id: 'cmpl-' + Math.random().toString(36).substr(2, 9),
-          object: 'chat.completion.chunk',
-          created: Date.now(),
-          model: model,
-          choices: [{
-            index: 0,
-            delta: {
-              content: data.response
-            },
-            finish_reason: data.done ? 'stop' : null
-          }]
-        };
-        
-        res.write(`data: ${JSON.stringify(openAIChunk)}\n\n`);
       }
+      
+      // Если мы здесь, значит поток завершился без явного "done"
+      res.write('data: [DONE]\n\n');
+      res.end();
     } else {
       const content = await getCompletion(messages, model);
       
