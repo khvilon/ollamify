@@ -3,6 +3,7 @@ import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import logger from '../utils/logger.js';
 import { broadcastProjectUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
+import ProjectQueries from '../db/projects.js';
 
 const router = express.Router();
 
@@ -166,11 +167,8 @@ router.delete('/:id', async (req, res) => {
     
     const project = projectInfo.rows[0];
     
-    // Удаляем схему проекта
-    await pool.query(`DROP SCHEMA IF EXISTS "${project.name}" CASCADE`);
-
-    // Удаляем запись из таблицы проектов
-    await pool.query('DELETE FROM admin.projects WHERE id = $1', [id]);
+    // Используем ProjectQueries для полного удаления проекта
+    await ProjectQueries.delete(id);
     
     // Отправляем уведомление через WebSocket
     broadcastProjectUpdate({ ...project, deleted: true });

@@ -1,5 +1,4 @@
 services:
-
   zeus:
     build:
       context: .
@@ -17,6 +16,8 @@ services:
       reranker:
         condition: service_started
       frida:
+        condition: service_started
+      tts:
         condition: service_started
     environment:
       - ZEUS_PORT=80
@@ -174,6 +175,31 @@ services:
     networks:
       - app-network
 
+  tts:
+    build:
+      context: ./services/tts
+      dockerfile: Dockerfile
+    volumes:
+      - tts_models:/app/models
+    ports:
+      - "8003:8003"
+    expose:
+      - "8003"
+    environment:
+      - PORT=8003
+      - TORCH_HOME=/app/models
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+    container_name: tts
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
 volumes:
   pg_data:
   qdrant_data:
@@ -181,6 +207,8 @@ volumes:
   frida_models:
   reranker_models:
     name: ollamify-reranker-models
+  tts_models:
+    name: ollamify-tts-models
 
 networks:
   app-network:

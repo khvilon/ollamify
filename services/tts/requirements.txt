@@ -1,0 +1,18 @@
+fastapi==0.104.1
+uvicorn==0.24.0
+pydantic==2.5.0
+
+# PyTorch для Silero TTS
+torch>=2.0.0,<3.0.0
+torchaudio>=2.0.0,<3.0.0
+
+# Аудио обработка
+soundfile>=0.12.1
+numpy>=1.21.0
+
+# Silero TTS зависимости  
+omegaconf>=2.3.0
+pyyaml>=6.0
+
+# Для работы с HTTP запросами
+requests 

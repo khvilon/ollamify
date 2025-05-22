@@ -18,6 +18,8 @@ services:
         condition: service_started
       frida:
         condition: service_started
+      tts:
+        condition: service_started
     environment:
       - ZEUS_PORT=80
       - POSTGRES_PORT=${POSTGRES_PORT}
@@ -37,61 +39,10 @@ services:
     networks:
       - app-network
 
-  db:
-    image: ankane/pgvector:latest
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - pg_data:/var/lib/postgresql/data
-      - ./services/vector-db/init.sql:/docker-entrypoint-initdb.d/init.sql
-    expose:
-      - "5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
-    container_name: db
-    networks:
-      - app-network
-
-  vector-db:
-    build:
-      context: ./services/vector-db
-      dockerfile: Dockerfile
-    volumes:
-      - qdrant_data:/qdrant/storage
-      - ./services/vector-db/config.yaml:/qdrant/config/production.yaml
-    ports:
-      - "6333:6333"
-    expose:
-      - "6333"
-      - "6334"
-    container_name: vector-db
-    networks:
-      - app-network
-
   ollama:
-    build:
-      context: .
-      dockerfile: services/ollama/Dockerfile
-    volumes:
-      - ollama_data:/root/.ollama
-    expose:
-      - "11434"
-    healthcheck:
-      test: ["CMD", "pgrep", "ollama"]
-      interval: 5s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
     environment:
       - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - NVIDIA_VISIBLE_DEVICES=all
-    container_name: ollama
     deploy:
       resources:
         reservations:
@@ -99,23 +50,11 @@ services:
             - driver: nvidia
               count: all
               capabilities: [gpu]
-    networks:
-      - app-network
 
   frida:
-    build:
-      context: ./services/frida
-      dockerfile: Dockerfile
-    volumes:
-      - frida_models:/app/models
-    ports:
-      - "8002:8002"
-    expose:
-      - "8002"
     environment:
       - TRANSFORMERS_CACHE=/app/models
       - NVIDIA_VISIBLE_DEVICES=all
-    container_name: frida
     deploy:
       resources:
         reservations:
@@ -123,26 +62,16 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    networks:
-      - app-network
 
   reranker:
     build:
       context: ./services/reranker
       dockerfile: Dockerfile.gpu
-    volumes:
-      - reranker_models:/app/models
-      - ./services/reranker/app.py:/app/app.py
-    ports:
-      - "8001:8001"
-    expose:
-      - "8001"
     environment:
       - RERANKER_MODEL=${RERANKER_MODEL}
       - PORT=8001
       - TRANSFORMERS_CACHE=/app/models
       - NVIDIA_VISIBLE_DEVICES=all
-    container_name: reranker
     deploy:
       resources:
         reservations:
@@ -150,62 +79,40 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    networks:
-      - app-network
 
-  auth:
-    container_name: auth
-    build: ./services/auth
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_HOST: db
-      POSTGRES_PORT: 5432
-      JWT_SECRET: ${JWT_SECRET}
-      AUTH_PORT: 80
-    expose:
-      - "80"
-    depends_on:
-      - db
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 10s
-    deploy:
-      restart_policy:
-        condition: on-failure
-        max_attempts: 3
-
-  www3:
+  tts:
     build:
-      context: ./services/www3
+      context: ./services/tts
       dockerfile: Dockerfile
-    ports:
-      - "80:80"
-    depends_on:
-      - zeus
-      - auth
     volumes:
-      - ./services/www3:/usr/share/nginx/html
-      - ./services/www3/nginx.conf:/etc/nginx/conf.d/default.conf
-    container_name: www3
+      - tts_models:/app/models
+    ports:
+      - "8003:8003"
+    expose:
+      - "8003"
+    environment:
+      - PORT=8003
+      - TORCH_HOME=/app/models
+      - HF_HOME=/app/models
+      - TRANSFORMERS_CACHE=/app/models
+      - NVIDIA_VISIBLE_DEVICES=all
+    container_name: tts
     networks:
       - app-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 volumes:
-  pg_data:
-  qdrant_data:
-  ollama_data:
-  frida_models:
-  reranker_models:
-    name: ollamify-reranker-models
-
-networks:
-  app-network:
-    driver: bridge
-    name: app-network
+  tts_models:
+    name: ollamify-tts-models 

@@ -92,6 +92,8 @@ class ProjectQueries {
           logger.info(`Deleting Qdrant collection for project ${projectName}`);
           await qdrantClient.deleteCollection(projectName);
           logger.info(`Deleted Qdrant collection for project ${projectName}`);
+        } else {
+          logger.warn(`Qdrant collection for project ${projectName} does not exist`);
         }
       } catch (error) {
         logger.error(`Error deleting Qdrant collection for project ${projectName}:`, error);
@@ -104,6 +106,7 @@ class ProjectQueries {
       `, [id]);
 
       await client.query('COMMIT');
+      return { success: true, message: 'Project deleted successfully' };
     } catch (error) {
       await client.query('ROLLBACK');
       throw error;
