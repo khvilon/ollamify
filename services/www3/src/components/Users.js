@@ -31,7 +31,8 @@ const {
     List,
     ListItem,
     ListItemText,
-    ListItemSecondaryAction
+    ListItemSecondaryAction,
+    alpha
 } = window.MaterialUI;
 
 const { useState, useEffect } = window.React;
@@ -287,8 +288,12 @@ function Users() {
                 )}
 
                 <TableContainer component={Paper} sx={{ 
-                    boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
-                    borderRadius: 2
+                    borderRadius: 2,
+                    background: theme => theme.palette.mode === 'light' 
+                        ? 'rgba(255, 255, 255, 0.7)'
+                        : 'rgba(50, 50, 50, 0.7)',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                 }}>
                     <Table>
                         <TableHead>

@@ -396,16 +396,13 @@ function Voice() {
         <Container maxWidth="lg" sx={{ py: 3 }}>
             {/* Заголовок */}
             <Box sx={{ mb: 4 }}>
-                <Typography variant="h4" gutterBottom sx={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: 2,
+                <Typography variant="h4" component="h1" sx={{
+                    fontWeight: 600,
                     background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent'
                 }}>
-                    <Icon>record_voice_over</Icon>
-                    Voice Assistant
+                    Voice
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
                     Text-to-Speech (Silero TTS) and Speech Recognition (Whisper) • GPL 3.0 + Apache 2.0
@@ -427,7 +424,14 @@ function Voice() {
                 <Grid container spacing={3}>
                     {/* Настройки TTS */}
                     <Grid item xs={12} md={4}>
-                        <Card>
+                        <Card sx={{
+                            borderRadius: 2,
+                            background: theme => theme.palette.mode === 'light' 
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : 'rgba(50, 50, 50, 0.7)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>settings</Icon>
@@ -535,7 +539,14 @@ function Voice() {
 
                     {/* Ввод текста и результат */}
                     <Grid item xs={12} md={8}>
-                        <Card>
+                        <Card sx={{
+                            borderRadius: 2,
+                            background: theme => theme.palette.mode === 'light' 
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : 'rgba(50, 50, 50, 0.7)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>edit</Icon>
@@ -625,7 +636,14 @@ function Voice() {
                 <Grid container spacing={3}>
                     {/* Настройки STT */}
                     <Grid item xs={12} md={4}>
-                        <Card>
+                        <Card sx={{
+                            borderRadius: 2,
+                            background: theme => theme.palette.mode === 'light' 
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : 'rgba(50, 50, 50, 0.7)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>settings</Icon>
@@ -717,7 +735,14 @@ function Voice() {
 
                     {/* Запись и результат */}
                     <Grid item xs={12} md={8}>
-                        <Card>
+                        <Card sx={{
+                            borderRadius: 2,
+                            background: theme => theme.palette.mode === 'light' 
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : 'rgba(50, 50, 50, 0.7)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        }}>
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>mic</Icon>

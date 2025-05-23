@@ -375,11 +375,10 @@ function Documents() {
     };
 
     return (
-        <Container maxWidth="xl">
+        <Container maxWidth="lg">
             <Box sx={{ 
                 mt: 4,
                 height: '100%',
-                pb: 4,
                 animation: 'fadeIn 0.5s ease-in-out',
                 '@keyframes fadeIn': {
                     '0%': { opacity: 0, transform: 'translateY(20px)' },
@@ -422,14 +421,13 @@ function Documents() {
                             position: 'relative',
                             zIndex: 1
                         }}>
-                            <Paper elevation={3} sx={{ 
+                            <Paper sx={{ 
                                 p: 4,
                                 borderRadius: 2,
                                 background: theme.palette.mode === 'light' 
                                     ? 'rgba(255, 255, 255, 0.7)'
                                     : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
                                 boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                             }}>
                                 <Typography variant="h6" sx={{ 
@@ -604,14 +602,13 @@ function Documents() {
                             position: 'relative',
                             zIndex: 1
                         }}>
-                            <Paper elevation={3} sx={{ 
+                            <Paper sx={{ 
                                 p: 4,
                                 borderRadius: 2,
                                 background: theme.palette.mode === 'light' 
                                     ? 'rgba(255, 255, 255, 0.7)'
                                     : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
                                 boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                             }}>
                                 <Typography variant="h6" sx={{ 

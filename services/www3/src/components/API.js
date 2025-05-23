@@ -16,7 +16,8 @@ const {
     Tabs,
     IconButton,
     Tooltip,
-    Snackbar
+    Snackbar,
+    alpha
 } = window.MaterialUI;
 
 const { useState, useEffect } = window.React;
@@ -362,19 +363,21 @@ async function textToSpeech(text, voice = "female_1") {
         <Container maxWidth="lg">
             <Box sx={{ py: 4 }}>
                 {/* Заголовок */}
-                <Paper sx={{ p: 3, mb: 4, background: 'linear-gradient(45deg, #3b82f6 30%, #1e40af 90%)' }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', color: 'white' }}>
-                        <span className="material-icons" style={{ fontSize: 40, marginRight: 16 }}>api</span>
-                        <Box>
-                            <Typography variant="h4" component="h1" gutterBottom>
-                                API Documentation
-                            </Typography>
-                            <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                                External API endpoints for Ollamify integration
-                            </Typography>
-                        </Box>
-                    </Box>
-                </Paper>
+                <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center',
+                    mb: 4 
+                }}>
+                    <Typography variant="h4" component="h1" sx={{
+                        fontWeight: 600,
+                        background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                    }}>
+                        API Documentation
+                    </Typography>
+                </Box>
 
                 {/* Вкладки */}
                 <Paper sx={{ mb: 3 }}>
@@ -404,7 +407,15 @@ async function textToSpeech(text, voice = "female_1") {
                     <Grid container spacing={3}>
                         {externalEndpoints.map((endpoint, index) => (
                             <Grid item xs={12} md={6} key={index}>
-                                <Card sx={{ h: '100%', border: 1, borderColor: 'grey.200' }}>
+                                <Card sx={{ 
+                                    h: '100%',
+                                    borderRadius: 2,
+                                    background: theme => theme.palette.mode === 'light' 
+                                        ? 'rgba(255, 255, 255, 0.7)'
+                                        : 'rgba(50, 50, 50, 0.7)',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                }}>
                                     <CardContent>
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
                                             <Typography variant="h6" component="h3">
@@ -444,25 +455,61 @@ async function textToSpeech(text, voice = "female_1") {
                         </Typography>
                         <Grid container spacing={2}>
                             <Grid item xs={12} sm={6} md={3}>
-                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                <Paper sx={{ 
+                                    p: 2, 
+                                    textAlign: 'center',
+                                    borderRadius: 2,
+                                    background: theme => theme.palette.mode === 'light' 
+                                        ? 'rgba(255, 255, 255, 0.7)'
+                                        : 'rgba(50, 50, 50, 0.7)',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                }}>
                                     <Typography variant="h4" color="primary">50MB</Typography>
                                     <Typography variant="body2">Max file size</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
-                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                <Paper sx={{ 
+                                    p: 2, 
+                                    textAlign: 'center',
+                                    borderRadius: 2,
+                                    background: theme => theme.palette.mode === 'light' 
+                                        ? 'rgba(255, 255, 255, 0.7)'
+                                        : 'rgba(50, 50, 50, 0.7)',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                }}>
                                     <Typography variant="h4" color="primary">10 min</Typography>
                                     <Typography variant="body2">Request timeout</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
-                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                <Paper sx={{ 
+                                    p: 2, 
+                                    textAlign: 'center',
+                                    borderRadius: 2,
+                                    background: theme => theme.palette.mode === 'light' 
+                                        ? 'rgba(255, 255, 255, 0.7)'
+                                        : 'rgba(50, 50, 50, 0.7)',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                }}>
                                     <Typography variant="h4" color="primary">JSON</Typography>
                                     <Typography variant="body2">Data format</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
-                                <Paper sx={{ p: 2, textAlign: 'center' }}>
+                                <Paper sx={{ 
+                                    p: 2, 
+                                    textAlign: 'center',
+                                    borderRadius: 2,
+                                    background: theme => theme.palette.mode === 'light' 
+                                        ? 'rgba(255, 255, 255, 0.7)'
+                                        : 'rgba(50, 50, 50, 0.7)',
+                                    backdropFilter: 'blur(10px)',
+                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                }}>
                                     <Typography variant="h4" color="primary">HTTPS</Typography>
                                     <Typography variant="body2">Security</Typography>
                                 </Paper>
@@ -498,7 +545,14 @@ async function textToSpeech(text, voice = "female_1") {
                         <Grid container spacing={2}>
                             {apiKeys.map((key, index) => (
                                 <Grid item xs={12} key={key.id}>
-                                    <Card variant="outlined">
+                                    <Card sx={{
+                                        borderRadius: 2,
+                                        background: theme => theme.palette.mode === 'light' 
+                                            ? 'rgba(255, 255, 255, 0.7)'
+                                            : 'rgba(50, 50, 50, 0.7)',
+                                        backdropFilter: 'blur(10px)',
+                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    }}>
                                         <CardContent>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <Box>
@@ -573,7 +627,14 @@ async function textToSpeech(text, voice = "female_1") {
 
                     <Grid container spacing={3}>
                         <Grid item xs={12} md={4}>
-                            <Card>
+                            <Card sx={{
+                                borderRadius: 2,
+                                background: theme => theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.7)'
+                                    : 'rgba(50, 50, 50, 0.7)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                            }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <span className="material-icons" style={{ fontSize: 20, marginRight: 10 }}>code</span>
@@ -619,7 +680,14 @@ async function textToSpeech(text, voice = "female_1") {
                         </Grid>
 
                         <Grid item xs={12} md={4}>
-                            <Card>
+                            <Card sx={{
+                                borderRadius: 2,
+                                background: theme => theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.7)'
+                                    : 'rgba(50, 50, 50, 0.7)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                            }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <span className="material-icons" style={{ fontSize: 20, marginRight: 10 }}>code</span>
@@ -665,7 +733,14 @@ async function textToSpeech(text, voice = "female_1") {
                         </Grid>
 
                         <Grid item xs={12} md={4}>
-                            <Card>
+                            <Card sx={{
+                                borderRadius: 2,
+                                background: theme => theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.7)'
+                                    : 'rgba(50, 50, 50, 0.7)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                            }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                                         <span className="material-icons" style={{ fontSize: 20, marginRight: 10 }}>code</span>

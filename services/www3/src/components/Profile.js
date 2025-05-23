@@ -27,7 +27,8 @@ const {
     TableHead,
     TableRow,
     Chip,
-    LinearProgress
+    LinearProgress,
+    alpha
 } = window.MaterialUI;
 
 const { useState, useEffect } = window.React;
@@ -187,7 +188,11 @@ function Profile() {
                             <Paper elevation={3} sx={{ 
                                 p: 3,
                                 borderRadius: 2,
-                                backgroundColor: theme.palette.background.paper,
+                                background: theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.5)'
+                                    : 'rgba(50, 50, 50, 0.5)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                 color: theme.palette.text.primary
                             }}>
                                 <Box sx={{ 
@@ -255,7 +260,11 @@ function Profile() {
                             <Paper elevation={3} sx={{ 
                                 p: 3,
                                 borderRadius: 2,
-                                backgroundColor: theme.palette.background.paper,
+                                background: theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.5)'
+                                    : 'rgba(50, 50, 50, 0.5)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                 color: theme.palette.text.primary
                             }}>
                                 <Typography variant="h6" gutterBottom sx={{ 
@@ -306,7 +315,11 @@ function Profile() {
                             <Paper elevation={3} sx={{ 
                                 p: 3,
                                 borderRadius: 2,
-                                backgroundColor: theme.palette.background.paper,
+                                background: theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.5)'
+                                    : 'rgba(50, 50, 50, 0.5)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                 color: theme.palette.text.primary
                             }}>
                                 <Typography variant="h6" gutterBottom sx={{ 
@@ -319,7 +332,12 @@ function Profile() {
                                 <Grid container spacing={3}>
                                     <Grid item xs={6} sm={3}>
                                         <Card elevation={2} sx={{
-                                            backgroundColor: theme.palette.background.paper,
+                                            borderRadius: 2,
+                                            background: theme.palette.mode === 'light' 
+                                                ? 'rgba(255, 255, 255, 0.5)'
+                                                : 'rgba(50, 50, 50, 0.5)',
+                                            backdropFilter: 'blur(10px)',
+                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                             color: theme.palette.text.primary,
                                             transition: 'transform 0.2s',
                                             '&:hover': { transform: 'translateY(-4px)' }
@@ -338,7 +356,12 @@ function Profile() {
 
                                     <Grid item xs={6} sm={3}>
                                         <Card elevation={2} sx={{
-                                            backgroundColor: theme.palette.background.paper,
+                                            borderRadius: 2,
+                                            background: theme.palette.mode === 'light' 
+                                                ? 'rgba(255, 255, 255, 0.5)'
+                                                : 'rgba(50, 50, 50, 0.5)',
+                                            backdropFilter: 'blur(10px)',
+                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                             color: theme.palette.text.primary,
                                             transition: 'transform 0.2s',
                                             '&:hover': { transform: 'translateY(-4px)' }
@@ -357,7 +380,12 @@ function Profile() {
 
                                     <Grid item xs={6} sm={3}>
                                         <Card elevation={2} sx={{
-                                            backgroundColor: theme.palette.background.paper,
+                                            borderRadius: 2,
+                                            background: theme.palette.mode === 'light' 
+                                                ? 'rgba(255, 255, 255, 0.5)'
+                                                : 'rgba(50, 50, 50, 0.5)',
+                                            backdropFilter: 'blur(10px)',
+                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                             color: theme.palette.text.primary,
                                             transition: 'transform 0.2s',
                                             '&:hover': { transform: 'translateY(-4px)' }
@@ -376,7 +404,12 @@ function Profile() {
 
                                     <Grid item xs={6} sm={3}>
                                         <Card elevation={2} sx={{
-                                            backgroundColor: theme.palette.background.paper,
+                                            borderRadius: 2,
+                                            background: theme.palette.mode === 'light' 
+                                                ? 'rgba(255, 255, 255, 0.5)'
+                                                : 'rgba(50, 50, 50, 0.5)',
+                                            backdropFilter: 'blur(10px)',
+                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                             color: theme.palette.text.primary,
                                             transition: 'transform 0.2s',
                                             '&:hover': { transform: 'translateY(-4px)' }
@@ -420,7 +453,11 @@ function Profile() {
                             <Paper elevation={3} sx={{ 
                                 p: 3,
                                 borderRadius: 2,
-                                backgroundColor: theme.palette.background.paper,
+                                background: theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.5)'
+                                    : 'rgba(50, 50, 50, 0.5)',
+                                backdropFilter: 'blur(10px)',
+                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                                 color: theme.palette.text.primary
                             }}>
                                 <Typography variant="h6" gutterBottom sx={{ 

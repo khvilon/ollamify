@@ -217,18 +217,22 @@ function RequestLogs() {
     }
 
     return (
-        <Container maxWidth="xl" sx={{ py: 3 }}>
+        <Container maxWidth="lg" sx={{ py: 3 }}>
+            <Box sx={{ 
+                animation: 'fadeIn 0.5s ease-in-out',
+                '@keyframes fadeIn': {
+                    '0%': { opacity: 0, transform: 'translateY(20px)' },
+                    '100%': { opacity: 1, transform: 'translateY(0)' }
+                }
+            }}>
             {/* Заголовок */}
             <Box sx={{ mb: 4 }}>
-                <Typography variant="h4" gutterBottom sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 2,
+                <Typography variant="h4" component="h1" sx={{
+                    fontWeight: 600,
                     background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
                     WebkitBackgroundClip: 'text',
                     WebkitTextFillColor: 'transparent'
                 }}>
-                    <Icon>analytics</Icon>
                     Request Logs
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
@@ -246,65 +250,115 @@ function RequestLogs() {
             {/* Статистика */}
             {stats && (
                 <Grid container spacing={3} sx={{ mb: 3 }}>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <Card>
-                            <CardContent sx={{ textAlign: 'center' }}>
-                                <Icon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }}>trending_up</Icon>
-                                <Typography variant="h6" gutterBottom>
-                                    {parseInt(stats.total_requests).toLocaleString()}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Total Requests
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                    {isAdmin && stats.unique_users && (
-                        <Grid item xs={12} sm={6} md={3}>
-                            <Card>
-                                <CardContent sx={{ textAlign: 'center' }}>
-                                    <Icon sx={{ fontSize: 40, color: 'success.main', mb: 1 }}>people</Icon>
-                                    <Typography variant="h6" gutterBottom>
-                                        {parseInt(stats.unique_users).toLocaleString()}
-                                    </Typography>
-                                    <Typography variant="body2" color="text.secondary">
-                                        Unique Users
-                                    </Typography>
-                                </CardContent>
-                            </Card>
-                        </Grid>
-                    )}
-                    <Grid item xs={12} sm={6} md={3}>
-                        <Card>
-                            <CardContent sx={{ textAlign: 'center' }}>
-                                <Icon sx={{ fontSize: 40, color: 'info.main', mb: 1 }}>speed</Icon>
-                                <Typography variant="h6" gutterBottom>
-                                    {Math.round(parseFloat(stats.avg_response_time))} ms
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Avg Response Time
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                    <Grid item xs={12} sm={6} md={3}>
-                        <Card>
-                            <CardContent sx={{ textAlign: 'center' }}>
-                                <Icon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }}>slow_motion_video</Icon>
-                                <Typography variant="h6" gutterBottom>
-                                    {parseInt(stats.slow_requests).toLocaleString()}
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary">
-                                    Slow Requests (&gt;1s)
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
+                    {(() => {
+                        // Динамически рассчитываем количество плашек
+                        const statsCount = 3 + (isAdmin && stats.unique_users ? 1 : 0);
+                        const gridSize = statsCount === 4 ? 3 : 12 / statsCount;
+                        
+                        return (
+                            <>
+                                <Grid item xs={12} sm={6} md={gridSize}>
+                                    <Card sx={{ 
+                                        height: '100%',
+                                        borderRadius: 2,
+                                        background: theme => theme.palette.mode === 'light' 
+                                            ? 'rgba(255, 255, 255, 0.7)'
+                                            : 'rgba(50, 50, 50, 0.7)',
+                                        backdropFilter: 'blur(10px)',
+                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    }}>
+                                        <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                                            <Icon sx={{ fontSize: 40, color: 'primary.main', mb: 1 }}>trending_up</Icon>
+                                            <Typography variant="h6" gutterBottom>
+                                                {parseInt(stats.total_requests).toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Total Requests
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                {isAdmin && stats.unique_users && (
+                                    <Grid item xs={12} sm={6} md={gridSize}>
+                                        <Card sx={{ 
+                                            height: '100%',
+                                            borderRadius: 2,
+                                            background: theme => theme.palette.mode === 'light' 
+                                                ? 'rgba(255, 255, 255, 0.7)'
+                                                : 'rgba(50, 50, 50, 0.7)',
+                                            backdropFilter: 'blur(10px)',
+                                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        }}>
+                                            <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                                                <Icon sx={{ fontSize: 40, color: 'success.main', mb: 1 }}>people</Icon>
+                                                <Typography variant="h6" gutterBottom>
+                                                    {parseInt(stats.unique_users).toLocaleString()}
+                                                </Typography>
+                                                <Typography variant="body2" color="text.secondary">
+                                                    Unique Users
+                                                </Typography>
+                                            </CardContent>
+                                        </Card>
+                                    </Grid>
+                                )}
+                                <Grid item xs={12} sm={6} md={gridSize}>
+                                    <Card sx={{ 
+                                        height: '100%',
+                                        borderRadius: 2,
+                                        background: theme => theme.palette.mode === 'light' 
+                                            ? 'rgba(255, 255, 255, 0.7)'
+                                            : 'rgba(50, 50, 50, 0.7)',
+                                        backdropFilter: 'blur(10px)',
+                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    }}>
+                                        <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                                            <Icon sx={{ fontSize: 40, color: 'info.main', mb: 1 }}>speed</Icon>
+                                            <Typography variant="h6" gutterBottom>
+                                                {Math.round(parseFloat(stats.avg_response_time))} ms
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Avg Response Time
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                                <Grid item xs={12} sm={6} md={gridSize}>
+                                    <Card sx={{ 
+                                        height: '100%',
+                                        borderRadius: 2,
+                                        background: theme => theme.palette.mode === 'light' 
+                                            ? 'rgba(255, 255, 255, 0.7)'
+                                            : 'rgba(50, 50, 50, 0.7)',
+                                        backdropFilter: 'blur(10px)',
+                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    }}>
+                                        <CardContent sx={{ textAlign: 'center', py: 3 }}>
+                                            <Icon sx={{ fontSize: 40, color: 'warning.main', mb: 1 }}>slow_motion_video</Icon>
+                                            <Typography variant="h6" gutterBottom>
+                                                {parseInt(stats.slow_requests).toLocaleString()}
+                                            </Typography>
+                                            <Typography variant="body2" color="text.secondary">
+                                                Slow Requests (&gt;1s)
+                                            </Typography>
+                                        </CardContent>
+                                    </Card>
+                                </Grid>
+                            </>
+                        );
+                    })()}
                 </Grid>
             )}
 
             {/* Фильтры */}
-            <Card sx={{ mb: 3 }}>
+            <Card sx={{ 
+                mb: 3,
+                borderRadius: 2,
+                background: theme => theme.palette.mode === 'light' 
+                    ? 'rgba(255, 255, 255, 0.7)'
+                    : 'rgba(50, 50, 50, 0.7)',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+            }}>
                 <CardContent>
                     <Typography variant="h6" gutterBottom>
                         <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>filter_list</Icon>
@@ -313,7 +367,7 @@ function RequestLogs() {
                     
                     <Grid container spacing={2} sx={{ mb: 2 }}>
                         {isAdmin && (
-                            <Grid item xs={12} sm={6} md={2}>
+                            <Grid item xs={12} sm={6} md={4} lg={2}>
                                 <TextField
                                     fullWidth
                                     label="User"
@@ -323,7 +377,7 @@ function RequestLogs() {
                                 />
                             </Grid>
                         )}
-                        <Grid item xs={12} sm={6} md={2}>
+                        <Grid item xs={12} sm={6} md={4} lg={2}>
                             <FormControl fullWidth size="small">
                                 <InputLabel>Method</InputLabel>
                                 <Select
@@ -339,7 +393,7 @@ function RequestLogs() {
                                 </Select>
                             </FormControl>
                         </Grid>
-                        <Grid item xs={12} sm={6} md={2}>
+                        <Grid item xs={12} sm={6} md={4} lg={2}>
                             <TextField
                                 fullWidth
                                 label="Path"
@@ -348,7 +402,7 @@ function RequestLogs() {
                                 size="small"
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6} md={2}>
+                        <Grid item xs={12} sm={6} md={6} lg={2}>
                             <TextField
                                 fullWidth
                                 type="datetime-local"
@@ -359,7 +413,7 @@ function RequestLogs() {
                                 InputLabelProps={{ shrink: true }}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6} md={2}>
+                        <Grid item xs={12} sm={6} md={6} lg={2}>
                             <TextField
                                 fullWidth
                                 type="datetime-local"
@@ -370,13 +424,14 @@ function RequestLogs() {
                                 InputLabelProps={{ shrink: true }}
                             />
                         </Grid>
-                        <Grid item xs={12} sm={6} md={2}>
-                            <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Grid item xs={12} sm={12} md={12} lg={2}>
+                            <Box sx={{ display: 'flex', gap: 1, height: '100%', alignItems: 'flex-start' }}>
                                 <Button
                                     variant="contained"
                                     onClick={handleApplyFilters}
                                     startIcon={<Icon>search</Icon>}
                                     size="small"
+                                    sx={{ minWidth: 'auto', flex: 1 }}
                                 >
                                     Apply
                                 </Button>
@@ -385,6 +440,7 @@ function RequestLogs() {
                                     onClick={handleClearFilters}
                                     startIcon={<Icon>clear</Icon>}
                                     size="small"
+                                    sx={{ minWidth: 'auto', flex: 1 }}
                                 >
                                     Clear
                                 </Button>
@@ -396,7 +452,15 @@ function RequestLogs() {
 
             {/* Статистика пользователей */}
             {isAdmin && userStats.length > 0 && (
-                <Card sx={{ mb: 3 }}>
+                <Card sx={{ 
+                    mb: 3,
+                    borderRadius: 2,
+                    background: theme => theme.palette.mode === 'light' 
+                        ? 'rgba(255, 255, 255, 0.7)'
+                        : 'rgba(50, 50, 50, 0.7)',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                }}>
                     <CardContent>
                         <Accordion>
                             <AccordionSummary expandIcon={<Icon>expand_more</Icon>}>
@@ -477,7 +541,14 @@ function RequestLogs() {
             )}
 
             {/* Таблица логов */}
-            <Card>
+            <Card sx={{
+                borderRadius: 2,
+                background: theme => theme.palette.mode === 'light' 
+                    ? 'rgba(255, 255, 255, 0.7)'
+                    : 'rgba(50, 50, 50, 0.7)',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+            }}>
                 <CardContent>
                     <Typography variant="h6" gutterBottom>
                         <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>list</Icon>
@@ -658,6 +729,7 @@ function RequestLogs() {
                     </Button>
                 </DialogActions>
             </Dialog>
+            </Box>
         </Container>
     );
 }

@@ -18,7 +18,8 @@ const {
     Grid,
     InputAdornment,
     ButtonGroup,
-    TextField
+    TextField,
+    alpha
 } = window.MaterialUI;
 
 const { useState, useEffect, useCallback, useMemo, useRef } = window.React;
@@ -422,8 +423,15 @@ function Models() {
                 display: 'flex',
                 flexDirection: 'column',
                 position: 'relative',
+                borderRadius: 2,
+                background: theme => theme.palette.mode === 'light' 
+                    ? 'rgba(255, 255, 255, 0.7)'
+                    : 'rgba(50, 50, 50, 0.7)',
+                backdropFilter: 'blur(10px)',
+                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
                 '&:hover': {
-                    boxShadow: 3
+                    transform: 'translateY(-4px)',
+                    boxShadow: '0 12px 40px 0 rgba(31, 38, 135, 0.12)'
                 }
             }}>
                 <CardContent sx={{ flexGrow: 1 }}>
@@ -602,7 +610,16 @@ function Models() {
                     </Fade>
                 )}
 
-                <Paper elevation={3} sx={{ p: 3, mb: 3 }}>
+                <Paper sx={{ 
+                    p: 3, 
+                    mb: 3,
+                    borderRadius: 2,
+                    background: theme => theme.palette.mode === 'light' 
+                        ? 'rgba(255, 255, 255, 0.5)'
+                        : 'rgba(50, 50, 50, 0.5)',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                }}>
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                         <TextField
                             placeholder="Search models..."

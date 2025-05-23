@@ -85,14 +85,14 @@ function Layout({ children }) {
                 alignItems: 'center',
                 justifyContent: 'flex-start',
                 py: 2,
-                px: 2
+                px: 2,
+                minHeight: '64px !important'
             }}>
                 <Box sx={{ 
                     display: 'flex', 
                     alignItems: 'center',
-                    gap: 3,
-                    ml: 1,
-                    mb: 1
+                    gap: 2,
+                    ml: 1
                 }}>
                     <Box
                         component="span"
@@ -106,6 +106,7 @@ function Layout({ children }) {
                             borderRadius: '8px',
                             color: 'white',
                             position: 'relative',
+                            flexShrink: 0,
                             '&::before': {
                                 content: '""',
                                 position: 'absolute',
@@ -202,7 +203,7 @@ function Layout({ children }) {
             display: 'flex',
             minHeight: '100vh',
             background: theme.palette.mode === 'light'
-                ? 'linear-gradient(120deg, #f0f7ff 0%, #ffffff 100%)'
+                ? 'linear-gradient(120deg, #f0f7ff 0%, #d0d0d0 100%)'
                 : 'linear-gradient(120deg, #1a1a1a 0%, #2d2d2d 100%)',
             '&::before': {
                 content: '""',

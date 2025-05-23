@@ -223,8 +223,7 @@ function Chat() {
                 right: 0,
                 bottom: 0,
                 display: 'flex',
-                justifyContent: 'center',
-                bgcolor: 'background.default'
+                justifyContent: 'center'
             }}>
                 <CircularProgress />
             </Box>
@@ -239,10 +238,9 @@ function Chat() {
             right: 0,
             bottom: 0,
             display: 'flex',
-            justifyContent: 'center',
-            bgcolor: 'background.default'
+            justifyContent: 'center'
         }}>
-            <Container maxWidth="md" sx={{ height: '100%', p: 0 }}>
+            <Container maxWidth="lg" sx={{ height: '100%', p: 0 }}>
                 <Box sx={{ 
                     height: '100%',
                     display: 'flex',
@@ -250,6 +248,23 @@ function Chat() {
                     px: 3,
                     py: 2
                 }}>
+                    {/* Заголовок */}
+                    <Box sx={{ 
+                        display: 'flex', 
+                        justifyContent: 'space-between', 
+                        alignItems: 'center',
+                        mb: 3 
+                    }}>
+                        <Typography variant="h4" component="h1" sx={{
+                            fontWeight: 600,
+                            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                            WebkitBackgroundClip: 'text',
+                            WebkitTextFillColor: 'transparent'
+                        }}>
+                            Chat
+                        </Typography>
+                    </Box>
+
                     {/* Controls */}
                     <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
                         <FormControl sx={{ minWidth: 200 }}>
@@ -350,13 +365,17 @@ function Chat() {
 
                     {/* Chat Area */}
                     <Paper 
-                        elevation={1} 
                         sx={{ 
                             flex: 1,
                             display: 'flex',
                             flexDirection: 'column',
                             overflow: 'hidden',
-                            bgcolor: 'background.default'
+                            borderRadius: 2,
+                            background: theme => theme.palette.mode === 'light' 
+                                ? 'rgba(255, 255, 255, 0.7)'
+                                : 'rgba(50, 50, 50, 0.7)',
+                            backdropFilter: 'blur(10px)',
+                            boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                         }}
                     >
                         {/* Messages Area */}

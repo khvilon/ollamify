@@ -27,7 +27,8 @@ const {
     Fade,
     Tooltip,
     Chip,
-    Autocomplete
+    Autocomplete,
+    alpha
 } = window.MaterialUI;
 
 const { useState, useEffect, useRef, useCallback } = window.React;
@@ -316,170 +317,192 @@ function Projects() {
     };
 
     return (
-        <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
-            <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-                <Typography variant="h4" component="h1">
-                    Projects
-                </Typography>
-                <Button
-                    variant="contained"
-                    color="primary"
-                    startIcon={<Icon>add</Icon>}
-                    onClick={() => setDialogOpen(true)}
-                >
-                    New Project
-                </Button>
-            </Box>
-
-            {error && (
-                <Alert severity="error" sx={{ mb: 2 }}>
-                    {error}
-                </Alert>
-            )}
-
-            <TableContainer component={Paper}>
-                <Table>
-                    <TableHead>
-                        <TableRow>
-                            <TableCell>Name</TableCell>
-                            <TableCell>Embedding Model</TableCell>
-                            <TableCell>Created By</TableCell>
-                            <TableCell>Created At</TableCell>
-                            <TableCell>Documents</TableCell>
-                            <TableCell align="right">Actions</TableCell>
-                        </TableRow>
-                    </TableHead>
-                    <TableBody>
-                        {loading && !projects.length ? (
-                            <TableRow>
-                                <TableCell colSpan={6} align="center">
-                                    <CircularProgress />
-                                </TableCell>
-                            </TableRow>
-                        ) : !projects.length ? (
-                            <TableRow>
-                                <TableCell colSpan={6} align="center">
-                                    No projects found
-                                </TableCell>
-                            </TableRow>
-                        ) : (
-                            projects.map((project) => (
-                                <TableRow key={project.id}>
-                                    <TableCell>{project.name}</TableCell>
-                                    <TableCell>
-                                        <Chip 
-                                            label={project.embedding_model}
-                                            size="small"
-                                            color="primary"
-                                            variant="outlined"
-                                        />
-                                    </TableCell>
-                                    <TableCell>
-                                        {project.creator_username || project.creator_email || 'Unknown'}
-                                    </TableCell>
-                                    <TableCell>
-                                        {new Date(project.created_at).toLocaleString()}
-                                    </TableCell>
-                                    <TableCell>
-                                        {stats[project.id]?.document_count || '0'}
-                                    </TableCell>
-                                    <TableCell align="right">
-                                        <Tooltip title="Edit">
-                                            <IconButton
-                                                size="small"
-                                                onClick={() => handleEditClick(project)}
-                                            >
-                                                <Icon>edit</Icon>
-                                            </IconButton>
-                                        </Tooltip>
-                                        <Tooltip title="Delete">
-                                            <IconButton
-                                                size="small"
-                                                color="error"
-                                                onClick={() => handleDeleteClick(project)}
-                                            >
-                                                <Icon>delete</Icon>
-                                            </IconButton>
-                                        </Tooltip>
-                                    </TableCell>
-                                </TableRow>
-                            ))
-                        )}
-                    </TableBody>
-                </Table>
-            </TableContainer>
-
-            {/* Create/Edit Project Dialog */}
-            <Dialog open={dialogOpen} onClose={handleDialogClose} maxWidth="sm" fullWidth>
-                <DialogTitle>
-                    {selectedProject ? 'Edit Project' : 'New Project'}
-                </DialogTitle>
-                <DialogContent>
-                    <Box sx={{ mt: 2 }}>
-                        <TextField
-                            fullWidth
-                            label="Project Name"
-                            value={formData.name}
-                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                            margin="normal"
-                            required
-                        />
-                        <Autocomplete
-                            fullWidth
-                            value={selectedModel}
-                            onChange={(event, newValue) => setSelectedModel(newValue)}
-                            inputValue={modelInput}
-                            onInputChange={(event, newInputValue) => setModelInput(newInputValue)}
-                            options={models}
-                            getOptionLabel={(option) => option.displayName || option.name}
-                            renderInput={(params) => (
-                                <TextField
-                                    {...params}
-                                    label="Embedding Model"
-                                    margin="normal"
-                                    required
-                                    error={!selectedModel && !isLoadingModels}
-                                />
-                            )}
-                            disabled={!!selectedProject}
-                            loading={isLoadingModels}
-                        />
-                    </Box>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={handleDialogClose}>Cancel</Button>
+        <Container maxWidth="lg">
+            <Box sx={{ 
+                mt: 4,
+                height: '100%',
+                animation: 'fadeIn 0.5s ease-in-out',
+                '@keyframes fadeIn': {
+                    '0%': { opacity: 0, transform: 'translateY(20px)' },
+                    '100%': { opacity: 1, transform: 'translateY(0)' }
+                }
+            }}>
+                <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+                    <Typography variant="h4" component="h1" sx={{
+                        fontWeight: 600,
+                        background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                        WebkitBackgroundClip: 'text',
+                        WebkitTextFillColor: 'transparent'
+                    }}>
+                        Projects
+                    </Typography>
                     <Button
-                        onClick={selectedProject ? handleUpdateProject : handleCreateProject}
                         variant="contained"
                         color="primary"
-                        disabled={!formData.name || (!selectedProject && !selectedModel) || loading}
+                        startIcon={<Icon>add</Icon>}
+                        onClick={() => setDialogOpen(true)}
                     >
-                        {loading ? <CircularProgress size={24} /> : 'Save'}
+                        New Project
                     </Button>
-                </DialogActions>
-            </Dialog>
+                </Box>
 
-            {/* Delete Confirmation Dialog */}
-            <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
-                <DialogTitle>Delete Project</DialogTitle>
-                <DialogContent>
-                    <Typography>
-                        Are you sure you want to delete project "{selectedProject?.name}"? 
-                        This action cannot be undone.
-                    </Typography>
-                </DialogContent>
-                <DialogActions>
-                    <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
-                    <Button
-                        onClick={handleDeleteProject}
-                        color="error"
-                        variant="contained"
-                        disabled={loading}
-                    >
-                        {loading ? <CircularProgress size={24} /> : 'Delete'}
-                    </Button>
-                </DialogActions>
-            </Dialog>
+                {error && (
+                    <Alert severity="error" sx={{ mb: 2 }}>
+                        {error}
+                    </Alert>
+                )}
+
+                <TableContainer component={Paper} sx={{
+                    borderRadius: 2,
+                    background: theme => theme.palette.mode === 'light' 
+                        ? 'rgba(255, 255, 255, 0.7)'
+                        : 'rgba(50, 50, 50, 0.7)',
+                    backdropFilter: 'blur(10px)',
+                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                }}>
+                    <Table>
+                        <TableHead>
+                            <TableRow>
+                                <TableCell>Name</TableCell>
+                                <TableCell>Embedding Model</TableCell>
+                                <TableCell>Created By</TableCell>
+                                <TableCell>Created At</TableCell>
+                                <TableCell>Documents</TableCell>
+                                <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                        </TableHead>
+                        <TableBody>
+                            {loading && !projects.length ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} align="center">
+                                        <CircularProgress />
+                                    </TableCell>
+                                </TableRow>
+                            ) : !projects.length ? (
+                                <TableRow>
+                                    <TableCell colSpan={6} align="center">
+                                        No projects found
+                                    </TableCell>
+                                </TableRow>
+                            ) : (
+                                projects.map((project) => (
+                                    <TableRow key={project.id}>
+                                        <TableCell>{project.name}</TableCell>
+                                        <TableCell>
+                                            <Chip 
+                                                label={project.embedding_model}
+                                                size="small"
+                                                color="primary"
+                                                variant="outlined"
+                                            />
+                                        </TableCell>
+                                        <TableCell>
+                                            {project.creator_username || project.creator_email || 'Unknown'}
+                                        </TableCell>
+                                        <TableCell>
+                                            {new Date(project.created_at).toLocaleString()}
+                                        </TableCell>
+                                        <TableCell>
+                                            {stats[project.id]?.document_count || '0'}
+                                        </TableCell>
+                                        <TableCell align="right">
+                                            <Tooltip title="Edit">
+                                                <IconButton
+                                                    size="small"
+                                                    onClick={() => handleEditClick(project)}
+                                                >
+                                                    <Icon>edit</Icon>
+                                                </IconButton>
+                                            </Tooltip>
+                                            <Tooltip title="Delete">
+                                                <IconButton
+                                                    size="small"
+                                                    color="error"
+                                                    onClick={() => handleDeleteClick(project)}
+                                                >
+                                                    <Icon>delete</Icon>
+                                                </IconButton>
+                                            </Tooltip>
+                                        </TableCell>
+                                    </TableRow>
+                                ))
+                            )}
+                        </TableBody>
+                    </Table>
+                </TableContainer>
+
+                {/* Create/Edit Project Dialog */}
+                <Dialog open={dialogOpen} onClose={handleDialogClose} maxWidth="sm" fullWidth>
+                    <DialogTitle>
+                        {selectedProject ? 'Edit Project' : 'New Project'}
+                    </DialogTitle>
+                    <DialogContent>
+                        <Box sx={{ mt: 2 }}>
+                            <TextField
+                                fullWidth
+                                label="Project Name"
+                                value={formData.name}
+                                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                                margin="normal"
+                                required
+                            />
+                            <Autocomplete
+                                fullWidth
+                                value={selectedModel}
+                                onChange={(event, newValue) => setSelectedModel(newValue)}
+                                inputValue={modelInput}
+                                onInputChange={(event, newInputValue) => setModelInput(newInputValue)}
+                                options={models}
+                                getOptionLabel={(option) => option.displayName || option.name}
+                                renderInput={(params) => (
+                                    <TextField
+                                        {...params}
+                                        label="Embedding Model"
+                                        margin="normal"
+                                        required
+                                        error={!selectedModel && !isLoadingModels}
+                                    />
+                                )}
+                                disabled={!!selectedProject}
+                                loading={isLoadingModels}
+                            />
+                        </Box>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={handleDialogClose}>Cancel</Button>
+                        <Button
+                            onClick={selectedProject ? handleUpdateProject : handleCreateProject}
+                            variant="contained"
+                            color="primary"
+                            disabled={!formData.name || (!selectedProject && !selectedModel) || loading}
+                        >
+                            {loading ? <CircularProgress size={24} /> : 'Save'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+
+                {/* Delete Confirmation Dialog */}
+                <Dialog open={deleteDialogOpen} onClose={() => setDeleteDialogOpen(false)}>
+                    <DialogTitle>Delete Project</DialogTitle>
+                    <DialogContent>
+                        <Typography>
+                            Are you sure you want to delete project "{selectedProject?.name}"? 
+                            This action cannot be undone.
+                        </Typography>
+                    </DialogContent>
+                    <DialogActions>
+                        <Button onClick={() => setDeleteDialogOpen(false)}>Cancel</Button>
+                        <Button
+                            onClick={handleDeleteProject}
+                            color="error"
+                            variant="contained"
+                            disabled={loading}
+                        >
+                            {loading ? <CircularProgress size={24} /> : 'Delete'}
+                        </Button>
+                    </DialogActions>
+                </Dialog>
+            </Box>
         </Container>
     );
 }
