@@ -66,7 +66,16 @@ function Layout({ children }) {
         window.location.href = '/login';
     };
 
-        const menuItems = [        { text: 'Documents', icon: 'description', path: '/documents' },        { text: 'Projects', icon: 'folder', path: '/projects' },        { text: 'Models', icon: 'model_training', path: '/models' },        { text: 'Chat', icon: 'chat', path: '/chat' },        { text: 'Voice', icon: 'record_voice_over', path: '/voice' },        { text: 'Users', icon: 'group', path: '/users' },        { text: 'Profile', icon: 'person', path: '/profile' }    ];
+    const menuItems = [
+        { text: 'Documents', icon: 'description', path: '/documents' },
+        { text: 'Projects', icon: 'folder', path: '/projects' },
+        { text: 'Models', icon: 'model_training', path: '/models' },
+        { text: 'Chat', icon: 'chat', path: '/chat' },
+        { text: 'Voice', icon: 'record_voice_over', path: '/voice' },
+        { text: 'Users', icon: 'group', path: '/users' },
+        { text: 'Request Logs', icon: 'analytics', path: '/request-logs' },
+        { text: 'Profile', icon: 'person', path: '/profile' }
+    ];
 
     const drawer = (
         <Box sx={{ height: '100%' }}>

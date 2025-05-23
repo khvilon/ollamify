@@ -44,7 +44,7 @@ const {
 
 function Voice() {
     // TTS состояние
-    const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи на базе Silero TTS.');
+    const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи Silero TTS.');
     const [ttsVoice, setTtsVoice] = useState('aidar');
     const [ttsLanguage, setTtsLanguage] = useState('ru');
     const [ttsSpeed, setTtsSpeed] = useState(1.0);
@@ -77,6 +77,47 @@ function Voice() {
     const audioRef = useRef(null);
     const theme = useTheme();
 
+    // Функция для перевода gender на английский
+    const translateGender = (gender) => {
+        const translations = {
+            'мужской': 'male',
+            'женский': 'female',
+            'male': 'male',
+            'female': 'female'
+        };
+        return translations[gender] || gender;
+    };
+
+    // Функция для перевода характеристик STT моделей
+    const translateModelInfo = (text) => {
+        const translations = {
+            'быстрый': 'fast',
+            'средний': 'medium', 
+            'медленный': 'slow',
+            'низкое': 'low',
+            'среднее': 'medium',
+            'высокое': 'high',
+            'очень высокое': 'very high'
+        };
+        return translations[text] || text;
+    };
+
+    // Фильтрация голосов по выбранному языку
+    const filteredVoices = useMemo(() => {
+        return voices.filter(voice => 
+            voice.language === ttsLanguage || 
+            voice.language === 'multi' || 
+            !voice.language // fallback для голосов без указания языка
+        );
+    }, [voices, ttsLanguage]);
+
+    // Автоматическое обновление голоса при смене языка
+    useEffect(() => {
+        if (filteredVoices.length > 0 && !filteredVoices.find(v => v.name === ttsVoice)) {
+            setTtsVoice(filteredVoices[0].name);
+        }
+    }, [filteredVoices, ttsVoice]);
+
     // Загрузка списка голосов при монтировании
     useEffect(() => {
         const fetchVoices = async () => {
@@ -89,7 +130,7 @@ function Voice() {
                 setVoices(voicesData);
             } catch (err) {
                 console.error('Error fetching voices:', err);
-                setTtsError('Не удалось загрузить список голосов');
+                setTtsError('Failed to load voice list');
             } finally {
                 setIsLoadingVoices(false);
             }
@@ -112,7 +153,7 @@ function Voice() {
                 setSelectedSttModel(modelsData.current_model); // Синхронизируем выбор
             } catch (err) {
                 console.error('Error fetching STT models:', err);
-                setSttError('Не удалось загрузить модели STT');
+                setSttError('Failed to load STT models');
             } finally {
                 setIsLoadingSttModels(false);
             }
@@ -152,17 +193,17 @@ function Voice() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Ошибка загрузки модели');
+                throw new Error(errorData.error || 'Model loading error');
             }
 
             const result = await response.json();
             setCurrentSttModel(modelName);
-            window.enqueueSnackbar(`Модель ${modelName} успешно загружена!`, { variant: 'success' });
+            window.enqueueSnackbar(`Model ${modelName} loaded successfully!`, { variant: 'success' });
 
         } catch (err) {
             console.error('STT Model loading error:', err);
-            setSttError(`Ошибка загрузки модели: ${err.message}`);
-            window.enqueueSnackbar(`Ошибка загрузки модели: ${err.message}`, { variant: 'error' });
+            setSttError(`Model loading error: ${err.message}`);
+            window.enqueueSnackbar(`Model loading error: ${err.message}`, { variant: 'error' });
             setSelectedSttModel(currentSttModel); // Возвращаем выбор к текущей модели
         } finally {
             setIsLoadingModel(false);
@@ -178,21 +219,21 @@ function Voice() {
 
     // Доступные языки
     const languages = [
-        { code: 'ru', name: 'Русский' },
+        { code: 'ru', name: 'Russian' },
         { code: 'en', name: 'English' },
-        { code: 'es', name: 'Español' },
-        { code: 'fr', name: 'Français' },
-        { code: 'de', name: 'Deutsch' },
-        { code: 'it', name: 'Italiano' },
-        { code: 'pt', name: 'Português' },
-        { code: 'pl', name: 'Polski' },
-        { code: 'tr', name: 'Türkçe' },
-        { code: 'nl', name: 'Nederlands' },
-        { code: 'cs', name: 'Čeština' },
-        { code: 'ar', name: 'العربية' },
-        { code: 'zh', name: '中文' },
-        { code: 'ja', name: '日本語' },
-        { code: 'ko', name: '한국어' }
+        { code: 'es', name: 'Spanish' },
+        { code: 'fr', name: 'French' },
+        { code: 'de', name: 'German' },
+        { code: 'it', name: 'Italian' },
+        { code: 'pt', name: 'Portuguese' },
+        { code: 'pl', name: 'Polish' },
+        { code: 'tr', name: 'Turkish' },
+        { code: 'nl', name: 'Dutch' },
+        { code: 'cs', name: 'Czech' },
+        { code: 'ar', name: 'Arabic' },
+        { code: 'zh', name: 'Chinese' },
+        { code: 'ja', name: 'Japanese' },
+        { code: 'ko', name: 'Korean' }
     ];
 
     // Обработка синтеза речи
@@ -221,7 +262,7 @@ function Voice() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Ошибка синтеза речи');
+                throw new Error(errorData.error || 'Speech synthesis error');
             }
 
             const audioBlob = await response.blob();
@@ -239,12 +280,12 @@ function Voice() {
                 audioRef.current.play();
             }
 
-            window.enqueueSnackbar('Синтез речи завершен успешно!', { variant: 'success' });
+            window.enqueueSnackbar('Speech synthesis completed successfully!', { variant: 'success' });
 
         } catch (err) {
             console.error('TTS Error:', err);
             setTtsError(err.message);
-            window.enqueueSnackbar(`Ошибка синтеза речи: ${err.message}`, { variant: 'error' });
+            window.enqueueSnackbar(`Speech synthesis error: ${err.message}`, { variant: 'error' });
         } finally {
             setIsTtsSynthesizing(false);
         }
@@ -290,7 +331,7 @@ function Voice() {
             
         } catch (err) {
             console.error('Error starting recording:', err);
-            setSttError('Не удалось получить доступ к микрофону');
+            setSttError('Failed to access microphone');
         }
     };
 
@@ -318,18 +359,18 @@ function Voice() {
 
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Ошибка транскрибации');
+                throw new Error(errorData.error || 'Transcription error');
             }
 
             const result = await response.json();
             setSttResult(result.text);
             
-            window.enqueueSnackbar('Распознавание речи завершено!', { variant: 'success' });
+            window.enqueueSnackbar('Speech recognition completed!', { variant: 'success' });
 
         } catch (err) {
             console.error('STT Error:', err);
             setSttError(err.message);
-            window.enqueueSnackbar(`Ошибка распознавания: ${err.message}`, { variant: 'error' });
+            window.enqueueSnackbar(`Recognition error: ${err.message}`, { variant: 'error' });
         } finally {
             setIsTranscribing(false);
         }
@@ -367,16 +408,17 @@ function Voice() {
                     Voice Assistant
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    Синтез речи (Silero TTS) и распознавание речи (Whisper) • Apache 2.0
+                    Text-to-Speech (Silero TTS) and Speech Recognition (Whisper) • GPL 3.0 + Apache 2.0
                 </Typography>
             </Box>
 
             {/* Вкладки */}
             <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
                 <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-                    <Tab icon={<Icon>speaker</Icon>} label="Синтез речи (TTS)" />
-                    <Tab icon={<Icon>mic</Icon>} label="Распознавание (STT)" />
-                    <Tab icon={<Icon>content_copy</Icon>} label="Клонирование голоса" />
+                    <Tab icon={<Icon>speaker</Icon>} label="Text-to-Speech (TTS)" />
+                    <Tab icon={<Icon>mic</Icon>} label="Speech Recognition (STT)" />
+                    {/* Временно скрыта вкладка клонирования */}
+                    {/* <Tab icon={<Icon>content_copy</Icon>} label="Voice Cloning" /> */}
                 </Tabs>
             </Box>
 
@@ -389,42 +431,52 @@ function Voice() {
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>settings</Icon>
-                                    Настройки
+                                    Settings
                                 </Typography>
 
                                 {/* Выбор голоса */}
                                 <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Голос</InputLabel>
+                                    <InputLabel>Voice</InputLabel>
                                     <Select
                                         value={ttsVoice}
-                                        label="Голос"
+                                        label="Voice"
                                         onChange={(e) => setTtsVoice(e.target.value)}
-                                        disabled={isLoadingVoices}
+                                        disabled={isLoadingVoices || filteredVoices.length === 0}
                                     >
-                                        {voices.map((voice) => (
+                                        {filteredVoices.map((voice) => (
                                             <MenuItem key={voice.name} value={voice.name}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                                    <Icon>{voice.gender === 'female' ? 'face_3' : 'face'}</Icon>
+                                                    <Icon>{translateGender(voice.gender) === 'female' ? 'face_3' : 'face'}</Icon>
                                                     <Box>
                                                         <Typography variant="body2">
                                                             {voice.description}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
-                                                            {voice.name} • {voice.gender}
+                                                            {voice.name} • {translateGender(voice.gender)}
                                                         </Typography>
                                                     </Box>
                                                 </Box>
                                             </MenuItem>
                                         ))}
                                     </Select>
+                                    {filteredVoices.length === 0 && !isLoadingVoices && (
+                                        <Typography variant="caption" color="error" sx={{ mt: 0.5 }}>
+                                            No voices available for selected language
+                                        </Typography>
+                                    )}
+                                    {filteredVoices.length > 0 && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5 }}>
+                                            {filteredVoices.length} voice{filteredVoices.length > 1 ? 's' : ''} available
+                                        </Typography>
+                                    )}
                                 </FormControl>
 
                                 {/* Выбор языка */}
                                 <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Язык</InputLabel>
+                                    <InputLabel>Language</InputLabel>
                                     <Select
                                         value={ttsLanguage}
-                                        label="Язык"
+                                        label="Language"
                                         onChange={(e) => setTtsLanguage(e.target.value)}
                                     >
                                         {languages.map((lang) => (
@@ -437,7 +489,7 @@ function Voice() {
 
                                 {/* Скорость речи */}
                                 <Typography gutterBottom>
-                                    Скорость: {ttsSpeed}x
+                                    Speed: {ttsSpeed}x
                                 </Typography>
                                 <Slider
                                     value={ttsSpeed}
@@ -450,20 +502,20 @@ function Voice() {
 
                                 {/* Частота дискретизации */}
                                 <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Качество</InputLabel>
+                                    <InputLabel>Quality</InputLabel>
                                     <Select
                                         value={ttsSampleRate}
-                                        label="Качество"
+                                        label="Quality"
                                         onChange={(e) => setTtsSampleRate(e.target.value)}
                                     >
-                                        <MenuItem value={22050}>22 kHz (стандарт)</MenuItem>
-                                        <MenuItem value={24000}>24 kHz (высокое)</MenuItem>
+                                        <MenuItem value={22050}>22 kHz (standard)</MenuItem>
+                                        <MenuItem value={24000}>24 kHz (high)</MenuItem>
                                     </Select>
                                 </FormControl>
 
                                 {/* Быстрые фразы */}
                                 <Typography variant="body2" gutterBottom sx={{ mt: 2 }}>
-                                    Быстрые фразы:
+                                    Quick phrases:
                                 </Typography>
                                 <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
                                     {quickPhrases.map((phrase, index) => (
@@ -487,7 +539,7 @@ function Voice() {
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>edit</Icon>
-                                    Текст для озвучивания
+                                    Text to Synthesize
                                 </Typography>
 
                                 <TextField
@@ -496,7 +548,7 @@ function Voice() {
                                     rows={6}
                                     value={ttsText}
                                     onChange={(e) => setTtsText(e.target.value)}
-                                    placeholder="Введите текст для синтеза речи..."
+                                    placeholder="Enter text for speech synthesis..."
                                     disabled={isTtsSynthesizing}
                                     sx={{ mb: 2 }}
                                     InputProps={{
@@ -519,7 +571,7 @@ function Voice() {
                                         startIcon={isTtsSynthesizing ? <CircularProgress size={20} /> : <Icon>speaker</Icon>}
                                         sx={{ flex: 1 }}
                                     >
-                                        {isTtsSynthesizing ? 'Синтезирую...' : 'Озвучить'}
+                                        {isTtsSynthesizing ? 'Synthesizing...' : 'Synthesize'}
                                     </Button>
                                     
                                     {ttsResult && (
@@ -528,7 +580,7 @@ function Voice() {
                                             onClick={handleDownloadAudio}
                                             startIcon={<Icon>download</Icon>}
                                         >
-                                            Скачать
+                                            Download
                                         </Button>
                                     )}
                                 </Box>
@@ -552,11 +604,11 @@ function Voice() {
                                             <Icon color="success">check_circle</Icon>
                                             <Box sx={{ flex: 1 }}>
                                                 <Typography variant="body2" gutterBottom>
-                                                    Синтез завершен! Размер: {Math.round(ttsResult.size / 1024)} KB
+                                                    Synthesis completed! Size: {Math.round(ttsResult.size / 1024)} KB
                                                 </Typography>
                                                 <audio ref={audioRef} controls style={{ width: '100%' }}>
                                                     <source src={ttsResult.url} type="audio/wav" />
-                                                    Ваш браузер не поддерживает аудио элемент.
+                                                    Your browser does not support the audio element.
                                                 </audio>
                                             </Box>
                                         </Box>
@@ -577,15 +629,15 @@ function Voice() {
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>settings</Icon>
-                                    Настройки
+                                    Settings
                                 </Typography>
 
                                 {/* Выбор модели */}
                                 <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Модель Whisper</InputLabel>
+                                    <InputLabel>Whisper Model</InputLabel>
                                     <Select
                                         value={selectedSttModel}
-                                        label="Модель Whisper"
+                                        label="Whisper Model"
                                         onChange={handleSttModelChange}
                                         disabled={isLoadingSttModels || isLoadingModel}
                                         endAdornment={isLoadingModel && (
@@ -602,7 +654,7 @@ function Voice() {
                                                             {model} ({info.size})
                                                             {model === currentSttModel && (
                                                                 <Chip 
-                                                                    label="Загружена" 
+                                                                    label="Loaded" 
                                                                     size="small" 
                                                                     color="success" 
                                                                     sx={{ ml: 1 }} 
@@ -610,7 +662,7 @@ function Voice() {
                                                             )}
                                                         </Typography>
                                                         <Typography variant="caption" color="text.secondary">
-                                                            {info.speed} • {info.quality}
+                                                            {translateModelInfo(info.speed)} • {translateModelInfo(info.quality)}
                                                         </Typography>
                                                     </Box>
                                                 </Box>
@@ -623,7 +675,7 @@ function Voice() {
                                 {isLoadingModel && (
                                     <Box sx={{ mb: 2 }}>
                                         <Typography variant="body2" color="primary" gutterBottom>
-                                            Загружается модель {selectedSttModel}...
+                                            Loading model {selectedSttModel}...
                                         </Typography>
                                         <LinearProgress />
                                     </Box>
@@ -634,7 +686,7 @@ function Voice() {
                                     <Box sx={{ mb: 2, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
                                         <Typography variant="body2" color="success.dark">
                                             <Icon sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }}>check_circle</Icon>
-                                            Активная модель: {currentSttModel}
+                                            Active model: {currentSttModel}
                                             {sttModels[currentSttModel] && ` (${sttModels[currentSttModel].size})`}
                                         </Typography>
                                     </Box>
@@ -642,10 +694,10 @@ function Voice() {
 
                                 {/* Выбор языка */}
                                 <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Язык</InputLabel>
+                                    <InputLabel>Language</InputLabel>
                                     <Select
                                         value={sttLanguage}
-                                        label="Язык"
+                                        label="Language"
                                         onChange={(e) => setSttLanguage(e.target.value)}
                                     >
                                         {languages.map((lang) => (
@@ -657,7 +709,7 @@ function Voice() {
                                 </FormControl>
 
                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                                    💡 Подсказка: Нажмите кнопку записи, говорите четко и остановите запись для транскрибации.
+                                    💡 Tip: Click the record button, speak clearly, and stop recording for transcription.
                                 </Typography>
                             </CardContent>
                         </Card>
@@ -669,7 +721,7 @@ function Voice() {
                             <CardContent>
                                 <Typography variant="h6" gutterBottom>
                                     <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>mic</Icon>
-                                    Распознавание речи
+                                    Speech Recognition
                                 </Typography>
 
                                 {/* Кнопка записи */}
@@ -697,7 +749,7 @@ function Voice() {
                                         </Icon>
                                     </IconButton>
                                     <Typography variant="body2" sx={{ mt: 1 }}>
-                                        {isTranscribing ? 'Обрабатываю...' : isRecording ? 'Нажмите для остановки' : 'Нажмите для записи'}
+                                        {isTranscribing ? 'Processing...' : isRecording ? 'Click to stop' : 'Click to record'}
                                     </Typography>
                                 </Box>
 
@@ -720,13 +772,13 @@ function Voice() {
                                     rows={6}
                                     value={sttResult}
                                     onChange={(e) => setSttResult(e.target.value)}
-                                    placeholder="Здесь появится результат распознавания речи..."
+                                    placeholder="Speech recognition result will appear here..."
                                     sx={{ mb: 2 }}
                                     InputProps={{
                                         endAdornment: (
                                             <InputAdornment position="end">
                                                 <Typography variant="caption" color="text.secondary">
-                                                    {sttResult.length} символов
+                                                    {sttResult.length} characters
                                                 </Typography>
                                             </InputAdornment>
                                         )
@@ -741,21 +793,21 @@ function Voice() {
                                             onClick={() => navigator.clipboard.writeText(sttResult)}
                                             startIcon={<Icon>copy</Icon>}
                                         >
-                                            Копировать
+                                            Copy
                                         </Button>
                                         <Button
                                             variant="outlined"
                                             onClick={() => setSttResult('')}
                                             startIcon={<Icon>clear</Icon>}
                                         >
-                                            Очистить
+                                            Clear
                                         </Button>
                                         <Button
                                             variant="contained"
                                             onClick={() => setTtsText(sttResult)}
                                             startIcon={<Icon>speaker</Icon>}
                                         >
-                                            Озвучить
+                                            Synthesize
                                         </Button>
                                     </Box>
                                 )}
@@ -765,41 +817,17 @@ function Voice() {
                 </Grid>
             )}
 
-            {/* Вкладка клонирования голоса */}
-            {activeTab === 2 && (
-                <Card>
-                    <CardContent sx={{ textAlign: 'center', py: 6 }}>
-                        <Icon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }}>content_copy</Icon>
-                        <Typography variant="h6" gutterBottom>
-                            Клонирование голоса
-                        </Typography>
-                        <Typography variant="body2" color="text.secondary" paragraph>
-                            Функция клонирования голоса позволит создавать уникальные голоса
-                            из 3-15 секундных образцов речи с помощью XTTS v2.
-                        </Typography>
-                        <Button
-                            variant="outlined"
-                            startIcon={<Icon>upload_file</Icon>}
-                            onClick={handleVoiceCloning}
-                            disabled
-                        >
-                            Загрузить образец (скоро)
-                        </Button>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* Диалог клонирования голоса (заглушка) */}
             <Dialog open={showVoiceCloning} onClose={() => setShowVoiceCloning(false)}>
-                <DialogTitle>Клонирование голоса</DialogTitle>
+                <DialogTitle>Voice Cloning</DialogTitle>
                 <DialogContent>
                     <Typography variant="body2">
-                        Эта функция будет добавлена в следующей версии.
-                        Вы сможете загружать аудио образцы и создавать уникальные голоса.
+                        This feature will be added in the next version.
+                        You will be able to upload audio samples and create unique voices.
                     </Typography>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={() => setShowVoiceCloning(false)}>Закрыть</Button>
+                    <Button onClick={() => setShowVoiceCloning(false)}>Close</Button>
                 </DialogActions>
             </Dialog>
         </Container>

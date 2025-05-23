@@ -11,6 +11,7 @@ import Profile from './components/Profile';
 import Layout from './components/Layout';
 import Chat from './components/Chat';
 import Voice from './components/Voice';
+import RequestLogs from './components/RequestLogs';
 
 // Initialize React dependencies
 const { useState, useEffect, useMemo } = window.React;
@@ -73,6 +74,7 @@ function App() {
                             <Route path="voice" element={<Voice />} />
                             <Route path="users" element={<Users />} />
                             <Route path="profile" element={<Profile />} />
+                            <Route path="request-logs" element={<RequestLogs />} />
                         </Route>
                     </Routes>
                 )}
