@@ -150,7 +150,18 @@ app.post('/auth/verify', async (req, res) => {
   try {
     let userInfo = null;
     const originalUri = req.headers['x-original-uri'] || '';
-    const isExternalEndpoint = originalUri.includes('/api/ai') || originalUri.includes('/api/v1/chat/completions') || originalUri.includes('/api/documents');
+    console.log('Original URI:', originalUri);
+    console.log('Checking /api/ai:', originalUri.includes('/api/ai'));
+    console.log('Checking /api/v1/chat/completions:', originalUri.includes('/api/v1/chat/completions'));
+    console.log('Checking /api/documents:', originalUri.includes('/api/documents'));
+    console.log('Checking /api/tts:', originalUri.includes('/api/tts'));
+    console.log('Checking /api/stt:', originalUri.includes('/api/stt'));
+    
+    const isExternalEndpoint = originalUri.includes('/api/ai') || 
+                               originalUri.includes('/api/v1/chat/completions') || 
+                               originalUri.includes('/api/documents') ||
+                               originalUri.includes('/api/tts') ||
+                               originalUri.includes('/api/stt');
     console.log('Is external endpoint:', isExternalEndpoint);
 
     // First try to verify as JWT
@@ -165,7 +176,9 @@ app.post('/auth/verify', async (req, res) => {
       // If JWT verification fails, try as API key
       if (isExternalEndpoint) {
         console.log('Attempting API key verification...');
+        console.log('Looking for API key:', token);
         
+        // Compare token directly with stored API keys (no hashing)
         const result = await pool.query(
           `SELECT u.* 
            FROM admin.users u
