@@ -204,16 +204,16 @@ docker-compose logs auth
 ### Частые проблемы
 
 #### TTS не работает
-```bash
+   ```bash
 # Проверка статуса
 docker logs tts
 
 # Перезапуск TTS
 docker-compose restart tts
-```
+   ```
 
 #### 404 ошибки API
-```bash
+   ```bash
 # Проверка Zeus сервиса
 docker logs zeus
 

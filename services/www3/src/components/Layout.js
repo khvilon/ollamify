@@ -72,6 +72,7 @@ function Layout({ children }) {
         { text: 'Models', icon: 'model_training', path: '/models' },
         { text: 'Chat', icon: 'chat', path: '/chat' },
         { text: 'Voice', icon: 'record_voice_over', path: '/voice' },
+        { text: 'API', icon: 'api', path: '/swagger' },
         { text: 'Users', icon: 'group', path: '/users' },
         { text: 'Request Logs', icon: 'analytics', path: '/request-logs' },
         { text: 'Profile', icon: 'person', path: '/profile' }

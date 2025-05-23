@@ -244,11 +244,174 @@ router.post('/embed', async (req, res) => {
 
 /**
  * @swagger
+ * /v1/chat/completions:
+ *   post:
+ *     tags: [OpenAI Compatible]
+ *     summary: OpenAI совместимые чат-завершения
+ *     description: |
+ *       **Важно:** Этот эндпоинт доступен по пути `/api/v1/chat/completions` и полностью совместим с OpenAI Chat API.
+ *       
+ *       Поддерживает:
+ *       - Ollama модели (локальные)
+ *       - OpenRouter модели (внешние, с префиксом `openrouter/`)
+ *       - Потоковую передачу (только для Ollama)
+ *       - Все стандартные параметры OpenAI API
+ *       
+ *       **Примеры моделей:**
+ *       - `llama3.1:8b` (Ollama)
+ *       - `openrouter/anthropic/claude-3.5-sonnet` (OpenRouter)
+ *       - `openrouter/openai/gpt-4` (OpenRouter)
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             $ref: '#/components/schemas/ChatCompletion'
+ *           examples:
+ *             simple_chat:
+ *               summary: Простой чат
+ *               value:
+ *                 model: "llama3.1:8b"
+ *                 messages:
+ *                   - role: "user"
+ *                     content: "Привет! Как дела?"
+ *             conversation:
+ *               summary: Многосообщенческий диалог
+ *               value:
+ *                 model: "llama3.1:8b"
+ *                 messages:
+ *                   - role: "system"
+ *                     content: "Ты полезный ассистент"
+ *                   - role: "user"
+ *                     content: "Объясни принцип работы нейронных сетей"
+ *                   - role: "assistant"
+ *                     content: "Нейронные сети работают..."
+ *                   - role: "user"
+ *                     content: "А как обучаются?"
+ *                 temperature: 0.7
+ *                 max_tokens: 1000
+ *             streaming:
+ *               summary: Потоковый ответ (только Ollama)
+ *               value:
+ *                 model: "llama3.1:8b"
+ *                 messages:
+ *                   - role: "user"
+ *                     content: "Расскажи длинную историю"
+ *                 stream: true
+ *             openrouter_model:
+ *               summary: Использование OpenRouter модели
+ *               value:
+ *                 model: "openrouter/anthropic/claude-3.5-sonnet"
+ *                 messages:
+ *                   - role: "user"
+ *                     content: "Анализируй этот код и предложи улучшения"
+ *                 temperature: 0.3
+ *                 max_tokens: 2000
+ *     responses:
+ *       200:
+ *         description: Успешное завершение чата
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/ChatCompletionResponse'
+ *             examples:
+ *               success_response:
+ *                 summary: Обычный ответ
+ *                 value:
+ *                   id: "chatcmpl-123"
+ *                   object: "chat.completion"
+ *                   created: 1677652288
+ *                   model: "llama3.1:8b"
+ *                   choices:
+ *                     - index: 0
+ *                       message:
+ *                         role: "assistant"
+ *                         content: "Привет! У меня все отлично, спасибо за вопрос!"
+ *                       finish_reason: "stop"
+ *                   usage:
+ *                     prompt_tokens: 10
+ *                     completion_tokens: 15
+ *                     total_tokens: 25
+ *           text/event-stream:
+ *             schema:
+ *               type: string
+ *               description: Server-Sent Events поток для stream=true
+ *             example: |
+ *               data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"llama3.1:8b","choices":[{"index":0,"delta":{"content":"Привет"},"finish_reason":null}]}
+ *               
+ *               data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1677652288,"model":"llama3.1:8b","choices":[{"index":0,"delta":{"content":"!"},"finish_reason":null}]}
+ *               
+ *               data: [DONE]
+ *       400:
+ *         description: Неверные параметры запроса
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     code:
+ *                       type: string
+ *             examples:
+ *               invalid_model:
+ *                 summary: Неверная модель
+ *                 value:
+ *                   error:
+ *                     message: "all-minilm is an embedding model and cannot be used for text generation"
+ *                     type: "invalid_request_error"
+ *                     code: null
+ *               streaming_not_supported:
+ *                 summary: Стриминг не поддерживается
+ *                 value:
+ *                   error:
+ *                     message: "Streaming is not supported for OpenRouter models"
+ *                     type: "invalid_request_error"
+ *                     code: null
+ *       401:
+ *         description: Неверный API ключ
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       500:
+ *         description: Ошибка сервера
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     code:
+ *                       type: string
+ */
+
+/**
+ * @swagger
  * /ai/complete:
  *   post:
- *     tags: [AI]
- *     summary: Generate text completion
- *     description: Generate text using AI model with optional streaming
+ *     tags: [Internal]
+ *     summary: Внутренний эндпоинт для чат-завершений (не для внешнего использования)
+ *     description: |
+ *       **ВНУТРЕННИЙ ЭНДПОИНТ** - не используйте его напрямую.
+ *       Этот эндпоинт используется через nginx прокси для `/api/v1/chat/completions`.
+ *       Для внешнего использования применяйте `/api/v1/chat/completions`.
+ *     deprecated: true
+ *     security:
+ *       - ApiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -257,42 +420,19 @@ router.post('/embed', async (req, res) => {
  *             $ref: '#/components/schemas/ChatCompletion'
  *     responses:
  *       200:
- *         description: Generated completion
+ *         description: Успешное завершение
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 id:
- *                   type: string
- *                   description: Response ID
- *                 object:
- *                   type: string
- *                   enum: [chat.completion]
- *                 created:
- *                   type: integer
- *                   description: Unix timestamp
- *                 model:
- *                   type: string
- *                   description: Model used
- *                 choices:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       index:
- *                         type: integer
- *                       message:
- *                         $ref: '#/components/schemas/ChatMessage'
- *                       finish_reason:
- *                         type: string
- *                         enum: [stop, length]
- *           text/event-stream:
+ *               $ref: '#/components/schemas/ChatCompletionResponse'
+ *       400:
+ *         description: Ошибка запроса
+ *         content:
+ *           application/json:
  *             schema:
- *               type: string
- *               description: Server-sent events stream for streaming responses
+ *               $ref: '#/components/schemas/Error'
  *       500:
- *         description: Server error
+ *         description: Ошибка сервера
  *         content:
  *           application/json:
  *             schema:
@@ -1036,45 +1176,143 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  * @swagger
  * /ai/rag:
  *   post:
- *     tags: [AI]
- *     summary: RAG-enhanced completion
- *     description: Generate answer using Retrieval Augmented Generation
+ *     tags: [AI & RAG]
+ *     summary: Получить ответ используя RAG (Retrieval-Augmented Generation)
+ *     description: |
+ *       Использует поиск по документам (RAG) для генерации ответа на основе релевантных фрагментов из указанного проекта.
+ *       
+ *       **Алгоритм работы:**
+ *       1. Извлекает семантический смысл из вопроса
+ *       2. Находит релевантные фрагменты документов в проекте
+ *       3. Опционально применяет переранжирование для улучшения качества
+ *       4. Генерирует ответ используя найденный контекст
+ *     security:
+ *       - ApiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/RagRequest'
+ *             allOf:
+ *               - $ref: '#/components/schemas/RagRequest'
+ *               - type: object
+ *                 properties:
+ *                   useReranker:
+ *                     type: boolean
+ *                     description: Использовать переранжирование для улучшения качества результатов
+ *                     example: true
+ *                     default: true
+ *                   limit:
+ *                     type: integer
+ *                     description: Максимальное количество документов для поиска
+ *                     example: 20
+ *                     default: 20
+ *                     minimum: 1
+ *                     maximum: 100
+ *           examples:
+ *             basic_rag:
+ *               summary: Простой RAG запрос
+ *               value:
+ *                 question: "Что такое машинное обучение?"
+ *                 project: "ml-documents"
+ *                 model: "llama3.1:8b"
+ *             advanced_rag:
+ *               summary: Продвинутый RAG с настройками
+ *               value:
+ *                 question: "Как применить нейронные сети в компьютерном зрении?"
+ *                 project: "cv-research"
+ *                 model: "llama3.1:8b"
+ *                 useReranker: true
+ *                 limit: 15
+ *                 temperature: 0.3
+ *                 max_tokens: 1500
  *     responses:
  *       200:
- *         description: Generated answer with context
+ *         description: Успешный ответ с найденными документами
  *         content:
  *           application/json:
  *             schema:
- *               type: object
- *               properties:
- *                 answer:
- *                   type: string
- *                   description: Generated answer
- *                 context:
- *                   type: array
- *                   items:
- *                     type: object
- *                     properties:
- *                       filename:
- *                         type: string
- *                       content:
- *                         type: string
- *                       similarity:
- *                         type: number
+ *               allOf:
+ *                 - $ref: '#/components/schemas/RagResponse'
+ *                 - type: object
+ *                   properties:
+ *                     relevantDocuments:
+ *                       type: array
+ *                       description: Финальный список релевантных документов (после переранжирования)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           filename:
+ *                             type: string
+ *                           content:
+ *                             type: string
+ *                           similarity:
+ *                             type: number
+ *                           project:
+ *                             type: string
+ *                           metadata:
+ *                             type: object
+ *                     originalDocuments:
+ *                       type: array
+ *                       description: Исходный список документов (до переранжирования)
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           filename:
+ *                             type: string
+ *                           similarity:
+ *                             type: number
+ *                           project:
+ *                             type: string
+ *                           metadata:
+ *                             type: object
+ *                     intentQuery:
+ *                       type: string
+ *                       description: Извлеченный поисковый запрос
+ *                     limitApplied:
+ *                       type: integer
+ *                       description: Фактически примененный лимит документов
+ *             examples:
+ *               success_response:
+ *                 summary: Успешный ответ
+ *                 value:
+ *                   answer: "Машинное обучение - это область искусственного интеллекта..."
+ *                   sources:
+ *                     - document_name: "ml-intro.pdf"
+ *                       chunk_content: "Машинное обучение представляет собой..."
+ *                       score: 0.85
+ *                   relevantDocuments:
+ *                     - filename: "ml-intro.pdf"
+ *                       content: "Машинное обучение представляет собой..."
+ *                       similarity: 0.85
+ *                       project: "ml-documents"
+ *                       metadata: {}
+ *                   intentQuery: "определение машинного обучения"
+ *                   limitApplied: 20
+ *       400:
+ *         description: Неверные параметры запроса
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *             examples:
+ *               missing_params:
+ *                 summary: Отсутствуют обязательные параметры
+ *                 value:
+ *                   error: "Missing required parameters"
+ *               invalid_model:
+ *                 summary: Неверная модель
+ *                 value:
+ *                   error: "Invalid model selection"
+ *                   details: "all-minilm is an embedding model and cannot be used for text generation"
  *       404:
- *         description: No relevant documents found
+ *         description: Не найдены релевантные документы
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *       500:
- *         description: Server error
+ *         description: Ошибка сервера
  *         content:
  *           application/json:
  *             schema:
@@ -1258,9 +1496,17 @@ Question: ${question}`
  * @swagger
  * /ai/rag/chunks:
  *   post:
- *     tags: [AI]
- *     summary: Get relevant document chunks
- *     description: Retrieve relevant document chunks for a question
+ *     tags: [AI & RAG]
+ *     summary: Получить релевантные фрагменты документов
+ *     description: |
+ *       Возвращает релевантные фрагменты документов для заданного вопроса без генерации ответа.
+ *       
+ *       Полезно для:
+ *       - Предварительного просмотра найденных документов
+ *       - Отладки поискового алгоритма
+ *       - Получения исходных данных для дальнейшей обработки
+ *     security:
+ *       - ApiKeyAuth: []
  *     requestBody:
  *       required: true
  *       content:
@@ -1272,16 +1518,34 @@ Question: ${question}`
  *             properties:
  *               question:
  *                 type: string
- *                 description: User question
+ *                 description: Вопрос пользователя
+ *                 example: "Что такое машинное обучение?"
  *               project:
  *                 type: string
- *                 description: Project name
+ *                 description: Название проекта (опционально)
+ *                 example: "ml-documents"
  *               limit:
  *                 type: integer
- *                 description: Maximum number of chunks to return
+ *                 description: Максимальное количество фрагментов
+ *                 example: 10
+ *                 default: 100
+ *                 minimum: 1
+ *                 maximum: 100
+ *           examples:
+ *             simple_chunks:
+ *               summary: Поиск по всем проектам
+ *               value:
+ *                 question: "Что такое нейронные сети?"
+ *                 limit: 5
+ *             project_chunks:
+ *               summary: Поиск в конкретном проекте
+ *               value:
+ *                 question: "Как обучать модели?"
+ *                 project: "ml-tutorials"
+ *                 limit: 10
  *     responses:
  *       200:
- *         description: List of relevant document chunks
+ *         description: Список релевантных фрагментов документов
  *         content:
  *           application/json:
  *             schema:
@@ -1294,18 +1558,51 @@ Question: ${question}`
  *                     properties:
  *                       filename:
  *                         type: string
+ *                         description: Имя документа
  *                       content:
  *                         type: string
+ *                         description: Содержимое фрагмента
  *                       similarity:
  *                         type: number
+ *                         description: Оценка релевантности (0-1)
+ *                       project:
+ *                         type: string
+ *                         description: Название проекта
+ *                       metadata:
+ *                         type: object
+ *                         description: Метаданные документа
+ *                 intentQuery:
+ *                   type: string
+ *                   description: Извлеченный поисковый запрос
+ *                 limitApplied:
+ *                   type: integer
+ *                   description: Фактически примененный лимит
+ *             examples:
+ *               success_response:
+ *                 summary: Успешный ответ
+ *                 value:
+ *                   relevantDocuments:
+ *                     - filename: "neural-networks.pdf"
+ *                       content: "Нейронные сети представляют собой..."
+ *                       similarity: 0.89
+ *                       project: "ml-documents"
+ *                       metadata: {}
+ *                   intentQuery: "определение нейронных сетей"
+ *                   limitApplied: 10
+ *       400:
+ *         description: Неверные параметры запроса
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  *       404:
- *         description: No relevant documents found
+ *         description: Релевантные документы не найдены
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Error'
  *       500:
- *         description: Server error
+ *         description: Ошибка сервера
  *         content:
  *           application/json:
  *             schema:

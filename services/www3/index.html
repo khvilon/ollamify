@@ -50,7 +50,7 @@
     </style>
 </head>
 <body>
-        <div id="root"></div>    <script type="text/babel" src="src/components/Models.js"></script>    <script type="text/babel" src="src/components/Users.js"></script>    <script type="text/babel" src="src/components/Profile.js"></script>    <script type="text/babel" src="src/components/Documents.js"></script>    <script type="text/babel" src="src/components/Login.js"></script>    <script type="text/babel" src="src/components/Chat.js"></script>    <script type="text/babel" src="src/components/Voice.js"></script>    <script type="text/babel" src="src/components/Projects.js"></script>    <script type="text/babel" src="src/components/RequestLogs.js"></script>    <script type="text/babel" src="src/components/Layout.js"></script>
+        <div id="root"></div>    <script type="text/babel" src="src/components/Models.js"></script>    <script type="text/babel" src="src/components/Users.js"></script>    <script type="text/babel" src="src/components/Profile.js"></script>    <script type="text/babel" src="src/components/Documents.js"></script>    <script type="text/babel" src="src/components/Login.js"></script>    <script type="text/babel" src="src/components/Chat.js"></script>    <script type="text/babel" src="src/components/Voice.js"></script>    <script type="text/babel" src="src/components/Projects.js"></script>    <script type="text/babel" src="src/components/RequestLogs.js"></script>    <script type="text/babel" src="src/components/API.js"></script>    <script type="text/babel" src="src/components/Layout.js"></script>
     <script type="text/babel">
         const {
             BrowserRouter,
@@ -241,17 +241,18 @@
             };
         };
 
-        // Components        
-        const Models = window.Models;        
-        const Users = window.Users;        
-        const Profile = window.Profile;        
-        const Documents = window.Documents;        
-        const Login = window.Login;        
-        const Layout = window.Layout;        
-        const Chat = window.Chat;        
+        // Components
+        const Models = window.Models;
+        const Users = window.Users;
+        const Profile = window.Profile;
+        const Documents = window.Documents;
+        const Login = window.Login;
+        const Layout = window.Layout;
+        const Chat = window.Chat;
         const Voice = window.Voice;        
         const Projects = window.Projects;
         const RequestLogs = window.RequestLogs;
+        const API = window.API;
 
         function App() {
             const prefersDarkMode = window.MaterialUI.useMediaQuery('(prefers-color-scheme: dark)');
@@ -371,6 +372,7 @@
                                                 <Route path="/models" element={<Models />} />
                                                                                                 <Route path="/chat" element={<Chat />} />                                                <Route path="/voice" element={<Voice />} />                                                <Route path="/users" element={<Users />} />                                                <Route path="/profile" element={<Profile />} />                                                <Route path="/projects" element={<Projects />} />
                                                 <Route path="/request-logs" element={<RequestLogs />} />
+                                                <Route path="/swagger" element={<API />} />
                                                 <Route path="*" element={<Navigate to="/documents" replace />} />
                                             </Routes>
                                         </Layout>

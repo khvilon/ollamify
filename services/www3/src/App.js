@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { ThemeProvider, createTheme, CssBaseline, useMediaQuery } from '@material-ui/core';
 
 import Login from './components/Login';
@@ -54,6 +54,24 @@ function App() {
         window.location.href = '/login';
     };
 
+    // Безопасный компонент для API
+    const APIWrapper = () => {
+        if (window.API) {
+            return React.createElement(window.API);
+        } else {
+            return React.createElement('div', { style: { padding: '20px' } }, 
+                React.createElement('h1', null, 'API компонент загружается...'),
+                React.createElement('p', null, 'Если эта страница не исчезает, значит есть проблема с загрузкой API компонента.')
+            );
+        }
+    };
+
+    const LayoutWithOutlet = () => (
+        <Layout onLogout={handleLogout} mode={mode} setMode={setMode}>
+            <Outlet />
+        </Layout>
+    );
+
     return (
         <ThemeProvider theme={theme}>
             <CssBaseline />
@@ -65,7 +83,7 @@ function App() {
                     </Routes>
                 ) : (
                     <Routes>
-                        <Route path="/" element={<Layout onLogout={handleLogout} mode={mode} setMode={setMode} />}>
+                        <Route path="/" element={<LayoutWithOutlet />}>
                             <Route index element={<Navigate to="/documents" />} />
                             <Route path="documents" element={<Documents />} />
                             <Route path="projects" element={<Projects />} />
@@ -75,6 +93,7 @@ function App() {
                             <Route path="users" element={<Users />} />
                             <Route path="profile" element={<Profile />} />
                             <Route path="request-logs" element={<RequestLogs />} />
+                            <Route path="swagger" element={<APIWrapper />} />
                         </Route>
                     </Routes>
                 )}
