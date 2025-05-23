@@ -46,11 +46,28 @@ function API() {
     const [loading, setLoading] = useState(true);
     const [snackbarOpen, setSnackbarOpen] = useState(false);
     const [snackbarMessage, setSnackbarMessage] = useState('');
+    const [iframeHeight, setIframeHeight] = useState('100vh');
     const theme = useTheme();
 
     useEffect(() => {
         fetchApiKeys();
+        
+        // Обработчик сообщений от iframe
+        const handleMessage = (event) => {
+            if (event.data && event.data.type === 'resize') {
+                setIframeHeight(`${event.data.height}px`);
+            }
+        };
+        
+        window.addEventListener('message', handleMessage);
+        return () => window.removeEventListener('message', handleMessage);
     }, []);
+
+    // Отдельный useEffect для смены темы
+    useEffect(() => {
+        // При смене темы сброс высоты для пересчета
+        setIframeHeight('100vh');
+    }, [theme.palette.mode]);
 
     const fetchApiKeys = async () => {
         try {
@@ -107,17 +124,17 @@ function API() {
 
     const copyToClipboard = (text) => {
         if (!text) {
-            setSnackbarMessage('Нет данных для копирования');
+            setSnackbarMessage('No data to copy');
             setSnackbarOpen(true);
             return;
         }
         
         navigator.clipboard.writeText(text).then(() => {
-            setSnackbarMessage('Скопировано в буфер обмена');
+            setSnackbarMessage('Copied to clipboard');
             setSnackbarOpen(true);
         }).catch(err => {
-            console.error('Ошибка копирования:', err);
-            setSnackbarMessage('Ошибка копирования');
+            console.error('Copy error:', err);
+            setSnackbarMessage('Copy error');
             setSnackbarOpen(true);
         });
     };
@@ -127,15 +144,15 @@ function API() {
             title: 'OpenAI Compatible',
             path: '/api/v1/chat/completions',
             method: 'POST',
-            description: 'OpenAI совместимый эндпоинт для чат-завершений',
-            badge: 'Совместимость',
+            description: 'OpenAI compatible endpoint for chat completions',
+            badge: 'Compatible',
             color: 'primary'
         },
         {
             title: 'AI & RAG',
             path: '/api/ai/*',
             method: 'POST',
-            description: 'Генерация ответов и поиск по документам',
+            description: 'AI generation and document search',
             badge: 'RAG',
             color: 'secondary'
         },
@@ -143,7 +160,7 @@ function API() {
             title: 'Documents',
             path: '/api/documents/*',
             method: 'GET/POST/PUT/DELETE',
-            description: 'Управление документами для RAG системы',
+            description: 'Document management for RAG system',
             badge: 'CRUD',
             color: 'info'
         },
@@ -151,7 +168,7 @@ function API() {
             title: 'Text-to-Speech',
             path: '/api/tts/*',
             method: 'POST',
-            description: 'Синтез речи из текста',
+            description: 'Text-to-speech synthesis',
             badge: 'TTS',
             color: 'success'
         },
@@ -159,7 +176,7 @@ function API() {
             title: 'Speech-to-Text',
             path: '/api/stt/*',
             method: 'POST',
-            description: 'Распознавание речи в текст',
+            description: 'Speech-to-text recognition',
             badge: 'STT',
             color: 'warning'
         }
@@ -353,7 +370,7 @@ async function textToSpeech(text, voice = "female_1") {
                                 API Documentation
                             </Typography>
                             <Typography variant="h6" sx={{ opacity: 0.9 }}>
-                                Внешние API эндпоинты для интеграции с Ollamify
+                                External API endpoints for Ollamify integration
                             </Typography>
                         </Box>
                     </Box>
@@ -366,9 +383,9 @@ async function textToSpeech(text, voice = "female_1") {
                         onChange={handleTabChange}
                         sx={{ borderBottom: 1, borderColor: 'divider' }}
                     >
-                        <Tab label="Обзор API" />
-                        <Tab label="Мои API ключи" />
-                        <Tab label="Примеры кода" />
+                        <Tab label="API Overview" />
+                        <Tab label="My API Keys" />
+                        <Tab label="Code Examples" />
                         <Tab label="Swagger Docs" />
                     </Tabs>
                 </Paper>
@@ -376,12 +393,12 @@ async function textToSpeech(text, voice = "female_1") {
                 {/* Вкладка: Обзор API */}
                 <TabPanel value={tabValue} index={0}>
                     <Alert severity="info" sx={{ mb: 3 }}>
-                        <strong>Внимание:</strong> Все внешние API эндпоинты требуют аутентификации через API ключ.
-                        Передавайте ключ в заголовке: <code>Authorization: Bearer YOUR_API_KEY</code>
+                        <strong>Note:</strong> All external API endpoints require authentication via API key.
+                        Pass the key in header: <code>Authorization: Bearer YOUR_API_KEY</code>
                     </Alert>
 
                     <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
-                        Доступные эндпоинты
+                        Available endpoints
                     </Typography>
 
                     <Grid container spacing={3}>
@@ -423,31 +440,31 @@ async function textToSpeech(text, voice = "female_1") {
 
                     <Box sx={{ mt: 4 }}>
                         <Typography variant="h6" gutterBottom>
-                            Общие характеристики
+                            General characteristics
                         </Typography>
                         <Grid container spacing={2}>
                             <Grid item xs={12} sm={6} md={3}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <Typography variant="h4" color="primary">50MB</Typography>
-                                    <Typography variant="body2">Макс. размер файла</Typography>
+                                    <Typography variant="body2">Max file size</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
-                                    <Typography variant="h4" color="primary">10 мин</Typography>
-                                    <Typography variant="body2">Таймаут запроса</Typography>
+                                    <Typography variant="h4" color="primary">10 min</Typography>
+                                    <Typography variant="body2">Request timeout</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <Typography variant="h4" color="primary">JSON</Typography>
-                                    <Typography variant="body2">Формат данных</Typography>
+                                    <Typography variant="body2">Data format</Typography>
                                 </Paper>
                             </Grid>
                             <Grid item xs={12} sm={6} md={3}>
                                 <Paper sx={{ p: 2, textAlign: 'center' }}>
                                     <Typography variant="h4" color="primary">HTTPS</Typography>
-                                    <Typography variant="body2">Безопасность</Typography>
+                                    <Typography variant="body2">Security</Typography>
                                 </Paper>
                             </Grid>
                         </Grid>
@@ -458,14 +475,14 @@ async function textToSpeech(text, voice = "female_1") {
                 <TabPanel value={tabValue} index={1}>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                         <Typography variant="h5">
-                            Мои API ключи
+                            My API Keys
                         </Typography>
                         <Button
                             variant="contained"
                             startIcon={<span className="material-icons">vpn_key</span>}
                             onClick={() => window.location.href = '/users'}
                         >
-                            Управление ключами
+                            Manage Keys
                         </Button>
                     </Box>
 
@@ -475,7 +492,7 @@ async function textToSpeech(text, voice = "female_1") {
                         </Box>
                     ) : apiKeys.length === 0 ? (
                         <Alert severity="warning">
-                            У вас пока нет API ключей. Перейдите в раздел "Пользователи" для создания ключа.
+                            You don't have any API keys yet. Go to "Users" section to create a key.
                         </Alert>
                     ) : (
                         <Grid container spacing={2}>
@@ -489,7 +506,7 @@ async function textToSpeech(text, voice = "female_1") {
                                                         {key.name}
                                                     </Typography>
                                                     <Typography variant="body2" color="text.secondary">
-                                                        Создан: {new Date(key.created_at).toLocaleDateString('ru-RU')}
+                                                        Created: {new Date(key.created_at).toLocaleDateString('ru-RU')}
                                                     </Typography>
                                                     <Box sx={{ mt: 1, display: 'flex', alignItems: 'center' }}>
                                                         <Typography 
@@ -512,7 +529,7 @@ async function textToSpeech(text, voice = "female_1") {
                                                         >
                                                             {key.key_value ? `${key.key_value.substring(0, 12)}...${key.key_value.slice(-12)}` : 'Hidden'}
                                                         </Typography>
-                                                        <Tooltip title="Скопировать ключ">
+                                                        <Tooltip title="Copy key">
                                                             <IconButton 
                                                                 size="small" 
                                                                 onClick={(e) => {
@@ -535,7 +552,7 @@ async function textToSpeech(text, voice = "female_1") {
                                                 </Box>
                                                 <Chip 
                                                     icon={<span className="material-icons">check_circle</span>}
-                                                    label="Активен" 
+                                                    label="Active" 
                                                     color="success" 
                                                     variant="outlined" 
                                                 />
@@ -551,7 +568,7 @@ async function textToSpeech(text, voice = "female_1") {
                 {/* Вкладка: Примеры кода */}
                 <TabPanel value={tabValue} index={2}>
                     <Typography variant="h5" gutterBottom>
-                        Примеры использования
+                        Usage Examples
                     </Typography>
 
                     <Grid container spacing={3}>
@@ -698,43 +715,43 @@ async function textToSpeech(text, voice = "female_1") {
                 {/* Вкладка: Swagger Docs */}
                 <TabPanel value={tabValue} index={3}>
                     <Typography variant="h5" gutterBottom sx={{ mb: 2 }}>
-                        Интерактивная документация API
+                        Interactive API Documentation
                     </Typography>
                     
                     <Alert severity="info" sx={{ mb: 3 }}>
-                        <strong>Swagger UI</strong> позволяет тестировать API эндпоинты прямо в браузере.
-                        Для тестирования используйте кнопку "Authorize" и вставьте ваш API ключ.
+                        <strong>Swagger UI</strong> allows you to test API endpoints directly in the browser.
+                        Use the "Authorize" button and insert your API key for testing.
                     </Alert>
 
-                    {/* Встроенный Swagger UI */}
-                    <Paper sx={{ height: '80vh', border: 1, borderColor: 'grey.300' }}>
-                        <iframe
-                            src={`/api/docs?theme=${theme.palette.mode}`}
-                            style={{
-                                width: '100%',
-                                height: '100%',
-                                border: 'none'
-                            }}
-                            title="Swagger API Documentation"
-                        />
-                    </Paper>
-                    
-                    <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
+                    <Box sx={{ mb: 2, display: 'flex', gap: 2 }}>
                         <Button
                             variant="outlined"
                             onClick={() => window.open(`/api/docs?theme=${theme.palette.mode}`, '_blank')}
                             startIcon={<span className="material-icons">open_in_new</span>}
                         >
-                            Открыть в новой вкладке
-                        </Button>
-                        <Button
-                            variant="outlined"
-                            onClick={() => window.location.reload()}
-                            startIcon={<span className="material-icons">refresh</span>}
-                        >
-                            Обновить
+                            Open in new tab
                         </Button>
                     </Box>
+
+                    {/* Встроенный Swagger UI */}
+                    <Paper sx={{ 
+                        border: 1, 
+                        borderColor: 'grey.300',
+                        minHeight: iframeHeight,
+                        overflow: 'hidden'
+                    }}>
+                        <iframe
+                            src={`/api/docs?theme=${theme.palette.mode}`}
+                            style={{
+                                width: '100%',
+                                height: iframeHeight,
+                                border: 'none',
+                                display: 'block'
+                            }}
+                            title="Swagger API Documentation"
+                            scrolling="no"
+                        />
+                    </Paper>
                 </TabPanel>
             </Box>
 

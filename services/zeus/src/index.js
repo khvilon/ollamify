@@ -57,6 +57,23 @@ app.get('/api/docs', (req, res) => {
          color: white !important;
        }
        
+       /* Убираем внутренний скролл и делаем полноразмерным */
+       html, body {
+         margin: 0;
+         padding: 0;
+         height: 100%;
+         overflow-x: hidden;
+       }
+       
+       .swagger-ui {
+         height: auto !important;
+         min-height: 100vh;
+       }
+       
+       .swagger-ui .wrapper {
+         padding: 20px;
+       }
+       
        ${theme === 'dark' ? `
        /* Стили для темной темы */
        .swagger-ui {
@@ -148,7 +165,41 @@ app.get('/api/docs', (req, res) => {
         ],
         persistAuthorization: true,
         displayRequestDuration: true,
-        docExpansion: 'list'
+        docExpansion: 'list',
+        onComplete: function() {
+          // Функция для изменения размера iframe
+          function resizeIframe() {
+            const height = Math.max(
+              document.body.scrollHeight,
+              document.body.offsetHeight,
+              document.documentElement.clientHeight,
+              document.documentElement.scrollHeight,
+              document.documentElement.offsetHeight
+            );
+            
+            // Отправляем высоту родительскому окну
+            if (window.parent && window.parent !== window) {
+              window.parent.postMessage({
+                type: 'resize',
+                height: height
+              }, '*');
+            }
+          }
+          
+          // Изменяем размер при загрузке
+          setTimeout(resizeIframe, 500);
+          
+          // Изменяем размер при изменении содержимого
+          const observer = new MutationObserver(resizeIframe);
+          observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: true
+          });
+          
+          // Изменяем размер при изменении размера окна
+          window.addEventListener('resize', resizeIframe);
+        }
       });
     </script>
   </body>

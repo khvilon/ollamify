@@ -7,47 +7,47 @@ const options = {
       title: 'Ollamify External API',
       version: '1.0.0',
       description: `
-# Внешний API для Ollamify
+# Ollamify External API
 
-Это документация внешних API эндпоинтов Ollamify, которые работают с API ключами.
+This is the documentation for Ollamify's external API endpoints that work with API keys.
 
-## Аутентификация
+## Authentication
 
-Все эндпоинты требуют API ключ в заголовке Authorization:
+All endpoints require an API key in the Authorization header:
 
 \`\`\`
 Authorization: Bearer YOUR_API_KEY
 \`\`\`
 
-## Получение API ключа
+## Getting API Key
 
-1. Войдите в админ панель Ollamify
-2. Перейдите в раздел "Пользователи"
-3. Создайте новый API ключ для нужного пользователя
+1. Log in to Ollamify admin panel
+2. Go to "Users" section
+3. Create a new API key for the required user
 
-## Поддерживаемые сервисы
+## Supported Services
 
-- **AI & RAG** - Генерация ответов и поиск по документам
-- **Documents** - Управление документами для RAG
-- **TTS** - Синтез речи (Text-to-Speech)
-- **STT** - Распознавание речи (Speech-to-Text)
-- **OpenAI Compatible** - Совместимость с OpenAI Chat API
+- **AI & RAG** - Answer generation and document search
+- **Documents** - Document management for RAG
+- **TTS** - Text-to-Speech synthesis
+- **STT** - Speech-to-Text recognition
+- **OpenAI Compatible** - OpenAI Chat API compatibility
 
-## Лимиты
+## Limits
 
-- Максимальный размер файла: 50MB
-- Таймаут запроса: 10 минут
-- Поддерживаемые форматы аудио: WAV, MP3, FLAC, M4A, MP4
+- Maximum file size: 50MB
+- Request timeout: 10 minutes
+- Supported audio formats: WAV, MP3, FLAC, M4A, MP4
 
-## Примеры использования
+## Usage Examples
 
-Подробные примеры кода на различных языках программирования доступны на вкладке "Примеры кода" в веб-интерфейсе.
+Detailed code examples in various programming languages are available on the "Code Examples" tab in the web interface.
       `
     },
     servers: [
       {
         url: '/',
-        description: 'Олламify API сервер'
+        description: 'Ollamify API Server'
       }
     ],
     components: {
@@ -55,7 +55,7 @@ Authorization: Bearer YOUR_API_KEY
         ApiKeyAuth: {
           type: 'http',
           scheme: 'bearer',
-          description: 'Введите ваш API ключ в формате: Bearer YOUR_API_KEY'
+          description: 'Enter your API key in the format: Bearer YOUR_API_KEY'
         }
       },
       schemas: {
@@ -64,17 +64,17 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             error: {
               type: 'string',
-              description: 'Сообщение об ошибке',
+              description: 'Error message',
               example: 'Invalid API key'
             },
             code: {
               type: 'string',
-              description: 'Код ошибки',
+              description: 'Error code',
               example: 'INVALID_CREDENTIALS'
             },
             details: {
               type: 'string',
-              description: 'Дополнительная информация об ошибке'
+              description: 'Additional information about the error'
             }
           }
         },
@@ -83,31 +83,31 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             id: {
               type: 'integer',
-              description: 'ID документа',
+              description: 'Document ID',
               example: 1
             },
             name: {
               type: 'string',
-              description: 'Название документа',
+              description: 'Document name',
               example: 'my-document.pdf'
             },
             content_hash: {
               type: 'string',
-              description: 'SHA-256 хеш содержимого документа'
+              description: 'SHA-256 hash of document content'
             },
             total_chunks: {
               type: 'integer',
-              description: 'Общее количество чанков',
+              description: 'Total number of chunks',
               example: 50
             },
             loaded_chunks: {
               type: 'integer',
-              description: 'Количество обработанных чанков',
+              description: 'Number of processed chunks',
               example: 50
             },
             metadata: {
               type: 'object',
-              description: 'Метаданные документа',
+              description: 'Document metadata',
               example: {
                 fileSize: '1024000',
                 mimeType: 'application/pdf'
@@ -116,15 +116,15 @@ Authorization: Bearer YOUR_API_KEY
             created_at: {
               type: 'string',
               format: 'date-time',
-              description: 'Время создания'
+              description: 'Creation time'
             },
             external_id: {
               type: 'string',
-              description: 'Внешний ID документа'
+              description: 'External document ID'
             },
             project: {
               type: 'string',
-              description: 'Название проекта',
+              description: 'Project name',
               example: 'my-documents'
             }
           }
@@ -140,22 +140,22 @@ Authorization: Bearer YOUR_API_KEY
             },
             total: {
               type: 'integer',
-              description: 'Общее количество документов',
+              description: 'Total number of documents',
               example: 100
             },
             page: {
               type: 'integer',
-              description: 'Текущая страница',
+              description: 'Current page',
               example: 1
             },
             limit: {
               type: 'integer',
-              description: 'Количество элементов на странице',
+              description: 'Number of items per page',
               example: 10
             },
             total_pages: {
               type: 'integer',
-              description: 'Общее количество страниц',
+              description: 'Total number of pages',
               example: 10
             }
           }
@@ -167,13 +167,13 @@ Authorization: Bearer YOUR_API_KEY
             role: {
               type: 'string',
               enum: ['system', 'user', 'assistant'],
-              description: 'Роль сообщения',
+              description: 'Message role',
               example: 'user'
             },
             content: {
               type: 'string',
-              description: 'Содержимое сообщения',
-              example: 'Привет, как дела?'
+              description: 'Message content',
+              example: 'Hello, how are you?'
             }
           }
         },
@@ -183,7 +183,7 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             model: {
               type: 'string',
-              description: 'Название модели',
+              description: 'Model name',
               example: 'llama3.1:8b'
             },
             messages: {
@@ -197,39 +197,39 @@ Authorization: Bearer YOUR_API_KEY
               type: 'number',
               minimum: 0,
               maximum: 2,
-              description: 'Температура сэмплирования',
+              description: 'Sampling temperature',
               example: 0.7
             },
             max_tokens: {
               type: 'integer',
               minimum: 1,
-              description: 'Максимальное количество токенов для генерации',
+              description: 'Maximum number of tokens to generate',
               example: 1000
             },
             stream: {
               type: 'boolean',
-              description: 'Потоковая передача ответа',
+              description: 'Stream response',
               example: false
             },
             top_p: {
               type: 'number',
               minimum: 0,
               maximum: 1,
-              description: 'Top-p сэмплирование',
+              description: 'Top-p sampling',
               example: 0.9
             },
             frequency_penalty: {
               type: 'number',
               minimum: -2,
               maximum: 2,
-              description: 'Штраф за частоту',
+              description: 'Frequency penalty',
               example: 0
             },
             presence_penalty: {
               type: 'number',
               minimum: -2,
               maximum: 2,
-              description: 'Штраф за присутствие',
+              description: 'Presence penalty',
               example: 0
             }
           }
@@ -239,7 +239,7 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             id: {
               type: 'string',
-              description: 'ID запроса',
+              description: 'Request ID',
               example: 'chatcmpl-123'
             },
             object: {
@@ -248,7 +248,7 @@ Authorization: Bearer YOUR_API_KEY
             },
             created: {
               type: 'integer',
-              description: 'Unix timestamp создания'
+              description: 'Unix timestamp of creation'
             },
             model: {
               type: 'string',
@@ -294,30 +294,30 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             question: {
               type: 'string',
-              description: 'Вопрос пользователя',
-              example: 'Что такое машинное обучение?'
+              description: 'User question',
+              example: 'What is machine learning?'
             },
             project: {
               type: 'string',
-              description: 'Название проекта для поиска',
+              description: 'Project name for search',
               example: 'my-documents'
             },
             model: {
               type: 'string',
-              description: 'Модель для генерации ответа',
+              description: 'Model for answer generation',
               example: 'llama3.1:8b'
             },
             temperature: {
               type: 'number',
               minimum: 0,
               maximum: 2,
-              description: 'Температура генерации',
+              description: 'Generation temperature',
               example: 0.7
             },
             max_tokens: {
               type: 'integer',
               minimum: 1,
-              description: 'Максимум токенов в ответе',
+              description: 'Maximum tokens in response',
               example: 1000
             }
           }
@@ -327,7 +327,7 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             answer: {
               type: 'string',
-              description: 'Сгенерированный ответ'
+              description: 'Generated answer'
             },
             sources: {
               type: 'array',
@@ -354,19 +354,19 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             text: {
               type: 'string',
-              description: 'Текст для синтеза речи',
-              example: 'Привет, как дела?'
+              description: 'Text for speech synthesis',
+              example: 'Hello, how are you?'
             },
             voice: {
               type: 'string',
-              description: 'Голос для синтеза',
+              description: 'Voice for synthesis',
               example: 'ru_speaker'
             },
             speed: {
               type: 'number',
               minimum: 0.1,
               maximum: 3.0,
-              description: 'Скорость речи',
+              description: 'Speech speed',
               example: 1.0
             }
           }
@@ -376,17 +376,17 @@ Authorization: Bearer YOUR_API_KEY
           properties: {
             text: {
               type: 'string',
-              description: 'Распознанный текст',
-              example: 'Привет, как дела?'
+              description: 'Recognized text',
+              example: 'Hello, how are you?'
             },
             language: {
               type: 'string',
-              description: 'Определенный язык',
-              example: 'ru'
+              description: 'Detected language',
+              example: 'en'
             },
             confidence: {
               type: 'number',
-              description: 'Уверенность в результате',
+              description: 'Result confidence',
               example: 0.95
             }
           }
@@ -401,23 +401,23 @@ Authorization: Bearer YOUR_API_KEY
     tags: [
       {
         name: 'OpenAI Compatible',
-        description: 'OpenAI совместимые эндпоинты для чат-завершений'
+        description: 'OpenAI compatible endpoints for chat completions'
       },
       {
         name: 'AI & RAG',
-        description: 'Генерация ответов и поиск по документам (RAG)'
+        description: 'Answer generation and document search (RAG)'
       },
       {
         name: 'Documents',
-        description: 'Управление документами для RAG системы'
+        description: 'Document management for RAG system'
       },
       {
         name: 'TTS',
-        description: 'Синтез речи (Text-to-Speech)'
+        description: 'Text-to-Speech synthesis'
       },
       {
         name: 'STT',
-        description: 'Распознавание речи (Speech-to-Text)'
+        description: 'Speech-to-Text recognition'
       }
     ]
   },
