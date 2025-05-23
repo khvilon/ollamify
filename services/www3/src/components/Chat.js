@@ -45,6 +45,7 @@ function Chat() {
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
     const [useReranker, setUseReranker] = useState(true);
+    const [embeddingModels, setEmbeddingModels] = useState([]); // Список embedding моделей для исключения
     const searchInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const chatContainerRef = useRef(null);
@@ -69,6 +70,8 @@ function Chat() {
     const handleModelChange = (event) => {
         const value = event.target.value;
         setSelectedModel(value);
+        // Сохраняем выбранную модель в localStorage
+        localStorage.setItem('chat_selected_model', value);
         // Закрываем выпадающий список при выборе модели
         handleModelSelectClose();
     };
@@ -96,6 +99,19 @@ function Chat() {
                     setSelectedProject(projectsData[0].name);
                 }
 
+                // Загружаем embedding модели (для исключения)
+                const embeddingResponse = await window.api.fetch('/api/models');
+                if (embeddingResponse.ok) {
+                    const embeddingData = await embeddingResponse.json();
+                    const embeddingModelsList = embeddingData.models.filter(model => 
+                        model.downloadStatus?.status === 'ready' && 
+                        model.capabilities?.includes('embedding')
+                    );
+                    // Добавляем FRIDA как embedding модель
+                    embeddingModelsList.push({ name: 'frida' });
+                    setEmbeddingModels(embeddingModelsList.map(m => m.name));
+                }
+
                 // Загружаем модели
                 const modelsResponse = await window.api.fetch('/api/models/models');
                 if (!modelsResponse.ok) {
@@ -104,12 +120,38 @@ function Chat() {
                 const modelsData = await modelsResponse.json();
                 setModels(modelsData.models);
                 
-                // Выбираем первую доступную модель
-                if (modelsData.models.installed.length > 0) {
-                    setSelectedModel(modelsData.models.installed[0].name);
-                } else if (modelsData.models.available.openrouter.length > 0) {
-                    const firstOpenRouterModel = modelsData.models.available.openrouter[0];
-                    setSelectedModel(`openrouter/${firstOpenRouterModel.id}`);
+                // Выбираем модель: сначала из localStorage, потом первую доступную
+                const savedModel = localStorage.getItem('chat_selected_model');
+                
+                // Проверяем, есть ли сохраненная модель в списке доступных
+                let modelToSelect = null;
+                if (savedModel) {
+                    // Проверяем в установленных моделях (исключая embedding)
+                    const isInstalledModel = modelsData.models.installed.some(m => 
+                        m.name === savedModel && !embeddingModels.includes(m.name)
+                    );
+                    // Проверяем в OpenRouter моделях
+                    const isOpenRouterModel = modelsData.models.available.openrouter.some(m => `openrouter/${m.id}` === savedModel);
+                    
+                    if (isInstalledModel || isOpenRouterModel) {
+                        modelToSelect = savedModel;
+                    }
+                }
+                
+                // Если сохраненной модели нет, выбираем первую доступную
+                if (!modelToSelect) {
+                    // Ищем первую не-embedding модель
+                    const availableInstalled = modelsData.models.installed.filter(m => !embeddingModels.includes(m.name));
+                    if (availableInstalled.length > 0) {
+                        modelToSelect = availableInstalled[0].name;
+                    } else if (modelsData.models.available.openrouter.length > 0) {
+                        const firstOpenRouterModel = modelsData.models.available.openrouter[0];
+                        modelToSelect = `openrouter/${firstOpenRouterModel.id}`;
+                    }
+                }
+                
+                if (modelToSelect) {
+                    setSelectedModel(modelToSelect);
                 }
             } catch (err) {
                 console.error('Error fetching data:', err);
@@ -126,20 +168,27 @@ function Chat() {
     // Фильтрация и подготовка списка моделей
     const allModels = useMemo(() => {
         return [
-            // Установленные модели Ollama
-            ...models.installed.map(model => ({
-                id: model.name,
-                name: model.name,
-                type: 'installed'
-            })),
+            // Установленные модели Ollama (исключаем embedding модели)
+            ...models.installed
+                .filter(model => {
+                    // Исключаем модели из списка embedding моделей
+                    return !embeddingModels.includes(model.name);
+                })
+                .map(model => ({
+                    id: model.name,
+                    name: model.name,
+                    type: 'installed',
+                    capabilities: model.capabilities || []
+                })),
             // Модели OpenRouter
             ...models.available.openrouter.map(model => ({
                 id: `openrouter/${model.id}`,
                 name: model.name,
-                type: 'openrouter'
+                type: 'openrouter',
+                capabilities: model.capabilities || []
             }))
         ];
-    }, [models]);
+    }, [models, embeddingModels]);
 
     // Фильтрованные модели для отображения
     const displayedModels = useMemo(() => {
@@ -161,7 +210,9 @@ function Chat() {
     useEffect(() => {
         if (selectedModel && !allModels.some(m => m.id === selectedModel)) {
             if (allModels.length > 0) {
-                setSelectedModel(allModels[0].id);
+                const newModel = allModels[0].id;
+                setSelectedModel(newModel);
+                localStorage.setItem('chat_selected_model', newModel);
             }
         }
     }, [selectedModel, allModels]);
