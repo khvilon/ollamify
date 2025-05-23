@@ -293,7 +293,9 @@ function Users() {
                         ? 'rgba(255, 255, 255, 0.7)'
                         : 'rgba(50, 50, 50, 0.7)',
                     backdropFilter: 'blur(10px)',
-                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                    boxShadow: theme => theme.palette.mode === 'light'
+                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                 }}>
                     <Table>
                         <TableHead>

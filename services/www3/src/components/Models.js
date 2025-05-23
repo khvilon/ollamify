@@ -428,7 +428,9 @@ function Models() {
                     ? 'rgba(255, 255, 255, 0.7)'
                     : 'rgba(50, 50, 50, 0.7)',
                 backdropFilter: 'blur(10px)',
-                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)',
+                boxShadow: theme => theme.palette.mode === 'light'
+                    ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                    : '0 6px 20px 0 rgba(8, 8, 15, 0.35)',
                 '&:hover': {
                     transform: 'translateY(-4px)',
                     boxShadow: '0 12px 40px 0 rgba(31, 38, 135, 0.12)'
@@ -618,7 +620,9 @@ function Models() {
                         ? 'rgba(255, 255, 255, 0.5)'
                         : 'rgba(50, 50, 50, 0.5)',
                     backdropFilter: 'blur(10px)',
-                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                    boxShadow: theme => theme.palette.mode === 'light'
+                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                 }}>
                     <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
                         <TextField

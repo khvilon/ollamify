@@ -258,12 +258,13 @@ function Layout({ children }) {
                             '& .MuiPaper-root': {
                                 borderRadius: 2,
                                 minWidth: 180,
-                                background: theme.palette.mode === 'light' 
-                                    ? 'rgba(255, 255, 255, 0.9)'
-                                    : 'rgba(50, 50, 50, 0.9)',
+                                background: theme => theme.palette.mode === 'light' 
+                                    ? 'rgba(255, 255, 255, 0.7)'
+                                    : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                border: `1px solid ${alpha(theme.palette.divider, 0.1)}`,
-                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                boxShadow: theme => theme.palette.mode === 'light'
+                                    ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                             }
                         }}
                     >

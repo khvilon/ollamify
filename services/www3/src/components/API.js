@@ -414,7 +414,9 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? 'rgba(255, 255, 255, 0.7)'
                                         : 'rgba(50, 50, 50, 0.7)',
                                     backdropFilter: 'blur(10px)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    boxShadow: theme => theme.palette.mode === 'light'
+                                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
                                     <CardContent>
                                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
@@ -463,7 +465,9 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? 'rgba(255, 255, 255, 0.7)'
                                         : 'rgba(50, 50, 50, 0.7)',
                                     backdropFilter: 'blur(10px)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    boxShadow: theme => theme.palette.mode === 'light'
+                                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
                                     <Typography variant="h4" color="primary">50MB</Typography>
                                     <Typography variant="body2">Max file size</Typography>
@@ -478,7 +482,9 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? 'rgba(255, 255, 255, 0.7)'
                                         : 'rgba(50, 50, 50, 0.7)',
                                     backdropFilter: 'blur(10px)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    boxShadow: theme => theme.palette.mode === 'light'
+                                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
                                     <Typography variant="h4" color="primary">10 min</Typography>
                                     <Typography variant="body2">Request timeout</Typography>
@@ -493,7 +499,9 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? 'rgba(255, 255, 255, 0.7)'
                                         : 'rgba(50, 50, 50, 0.7)',
                                     backdropFilter: 'blur(10px)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    boxShadow: theme => theme.palette.mode === 'light'
+                                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
                                     <Typography variant="h4" color="primary">JSON</Typography>
                                     <Typography variant="body2">Data format</Typography>
@@ -508,7 +516,9 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? 'rgba(255, 255, 255, 0.7)'
                                         : 'rgba(50, 50, 50, 0.7)',
                                     backdropFilter: 'blur(10px)',
-                                    boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    boxShadow: theme => theme.palette.mode === 'light'
+                                        ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
                                     <Typography variant="h4" color="primary">HTTPS</Typography>
                                     <Typography variant="body2">Security</Typography>
@@ -551,7 +561,9 @@ async function textToSpeech(text, voice = "female_1") {
                                             ? 'rgba(255, 255, 255, 0.7)'
                                             : 'rgba(50, 50, 50, 0.7)',
                                         backdropFilter: 'blur(10px)',
-                                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                        boxShadow: theme => theme.palette.mode === 'light'
+                                            ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                            : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                     }}>
                                         <CardContent>
                                             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -633,7 +645,9 @@ async function textToSpeech(text, voice = "female_1") {
                                     ? 'rgba(255, 255, 255, 0.7)'
                                     : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                boxShadow: theme => theme.palette.mode === 'light'
+                                    ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                             }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -686,7 +700,9 @@ async function textToSpeech(text, voice = "female_1") {
                                     ? 'rgba(255, 255, 255, 0.7)'
                                     : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                boxShadow: theme => theme.palette.mode === 'light'
+                                    ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                             }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -739,7 +755,9 @@ async function textToSpeech(text, voice = "female_1") {
                                     ? 'rgba(255, 255, 255, 0.7)'
                                     : 'rgba(50, 50, 50, 0.7)',
                                 backdropFilter: 'blur(10px)',
-                                boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                boxShadow: theme => theme.palette.mode === 'light'
+                                    ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                                    : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                             }}>
                                 <CardContent>
                                     <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -817,7 +835,9 @@ async function textToSpeech(text, voice = "female_1") {
                             ? 'rgba(255, 255, 255, 0.7)'
                             : 'rgba(50, 50, 50, 0.7)',
                         backdropFilter: 'blur(10px)',
-                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                        boxShadow: theme => theme.palette.mode === 'light'
+                            ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
+                            : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                     }}>
                         <iframe
                             src={`/api/docs?theme=${theme.palette.mode}`}
