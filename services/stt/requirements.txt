@@ -1,0 +1,15 @@
+flask==3.0.0
+flask-cors==4.0.0
+gunicorn==21.2.0
+
+# Whisper для распознавания речи
+openai-whisper==20240930
+
+# Дополнительные утилиты для аудио
+librosa>=0.10.0
+soundfile>=0.12.0
+pydub>=0.25.0
+numpy>=1.24.0
+
+# API документация
+flasgger==0.9.7.1 

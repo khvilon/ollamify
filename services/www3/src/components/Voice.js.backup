@@ -44,8 +44,8 @@ const {
 
 function Voice() {
     // TTS состояние
-    const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи на базе Silero TTS.');
-    const [ttsVoice, setTtsVoice] = useState('aidar');
+    const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи на базе Coqui XTTS версии два. Коммерческая лицензия Apache 2.0 позволяет использовать эту технологию в любых целях.');
+    const [ttsVoice, setTtsVoice] = useState('female_1');
     const [ttsLanguage, setTtsLanguage] = useState('ru');
     const [ttsSpeed, setTtsSpeed] = useState(1.0);
     const [ttsSampleRate, setTtsSampleRate] = useState(24000);
@@ -55,18 +55,10 @@ function Voice() {
     const [voices, setVoices] = useState([]);
     const [isLoadingVoices, setIsLoadingVoices] = useState(true);
     
-    // STT состояние
+    // STT состояние (заглушка для будущего)
     const [isRecording, setIsRecording] = useState(false);
     const [sttResult, setSttResult] = useState('');
     const [sttError, setSttError] = useState(null);
-    const [mediaRecorder, setMediaRecorder] = useState(null);
-    const [sttModels, setSttModels] = useState({});
-    const [selectedSttModel, setSelectedSttModel] = useState('base');
-    const [currentSttModel, setCurrentSttModel] = useState('base'); // Текущая загруженная модель
-    const [sttLanguage, setSttLanguage] = useState('ru');
-    const [isLoadingSttModels, setIsLoadingSttModels] = useState(true);
-    const [isTranscribing, setIsTranscribing] = useState(false);
-    const [isLoadingModel, setIsLoadingModel] = useState(false); // Загрузка модели
     
     // Клонирование голоса (заглушка для будущего)
     const [showVoiceCloning, setShowVoiceCloning] = useState(false);
@@ -98,84 +90,6 @@ function Voice() {
         fetchVoices();
     }, []);
 
-    // Загрузка STT моделей при монтировании
-    useEffect(() => {
-        const fetchSttModels = async () => {
-            try {
-                const response = await window.api.fetch('/api/stt/models');
-                if (!response.ok) {
-                    throw new Error('Failed to fetch STT models');
-                }
-                const modelsData = await response.json();
-                setSttModels(modelsData.models);
-                setCurrentSttModel(modelsData.current_model); // Устанавливаем текущую модель
-                setSelectedSttModel(modelsData.current_model); // Синхронизируем выбор
-            } catch (err) {
-                console.error('Error fetching STT models:', err);
-                setSttError('Не удалось загрузить модели STT');
-            } finally {
-                setIsLoadingSttModels(false);
-            }
-        };
-
-        fetchSttModels();
-    }, []);
-
-    // Получение статуса STT сервиса
-    const fetchSttStatus = async () => {
-        try {
-            const response = await window.api.fetch('/api/stt/health');
-            if (response.ok) {
-                const statusData = await response.json();
-                setCurrentSttModel(statusData.model_name || 'base');
-            }
-        } catch (err) {
-            console.warn('Could not fetch STT status:', err);
-        }
-    };
-
-    // Загрузка новой модели STT
-    const handleLoadSttModel = async (modelName) => {
-        if (modelName === currentSttModel || isLoadingModel) return;
-
-        setIsLoadingModel(true);
-        setSttError(null);
-
-        try {
-            const response = await window.api.fetch('/api/stt/model/load', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ model_name: modelName })
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Ошибка загрузки модели');
-            }
-
-            const result = await response.json();
-            setCurrentSttModel(modelName);
-            window.enqueueSnackbar(`Модель ${modelName} успешно загружена!`, { variant: 'success' });
-
-        } catch (err) {
-            console.error('STT Model loading error:', err);
-            setSttError(`Ошибка загрузки модели: ${err.message}`);
-            window.enqueueSnackbar(`Ошибка загрузки модели: ${err.message}`, { variant: 'error' });
-            setSelectedSttModel(currentSttModel); // Возвращаем выбор к текущей модели
-        } finally {
-            setIsLoadingModel(false);
-        }
-    };
-
-    // Обработчик смены модели STT
-    const handleSttModelChange = (e) => {
-        const newModel = e.target.value;
-        setSelectedSttModel(newModel);
-        handleLoadSttModel(newModel);
-    };
-
     // Доступные языки
     const languages = [
         { code: 'ru', name: 'Русский' },
@@ -192,6 +106,7 @@ function Voice() {
         { code: 'ar', name: 'العربية' },
         { code: 'zh', name: '中文' },
         { code: 'ja', name: '日本語' },
+        { code: 'hu', name: 'Magyar' },
         { code: 'ko', name: '한국어' }
     ];
 
@@ -260,80 +175,7 @@ function Voice() {
         }
     };
 
-    // STT функции
-    const handleStartRecording = async () => {
-        try {
-            setSttError(null);
-            setSttResult('');
-            
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
-            const chunks = [];
-
-            recorder.ondataavailable = (e) => {
-                if (e.data.size > 0) {
-                    chunks.push(e.data);
-                }
-            };
-
-            recorder.onstop = async () => {
-                const audioBlob = new Blob(chunks, { type: 'audio/wav' });
-                await transcribeAudio(audioBlob);
-                
-                // Останавливаем поток
-                stream.getTracks().forEach(track => track.stop());
-            };
-
-            recorder.start();
-            setMediaRecorder(recorder);
-            setIsRecording(true);
-            
-        } catch (err) {
-            console.error('Error starting recording:', err);
-            setSttError('Не удалось получить доступ к микрофону');
-        }
-    };
-
-    const handleStopRecording = () => {
-        if (mediaRecorder && isRecording) {
-            mediaRecorder.stop();
-            setIsRecording(false);
-            setMediaRecorder(null);
-        }
-    };
-
-    const transcribeAudio = async (audioBlob) => {
-        try {
-            setIsTranscribing(true);
-            
-            const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.wav');
-            formData.append('language', sttLanguage);
-            formData.append('task', 'transcribe');
-
-            const response = await window.api.fetch('/api/stt/transcribe', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                throw new Error(errorData.error || 'Ошибка транскрибации');
-            }
-
-            const result = await response.json();
-            setSttResult(result.text);
-            
-            window.enqueueSnackbar('Распознавание речи завершено!', { variant: 'success' });
-
-        } catch (err) {
-            console.error('STT Error:', err);
-            setSttError(err.message);
-            window.enqueueSnackbar(`Ошибка распознавания: ${err.message}`, { variant: 'error' });
-        } finally {
-            setIsTranscribing(false);
-        }
-    };
+        // STT функции    const [mediaRecorder, setMediaRecorder] = useState(null);    const [audioChunks, setAudioChunks] = useState([]);    const [sttModels, setSttModels] = useState([]);    const [selectedSttModel, setSelectedSttModel] = useState('base');    const [sttLanguage, setSttLanguage] = useState('ru');    const [isLoadingSttModels, setIsLoadingSttModels] = useState(true);    // Загрузка STT моделей при монтировании    useEffect(() => {        const fetchSttModels = async () => {            try {                const response = await window.api.fetch('/api/stt/models');                if (!response.ok) {                    throw new Error('Failed to fetch STT models');                }                const modelsData = await response.json();                setSttModels(modelsData.models);            } catch (err) {                console.error('Error fetching STT models:', err);                setSttError('Не удалось загрузить модели STT');            } finally {                setIsLoadingSttModels(false);            }        };        fetchSttModels();    }, []);    const handleStartRecording = async () => {        try {            setSttError(null);            setSttResult('');                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });            const recorder = new MediaRecorder(stream);            const chunks = [];            recorder.ondataavailable = (e) => {                if (e.data.size > 0) {                    chunks.push(e.data);                }            };            recorder.onstop = async () => {                const audioBlob = new Blob(chunks, { type: 'audio/wav' });                await transcribeAudio(audioBlob);                                // Останавливаем поток                stream.getTracks().forEach(track => track.stop());            };            recorder.start();            setMediaRecorder(recorder);            setAudioChunks(chunks);            setIsRecording(true);                    } catch (err) {            console.error('Error starting recording:', err);            setSttError('Не удалось получить доступ к микрофону');        }    };    const handleStopRecording = () => {        if (mediaRecorder && isRecording) {            mediaRecorder.stop();            setIsRecording(false);            setMediaRecorder(null);        }    };    const transcribeAudio = async (audioBlob) => {        try {            const formData = new FormData();            formData.append('audio', audioBlob, 'recording.wav');            formData.append('language', sttLanguage);            formData.append('task', 'transcribe');            const response = await window.api.fetch('/api/stt/transcribe', {                method: 'POST',                body: formData            });            if (!response.ok) {                const errorData = await response.json().catch(() => ({}));                throw new Error(errorData.error || 'Ошибка транскрибации');            }            const result = await response.json();            setSttResult(result.text);                        window.enqueueSnackbar('Распознавание речи завершено!', { variant: 'success' });        } catch (err) {            console.error('STT Error:', err);            setSttError(err.message);            window.enqueueSnackbar(`Ошибка распознавания: ${err.message}`, { variant: 'error' });        }    };
 
     // Заглушка для клонирования голоса
     const handleVoiceCloning = () => {
@@ -367,7 +209,7 @@ function Voice() {
                     Voice Assistant
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    Синтез речи (Silero TTS) и распознавание речи (Whisper) • Apache 2.0
+                    Тестирование синтеза речи (TTS) и распознавания речи (STT) • Coqui XTTS v2 • Apache 2.0
                 </Typography>
             </Box>
 
@@ -570,199 +412,26 @@ function Voice() {
 
             {/* Вкладка STT */}
             {activeTab === 1 && (
-                <Grid container spacing={3}>
-                    {/* Настройки STT */}
-                    <Grid item xs={12} md={4}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom>
-                                    <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>settings</Icon>
-                                    Настройки
-                                </Typography>
-
-                                {/* Выбор модели */}
-                                <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Модель Whisper</InputLabel>
-                                    <Select
-                                        value={selectedSttModel}
-                                        label="Модель Whisper"
-                                        onChange={handleSttModelChange}
-                                        disabled={isLoadingSttModels || isLoadingModel}
-                                        endAdornment={isLoadingModel && (
-                                            <InputAdornment position="end">
-                                                <CircularProgress size={20} />
-                                            </InputAdornment>
-                                        )}
-                                    >
-                                        {Object.entries(sttModels).map(([model, info]) => (
-                                            <MenuItem key={model} value={model}>
-                                                <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                                                    <Box sx={{ flexGrow: 1 }}>
-                                                        <Typography variant="body2">
-                                                            {model} ({info.size})
-                                                            {model === currentSttModel && (
-                                                                <Chip 
-                                                                    label="Загружена" 
-                                                                    size="small" 
-                                                                    color="success" 
-                                                                    sx={{ ml: 1 }} 
-                                                                />
-                                                            )}
-                                                        </Typography>
-                                                        <Typography variant="caption" color="text.secondary">
-                                                            {info.speed} • {info.quality}
-                                                        </Typography>
-                                                    </Box>
-                                                </Box>
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-
-                                {/* Статус модели */}
-                                {isLoadingModel && (
-                                    <Box sx={{ mb: 2 }}>
-                                        <Typography variant="body2" color="primary" gutterBottom>
-                                            Загружается модель {selectedSttModel}...
-                                        </Typography>
-                                        <LinearProgress />
-                                    </Box>
-                                )}
-
-                                {/* Информация о текущей модели */}
-                                {!isLoadingModel && currentSttModel && (
-                                    <Box sx={{ mb: 2, p: 1, bgcolor: 'success.light', borderRadius: 1 }}>
-                                        <Typography variant="body2" color="success.dark">
-                                            <Icon sx={{ fontSize: 16, mr: 0.5, verticalAlign: 'middle' }}>check_circle</Icon>
-                                            Активная модель: {currentSttModel}
-                                            {sttModels[currentSttModel] && ` (${sttModels[currentSttModel].size})`}
-                                        </Typography>
-                                    </Box>
-                                )}
-
-                                {/* Выбор языка */}
-                                <FormControl fullWidth sx={{ mb: 2 }}>
-                                    <InputLabel>Язык</InputLabel>
-                                    <Select
-                                        value={sttLanguage}
-                                        label="Язык"
-                                        onChange={(e) => setSttLanguage(e.target.value)}
-                                    >
-                                        {languages.map((lang) => (
-                                            <MenuItem key={lang.code} value={lang.code}>
-                                                {lang.name}
-                                            </MenuItem>
-                                        ))}
-                                    </Select>
-                                </FormControl>
-
-                                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                                    💡 Подсказка: Нажмите кнопку записи, говорите четко и остановите запись для транскрибации.
-                                </Typography>
-                            </CardContent>
-                        </Card>
-                    </Grid>
-
-                    {/* Запись и результат */}
-                    <Grid item xs={12} md={8}>
-                        <Card>
-                            <CardContent>
-                                <Typography variant="h6" gutterBottom>
-                                    <Icon sx={{ mr: 1, verticalAlign: 'middle' }}>mic</Icon>
-                                    Распознавание речи
-                                </Typography>
-
-                                {/* Кнопка записи */}
-                                <Box sx={{ textAlign: 'center', mb: 3 }}>
-                                    <IconButton
-                                        onClick={isRecording ? handleStopRecording : handleStartRecording}
-                                        disabled={isTranscribing}
-                                        sx={{
-                                            width: 80,
-                                            height: 80,
-                                            bgcolor: isRecording ? 'error.main' : 'primary.main',
-                                            color: 'white',
-                                            '&:hover': {
-                                                bgcolor: isRecording ? 'error.dark' : 'primary.dark',
-                                                transform: 'scale(1.05)'
-                                            },
-                                            '&:disabled': {
-                                                bgcolor: 'grey.400'
-                                            },
-                                            transition: 'all 0.2s'
-                                        }}
-                                    >
-                                        <Icon sx={{ fontSize: 40 }}>
-                                            {isTranscribing ? 'hourglass_empty' : isRecording ? 'stop' : 'mic'}
-                                        </Icon>
-                                    </IconButton>
-                                    <Typography variant="body2" sx={{ mt: 1 }}>
-                                        {isTranscribing ? 'Обрабатываю...' : isRecording ? 'Нажмите для остановки' : 'Нажмите для записи'}
-                                    </Typography>
-                                </Box>
-
-                                {/* Прогресс */}
-                                {isTranscribing && (
-                                    <LinearProgress sx={{ mb: 2 }} />
-                                )}
-
-                                {/* Ошибка */}
-                                {sttError && (
-                                    <Alert severity="error" sx={{ mb: 2 }}>
-                                        {sttError}
-                                    </Alert>
-                                )}
-
-                                {/* Результат */}
-                                <TextField
-                                    fullWidth
-                                    multiline
-                                    rows={6}
-                                    value={sttResult}
-                                    onChange={(e) => setSttResult(e.target.value)}
-                                    placeholder="Здесь появится результат распознавания речи..."
-                                    sx={{ mb: 2 }}
-                                    InputProps={{
-                                        endAdornment: (
-                                            <InputAdornment position="end">
-                                                <Typography variant="caption" color="text.secondary">
-                                                    {sttResult.length} символов
-                                                </Typography>
-                                            </InputAdornment>
-                                        )
-                                    }}
-                                />
-
-                                {/* Кнопки действий */}
-                                {sttResult && (
-                                    <Box sx={{ display: 'flex', gap: 1 }}>
-                                        <Button
-                                            variant="outlined"
-                                            onClick={() => navigator.clipboard.writeText(sttResult)}
-                                            startIcon={<Icon>copy</Icon>}
-                                        >
-                                            Копировать
-                                        </Button>
-                                        <Button
-                                            variant="outlined"
-                                            onClick={() => setSttResult('')}
-                                            startIcon={<Icon>clear</Icon>}
-                                        >
-                                            Очистить
-                                        </Button>
-                                        <Button
-                                            variant="contained"
-                                            onClick={() => setTtsText(sttResult)}
-                                            startIcon={<Icon>speaker</Icon>}
-                                        >
-                                            Озвучить
-                                        </Button>
-                                    </Box>
-                                )}
-                            </CardContent>
-                        </Card>
-                    </Grid>
-                </Grid>
+                <Card>
+                    <CardContent sx={{ textAlign: 'center', py: 6 }}>
+                        <Icon sx={{ fontSize: 64, color: 'text.secondary', mb: 2 }}>mic_off</Icon>
+                        <Typography variant="h6" gutterBottom>
+                            Распознавание речи (STT)
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary" paragraph>
+                            Функция распознавания речи будет добавлена в следующей версии.
+                            Планируется интеграция с Whisper, Vosk или GigaAM2.
+                        </Typography>
+                        <Button
+                            variant="outlined"
+                            startIcon={<Icon>mic</Icon>}
+                            onClick={handleStartRecording}
+                            disabled
+                        >
+                            Начать запись (скоро)
+                        </Button>
+                    </CardContent>
+                </Card>
             )}
 
             {/* Вкладка клонирования голоса */}

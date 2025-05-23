@@ -10,6 +10,7 @@ import projectsRouter from './routes/projects.js';
 import aiRouter from './routes/ai.js';
 import adminRouter from './routes/admin.js';
 import ttsRouter from './routes/tts.js';
+import sttRouter from './routes/stt.js';
 import { errorHandler } from './errors.js';
 import logger from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -56,6 +57,7 @@ app.use('/api/projects', projectsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/tts', ttsRouter);
+app.use('/api/stt', sttRouter);
 
 // Маршрут для проверки health
 app.get('/health', (req, res) => {
