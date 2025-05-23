@@ -247,6 +247,10 @@ def transcribe_audio():
         name: task
         type: string
         description: Задача (transcribe или translate)
+      - in: formData
+        name: model
+        type: string
+        description: Модель Whisper (tiny, base, small, medium, large)
     responses:
       200:
         description: Успешная транскрибация
@@ -255,10 +259,7 @@ def transcribe_audio():
       500:
         description: Ошибка сервера
     """
-    global whisper_model
-    
-    if whisper_model is None:
-        return jsonify({'error': 'Модель не загружена'}), 500
+    global whisper_model, model_name
     
     try:
         # Проверяем наличие аудио файла
@@ -272,8 +273,26 @@ def transcribe_audio():
         # Получаем параметры
         language = request.form.get('language', None)  # auto-detect если None
         task = request.form.get('task', 'transcribe')  # transcribe или translate
+        requested_model = request.form.get('model', None)  # модель для использования
         
-        logger.info(f"Начинаем транскрибацию, язык: {language}, задача: {task}")
+        # Проверяем и загружаем нужную модель
+        if requested_model:
+            if requested_model not in WHISPER_MODELS:
+                return jsonify({'error': f'Неизвестная модель: {requested_model}. Доступные: {list(WHISPER_MODELS.keys())}'}), 400
+            
+            # Если запрошенная модель отличается от загруженной, перегружаем
+            if requested_model != model_name or whisper_model is None:
+                logger.info(f"Переключение модели с {model_name} на {requested_model}")
+                model_name = requested_model
+                success = load_whisper_model(model_name)
+                if not success:
+                    return jsonify({'error': f'Не удалось загрузить модель {requested_model}'}), 500
+        else:
+            # Если модель не указана, используем текущую загруженную
+            if whisper_model is None:
+                return jsonify({'error': 'Модель не загружена. Укажите параметр model или загрузите модель через /model/load'}), 500
+        
+        logger.info(f"Начинаем транскрибацию, модель: {model_name}, язык: {language}, задача: {task}")
         
         # Предобрабатываем аудио
         audio_array = preprocess_audio(audio_file)
@@ -307,7 +326,7 @@ def transcribe_audio():
                     'text': segment.get('text', '').strip()
                 })
         
-        logger.info(f"Транскрибация завершена: {len(response_data['text'])} символов")
+        logger.info(f"Транскрибация завершена: {len(response_data['text'])} символов, модель: {model_name}")
         
         return jsonify(response_data)
         
