@@ -46,6 +46,12 @@ function Chat() {
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
     const [useReranker, setUseReranker] = useState(true);
     const [embeddingModels, setEmbeddingModels] = useState([]); // Список embedding моделей для исключения
+    
+    // Push-to-talk состояние
+    const [isRecording, setIsRecording] = useState(false);
+    const [mediaRecorder, setMediaRecorder] = useState(null);
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    
     const searchInputRef = useRef(null);
     const messagesEndRef = useRef(null);
     const chatContainerRef = useRef(null);
@@ -83,6 +89,34 @@ function Chat() {
     useEffect(() => {
         scrollToBottom();
     }, [messages]);
+
+    // Обработка отпускания кнопки мыши в любом месте страницы
+    useEffect(() => {
+        const handleMouseUp = () => {
+            if (isRecording && mediaRecorder) {
+                handleStopRecording();
+            }
+        };
+
+        if (isRecording) {
+            document.addEventListener('mouseup', handleMouseUp);
+            document.addEventListener('mouseleave', handleMouseUp);
+        }
+
+        return () => {
+            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener('mouseleave', handleMouseUp);
+        };
+    }, [isRecording, mediaRecorder]);
+
+    // Очистка ресурсов при размонтировании
+    useEffect(() => {
+        return () => {
+            if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                mediaRecorder.stop();
+            }
+        };
+    }, [mediaRecorder]);
 
     // Загрузка списка проектов и моделей при монтировании компонента
     useEffect(() => {
@@ -220,10 +254,97 @@ function Chat() {
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();
 
-        if (!messageText.trim() || isLoading) return;
+        if (!messageText.trim() || isLoading || isTranscribing) return;
 
         const userMessage = messageText.trim();
         setMessageText('');
+        
+        // Используем новую функцию отправки
+        await sendMessage(userMessage);
+    }, [messageText, isLoading, isTranscribing, selectedProject, selectedModel, useReranker]);
+
+    // Push-to-talk функции
+    const handleStartRecording = async () => {
+        try {
+            setIsRecording(true);
+            
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const recorder = new MediaRecorder(stream);
+            const chunks = [];
+
+            recorder.ondataavailable = (e) => {
+                if (e.data.size > 0) {
+                    chunks.push(e.data);
+                }
+            };
+
+            recorder.onstop = async () => {
+                const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+                await transcribeAndSend(audioBlob);
+                
+                // Останавливаем поток
+                stream.getTracks().forEach(track => track.stop());
+                setMediaRecorder(null);
+            };
+
+            recorder.start();
+            setMediaRecorder(recorder);
+            
+        } catch (err) {
+            console.error('Error starting recording:', err);
+            setIsRecording(false);
+        }
+    };
+
+    const handleStopRecording = () => {
+        if (mediaRecorder && isRecording) {
+            mediaRecorder.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const transcribeAndSend = async (audioBlob) => {
+        try {
+            setIsTranscribing(true);
+            
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'recording.wav');
+            formData.append('language', 'ru'); // можно сделать настраиваемым
+            formData.append('task', 'transcribe');
+
+            const response = await window.api.fetch('/api/stt/transcribe', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || 'Transcription error');
+            }
+
+            const result = await response.json();
+            const transcribedText = result.text?.trim();
+            
+            // Сбрасываем индикатор STT сразу после получения текста
+            setIsTranscribing(false);
+            
+            if (transcribedText) {
+                // Отправляем сообщение напрямую
+                await sendMessage(transcribedText);
+            }
+
+        } catch (err) {
+            console.error('STT Error:', err);
+            setError(`Ошибка распознавания речи: ${err.message}`);
+            setIsTranscribing(false);
+        }
+    };
+
+    // Отдельная функция для отправки сообщения
+    const sendMessage = async (text) => {
+        if (!text.trim() || isLoading || isTranscribing || !selectedProject) return;
+
+        const userMessage = text.trim();
         setIsLoading(true);
         setError(null);
 
@@ -263,7 +384,7 @@ function Chat() {
         } finally {
             setIsLoading(false);
         }
-    }, [messageText, isLoading, selectedProject, selectedModel, useReranker]);
+    };
 
     if (isLoadingProjects || isLoadingModels) {
         return (
@@ -453,6 +574,21 @@ function Chat() {
                                 },
                                 scrollbarWidth: 'thin',
                                 scrollbarColor: 'rgba(0, 0, 0, 0.1) transparent',
+                                // Добавляем анимацию пульса
+                                '@keyframes pulse': {
+                                    '0%': {
+                                        opacity: 1,
+                                        transform: 'scale(1)'
+                                    },
+                                    '50%': {
+                                        opacity: 0.7,
+                                        transform: 'scale(1.1)'
+                                    },
+                                    '100%': {
+                                        opacity: 1,
+                                        transform: 'scale(1)'
+                                    }
+                                }
                             }}
                         >
                             <Box sx={{ 
@@ -534,6 +670,28 @@ function Chat() {
                                         </Typography>
                                     </Box>
                                 )}
+                                {isRecording && (
+                                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                                        <Box sx={{
+                                            width: 20,
+                                            height: 20,
+                                            borderRadius: '50%',
+                                            bgcolor: 'error.main',
+                                            animation: 'pulse 1s infinite'
+                                        }} />
+                                        <Typography variant="body2" color="text.secondary">
+                                            Recording... Release to send
+                                        </Typography>
+                                    </Box>
+                                )}
+                                {isTranscribing && (
+                                    <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                                        <CircularProgress size={20} color="info" />
+                                        <Typography variant="body2" color="text.secondary">
+                                            Converting speech to text...
+                                        </Typography>
+                                    </Box>
+                                )}
                                 <div ref={messagesEndRef} />
                             </Box>
                         </Box>
@@ -550,12 +708,39 @@ function Chat() {
                                         placeholder={selectedProject ? "Type your message..." : "Please select a project first"}
                                         variant="outlined"
                                         size="small"
-                                        disabled={isLoading || !selectedProject}
+                                        disabled={isLoading || !selectedProject || isTranscribing}
                                     />
+                                    
+                                    {/* Push-to-talk кнопка */}
+                                    <IconButton
+                                        onMouseDown={handleStartRecording}
+                                        onMouseUp={handleStopRecording}
+                                        onMouseLeave={handleStopRecording} // На случай если курсор ушел с кнопки
+                                        disabled={isLoading || !selectedProject || isTranscribing}
+                                        sx={{
+                                            bgcolor: isRecording ? 'error.main' : 'info.main',
+                                            color: 'white',
+                                            '&:hover': {
+                                                bgcolor: isRecording ? 'error.dark' : 'info.dark',
+                                            },
+                                            '&.Mui-disabled': {
+                                                bgcolor: alpha(theme.palette.info.main, 0.1)
+                                            },
+                                            transition: 'all 0.2s',
+                                            transform: isRecording ? 'scale(1.1)' : 'scale(1)'
+                                        }}
+                                        title={isRecording ? "Release to send" : "Hold to record"}
+                                    >
+                                        <Icon>
+                                            {isTranscribing ? 'hourglass_empty' : isRecording ? 'stop' : 'mic'}
+                                        </Icon>
+                                    </IconButton>
+                                    
+                                    {/* Кнопка отправки */}
                                     <IconButton 
                                         type="submit" 
                                         color="primary" 
-                                        disabled={isLoading || !messageText.trim() || !selectedProject}
+                                        disabled={isLoading || !messageText.trim() || !selectedProject || isTranscribing}
                                         sx={{
                                             bgcolor: 'primary.main',
                                             color: 'white',
