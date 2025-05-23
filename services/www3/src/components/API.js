@@ -810,10 +810,14 @@ async function textToSpeech(text, voice = "female_1") {
 
                     {/* Встроенный Swagger UI */}
                     <Paper sx={{ 
-                        border: 1, 
-                        borderColor: 'grey.300',
                         minHeight: iframeHeight,
-                        overflow: 'hidden'
+                        overflow: 'hidden',
+                        borderRadius: 2,
+                        background: theme => theme.palette.mode === 'light' 
+                            ? 'rgba(255, 255, 255, 0.7)'
+                            : 'rgba(50, 50, 50, 0.7)',
+                        backdropFilter: 'blur(10px)',
+                        boxShadow: '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                     }}>
                         <iframe
                             src={`/api/docs?theme=${theme.palette.mode}`}
