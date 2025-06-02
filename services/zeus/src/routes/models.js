@@ -293,68 +293,7 @@ function startModelMonitoring(modelName) {
   modelDownloadStatus.get(modelName).intervalId = intervalId;
 }
 
-// Функция для получения релевантного контекста из документов
-async function getRelevantContext(question) {
-    try {
-        const response = await fetch('http://ollama:11434/api/embeddings', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: 'llama2',
-                prompt: question
-            })
-        });
 
-        if (!response.ok) {
-            throw new Error('Failed to get embeddings');
-        }
-
-        const data = await response.json();
-        // TODO: Здесь будет логика поиска релевантных документов
-        return "";
-    } catch (error) {
-        logger.error('Error getting embeddings:', error);
-        throw error;
-    }
-}
-
-// Функция для получения ответа от модели
-async function getAnswer(context, question) {
-    try {
-        const response = await fetch(process.env.OPENROUTER_URL, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model: process.env.OPENROUTER_MODEL,
-                messages: [
-                    {
-                        role: "system",
-                        content: "You are a helpful assistant that answers questions based on the provided documents. Use only the information from the context."
-                    },
-                    {
-                        role: "user",
-                        content: `Context:\n${context}\n\nQuestion: ${question}`
-                    }
-                ]
-            })
-        });
-
-        if (!response.ok) {
-            throw new Error('Failed to get answer from model');
-        }
-
-        const data = await response.json();
-        return data.choices[0]?.message?.content || 'No answer provided';
-    } catch (error) {
-        logger.error('Error getting answer:', error);
-        throw error;
-    }
-}
 
 // Инициализация статуса загрузки моделей при старте сервера
 async function initializeModelStatus() {
@@ -835,26 +774,6 @@ router.delete('/:name', async (req, res) => {
   }
 });
 
-// Эндпоинт для получения ответа на вопрос
-router.post('/chat/answer', async (req, res) => {
-    const { question } = req.body;
 
-    if (!question) {
-        return res.status(400).json({ error: 'Question is required' });
-    }
-
-    try {
-        // Получаем релевантный контекст
-        const context = await getRelevantContext(question);
-
-        // Получаем ответ от модели
-        const answer = await getAnswer(context, question);
-
-        res.json({ answer });
-    } catch (error) {
-        logger.error('Error processing question:', error);
-        res.status(500).json({ error: error.message || 'Failed to get answer' });
-    }
-});
 
 export default router;

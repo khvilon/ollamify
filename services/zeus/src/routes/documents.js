@@ -15,10 +15,7 @@ import { broadcastDocumentUpdate, broadcastProjectStatsUpdate } from '../websock
 
 dotenv.config();
 
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL;
-if (!EMBEDDING_MODEL) {
-  throw new Error('EMBEDDING_MODEL environment variable is required');
-}
+// Embedding модель теперь указывается при создании проекта
 
 const router = express.Router();
 
@@ -427,8 +424,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       });
     }
 
-    // Проверяем модель
-    const embeddingModel = model || EMBEDDING_MODEL;
+    // Модель будет определена из настроек проекта
 
     let documentContent;
     try {

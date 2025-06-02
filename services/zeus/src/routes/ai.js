@@ -106,12 +106,14 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
   const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
 
   // Проверяем, не является ли модель моделью для эмбеддингов
-  const embeddingModels = ['all-minilm', 'nomic-embed-text', 'all-MiniLM-L6-v2'];
-  const embeddingModel = process.env.EMBEDDING_MODEL || 'all-minilm';
+  const embeddingModels = ['all-minilm', 'nomic-embed-text', 'all-MiniLM-L6-v2', 'frida', 'bge-m3'];
   
-  if (embeddingModels.includes(actualModel) || actualModel === embeddingModel || 
-      actualModel === `${embeddingModel}:latest`) {
-    throw new Error(`"${actualModel}" is an embedding model and cannot be used for text generation`);
+  if (embeddingModels.includes(actualModel) || actualModel.endsWith(':latest')) {
+    // Дополнительная проверка для моделей с :latest
+    const baseModel = actualModel.replace(':latest', '');
+    if (embeddingModels.includes(baseModel)) {
+      throw new Error(`"${actualModel}" is an embedding model and cannot be used for text generation`);
+    }
   }
 
   logger.info('Getting completion:', {
@@ -183,13 +185,131 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
   }
 }
 
+/**
+ * @swagger
+ * /ai/embed:
+ *   post:
+ *     tags: [AI & Embeddings]
+ *     summary: Получить эмбеддинги для текста
+ *     description: |
+ *       Получает векторные представления (embeddings) для текста, используя указанную модель.
+ *       
+ *       **Важно:** Модель теперь является обязательным параметром.
+ *       Убедитесь, что указанная модель установлена в Ollama.
+ *     security:
+ *       - ApiKeyAuth: []
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - model
+ *               - input
+ *             properties:
+ *               model:
+ *                 type: string
+ *                 description: Название embedding модели
+ *                 example: "frida"
+ *               input:
+ *                 oneOf:
+ *                   - type: string
+ *                   - type: array
+ *                     items:
+ *                       type: string
+ *                 description: Текст или массив текстов для получения эмбеддингов
+ *                 example: "Пример текста для векторизации"
+ *               encoding_format:
+ *                 type: string
+ *                 default: "float"
+ *                 description: Формат кодирования (пока только float)
+ *           examples:
+ *             single_text:
+ *               summary: Одиночный текст
+ *               value:
+ *                 model: "frida"
+ *                 input: "Привет, как дела?"
+ *             multiple_texts:
+ *               summary: Несколько текстов
+ *               value:
+ *                 model: "frida"
+ *                 input: ["Первый текст", "Второй текст", "Третий текст"]
+ *     responses:
+ *       200:
+ *         description: Успешно получены эмбеддинги
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 object:
+ *                   type: string
+ *                   example: "list"
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     type: object
+ *                     properties:
+ *                       object:
+ *                         type: string
+ *                         example: "embedding"
+ *                       embedding:
+ *                         type: array
+ *                         items:
+ *                           type: number
+ *                         description: Векторное представление текста
+ *                       index:
+ *                         type: integer
+ *                         description: Индекс в исходном массиве
+ *                 model:
+ *                   type: string
+ *                   description: Использованная модель
+ *                 usage:
+ *                   type: object
+ *                   properties:
+ *                     prompt_tokens:
+ *                       type: integer
+ *                       example: -1
+ *                     total_tokens:
+ *                       type: integer
+ *                       example: -1
+ *       400:
+ *         description: Отсутствует обязательный параметр model
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     message:
+ *                       type: string
+ *                       example: "Model parameter is required"
+ *                     type:
+ *                       type: string
+ *                       example: "invalid_request_error"
+ *       500:
+ *         description: Ошибка получения эмбеддингов
+ */
 // Получение эмбеддинга для текста в формате OpenAI API
 router.post('/embed', async (req, res) => {
   const { 
-    model = process.env.EMBEDDING_MODEL || 'nomic-embed-text',
+    model,
     input,
     encoding_format = 'float'
   } = req.body;
+
+  if (!model) {
+    return res.status(400).json({
+      error: {
+        message: 'Model parameter is required',
+        type: 'invalid_request_error',
+        code: null
+      }
+    });
+  }
   
   try {
     // Убедимся, что input всегда массив
@@ -1335,9 +1455,10 @@ router.post('/rag', async (req, res) => {
     });
 
     // Проверяем, не является ли выбранная модель моделью для эмбеддингов
-    if (model === 'all-minilm' || model === 'all-minilm:latest' || 
-        model === process.env.EMBEDDING_MODEL || 
-        (process.env.EMBEDDING_MODEL && model === `${process.env.EMBEDDING_MODEL}:latest`)) {
+    const embeddingModels = ['all-minilm', 'nomic-embed-text', 'all-MiniLM-L6-v2', 'frida', 'bge-m3'];
+    const actualModelName = model.replace(':latest', '');
+    
+    if (embeddingModels.includes(model) || embeddingModels.includes(actualModelName)) {
       return res.status(400).json({ 
         error: 'Invalid model selection',
         details: `"${model}" is an embedding model and cannot be used for text generation. Please select a text generation model.`

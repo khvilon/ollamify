@@ -31,7 +31,6 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - OPENROUTER_URL=${OPENROUTER_URL}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
     expose:
@@ -109,6 +108,7 @@ services:
       - RERANKER_MODEL=${RERANKER_MODEL}
       - PORT=8001
       - TRANSFORMERS_CACHE=/app/models
+      - HF_HUB_ENABLE_HF_TRANSFER=0
     container_name: reranker
     networks:
       - app-network
@@ -127,8 +127,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    environment:
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
     container_name: ollama
     networks:
       - app-network

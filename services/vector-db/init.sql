@@ -54,6 +54,7 @@ CREATE TABLE IF NOT EXISTS admin.user_logs (
     id SERIAL PRIMARY KEY,
     user_name TEXT,
     user_key TEXT,
+    api_key_name TEXT,
     request_method TEXT NOT NULL,
     request_path TEXT NOT NULL,
     request_body JSONB,
@@ -65,3 +66,6 @@ CREATE TABLE IF NOT EXISTS admin.user_logs (
 
 -- Create index on created_at for efficient querying
 CREATE INDEX IF NOT EXISTS user_logs_created_at_idx ON admin.user_logs(created_at);
+
+-- Add api_key_name column if it doesn't exist (migration)
+ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS api_key_name TEXT;

@@ -6,10 +6,7 @@ import { getEmbeddingDimension } from '../embeddings.js';
 
 dotenv.config();
 
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL;
-if (!EMBEDDING_MODEL) {
-  throw new Error('EMBEDDING_MODEL environment variable is required');
-}
+// Embedding модель теперь указывается для каждого проекта индивидуально
 
 async function createProjectSchema(project, embeddingModel) {
   const client = await pool.connect();

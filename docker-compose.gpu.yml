@@ -32,7 +32,6 @@ services:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - OPENROUTER_MODEL=${OPENROUTER_MODEL}
       - OPENROUTER_URL=${OPENROUTER_URL}
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
     expose:
@@ -43,7 +42,6 @@ services:
 
   ollama:
     environment:
-      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - NVIDIA_VISIBLE_DEVICES=all
     deploy:
       resources:
@@ -73,6 +71,7 @@ services:
       - RERANKER_MODEL=${RERANKER_MODEL}
       - PORT=8001
       - TRANSFORMERS_CACHE=/app/models
+      - HF_HUB_ENABLE_HF_TRANSFER=0
       - NVIDIA_VISIBLE_DEVICES=all
     deploy:
       resources:

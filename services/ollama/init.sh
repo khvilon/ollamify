@@ -7,11 +7,8 @@ SERVER_PID=$!
 # Wait for Ollama to start
 sleep 5
 
-# Pull the embedding model if specified
-if [ ! -z "$EMBEDDING_MODEL" ]; then
-    echo "Pulling embedding model: $EMBEDDING_MODEL"
-    ollama pull $EMBEDDING_MODEL
-fi
+# Models will be downloaded through the web interface as needed
+echo "Ollama server is ready. Models can be downloaded through the web interface."
 
 # Create a health check file to indicate service is running
 touch /tmp/ollama_ready

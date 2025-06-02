@@ -122,7 +122,7 @@ POSTGRES_PASSWORD=your_secure_password
 JWT_SECRET=your_jwt_secret_key
 
 # Models
-EMBEDDING_MODEL=mxbai-embed-large
+# Embedding model is now configured per project in the web interface
 RERANKER_MODEL=ms-marco-MiniLM-L-12-v2
 OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
 ```
