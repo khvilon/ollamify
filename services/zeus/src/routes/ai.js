@@ -8,6 +8,42 @@ import qdrantClient from '../db/qdrant.js';
 
 const router = express.Router();
 
+// Функция для извлечения секций размышлений из ответа LLM
+function extractThinkingSection(response) {
+  if (!response || typeof response !== 'string') {
+    return { answer: response, thinking: null };
+  }
+
+  // Ищем секции <think>...</think> (возможны вариации: thinking, анализ и т.д.)
+  const thinkingRegex = /<(?:think|thinking|анализ|размышление)[^>]*>([\s\S]*?)<\/(?:think|thinking|анализ|размышление)>/gi;
+  
+  let thinking = null;
+  let cleanedResponse = response;
+  
+  // Извлекаем все секции размышлений
+  const matches = [...response.matchAll(thinkingRegex)];
+  
+  if (matches.length > 0) {
+    // Собираем все размышления в один блок
+    thinking = matches.map(match => match[1].trim()).join('\n\n---\n\n');
+    
+    // Удаляем все теги размышлений из основного ответа
+    cleanedResponse = response.replace(thinkingRegex, '').trim();
+    
+    logger.info('Extracted thinking section:', {
+      hasThinking: true,
+      thinkingLength: thinking.length,
+      originalLength: response.length,
+      cleanedLength: cleanedResponse.length
+    });
+  }
+  
+  return {
+    answer: cleanedResponse,
+    thinking: thinking
+  };
+}
+
 // Поиск релевантных документов по эмбеддингу вопроса
 async function findRelevantDocuments(questionEmbedding, project, embeddingModel, limit) {
   try {
@@ -122,6 +158,18 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
     messagesCount: messages.length
   });
 
+  // Логируем входящие сообщения для анализа
+  logger.info('LLM Input Messages:', {
+    model: actualModel,
+    service: isOpenRouter ? 'OpenRouter' : 'Ollama',
+    messages: messages.map((msg, index) => ({
+      index,
+      role: msg.role,
+      contentLength: msg.content ? msg.content.length : 0,
+      content: msg.content
+    }))
+  });
+
   try {
     if (isOpenRouter) {
       const response = await fetch(process.env.OPENROUTER_URL, {
@@ -154,7 +202,16 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       if (!data.choices || !data.choices.length) {
         throw new Error(`API returned invalid response format: missing choices array. Response: ${JSON.stringify(data)}`);
       }
-      return data.choices[0].message.content;
+      
+      const llmResponse = data.choices[0].message.content;
+      logger.info('LLM Response from OpenRouter:', {
+        model: actualModel,
+        service: 'OpenRouter',
+        responseLength: llmResponse.length,
+        response: llmResponse
+      });
+      
+      return llmResponse;
     } else {
       const response = await fetch('http://ollama:11434/v1/chat/completions', {
         method: 'POST',
@@ -177,7 +234,16 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
       }
 
       const data = await response.json();
-      return data.choices[0].message.content;
+      
+      const llmResponse = data.choices[0].message.content;
+      logger.info('LLM Response from Ollama:', {
+        model: actualModel,
+        service: 'Ollama',
+        responseLength: llmResponse.length,
+        response: llmResponse
+      });
+      
+      return llmResponse;
     }
   } catch (error) {
     logger.error('Error in getCompletion:', error);
@@ -1397,6 +1463,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                 summary: Успешный ответ
  *                 value:
  *                   answer: "Машинное обучение - это область искусственного интеллекта..."
+ *                   thinking: "Пользователь спрашивает об определении машинного обучения. Нужно дать точное и понятное объяснение..."
  *                   sources:
  *                     - document_name: "ml-intro.pdf"
  *                       chunk_content: "Машинное обучение представляет собой..."
@@ -1570,7 +1637,7 @@ ${doc.content.trim()}`;
     
     logger.info('Getting answer from LLM...');
     // Для получения ответа используем оригинальный запрос пользователя
-    const answer = await getCompletion([
+    const rawAnswer = await getCompletion([
       {
         role: "system",
         content: `You are a helpful assistant that answers questions based on the provided context, including document content and metadata.
@@ -1586,8 +1653,11 @@ Question: ${question}`
       }
     ], model);
 
+    // Извлекаем секции размышлений для RAG запросов
+    const { answer, thinking } = extractThinkingSection(rawAnswer);
+
     logger.info('Sending response to client');
-    res.json({
+    const response = {
       answer,
       relevantDocuments: processedDocs.map(doc => ({
         filename: doc.filename,
@@ -1602,7 +1672,14 @@ Question: ${question}`
       })),
       intentQuery: intentQuery,
       limitApplied: numLimit
-    });
+    };
+
+    // Добавляем thinking секцию только если она есть
+    if (thinking) {
+      response.thinking = thinking;
+    }
+
+    res.json(response);
 
   } catch (error) {
     logger.error('Error in ai/rag:', error);

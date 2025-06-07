@@ -61,6 +61,10 @@ CREATE TABLE IF NOT EXISTS admin.user_logs (
     ip_address TEXT,
     response_body JSONB,
     response_time INTEGER,
+    model_name TEXT,
+    request_summary TEXT,
+    endpoint_category TEXT,
+    user_text TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -69,3 +73,9 @@ CREATE INDEX IF NOT EXISTS user_logs_created_at_idx ON admin.user_logs(created_a
 
 -- Add api_key_name column if it doesn't exist (migration)
 ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS api_key_name TEXT;
+
+-- Add missing columns if they don't exist (migrations)
+ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS model_name TEXT;
+ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS request_summary TEXT;
+ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS endpoint_category TEXT;
+ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS user_text TEXT;

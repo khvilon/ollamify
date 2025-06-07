@@ -329,6 +329,11 @@ Detailed code examples in various programming languages are available on the "Co
               type: 'string',
               description: 'Generated answer'
             },
+            thinking: {
+              type: 'string',
+              description: 'LLM reasoning process (if available)',
+              nullable: true
+            },
             sources: {
               type: 'array',
               items: {
