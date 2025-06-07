@@ -18,7 +18,13 @@ const {
     MenuItem,
     FormControl,
     InputLabel,
-    Switch
+    Switch,
+    Accordion,
+    AccordionSummary,
+    AccordionDetails,
+    Collapse,
+    Chip,
+    Button
 } = window.MaterialUI;
 
 const {
@@ -30,6 +36,219 @@ const {
 } = window.React;
 
 const ReactMarkdown = window.ReactMarkdown.default;
+
+// Компонент для отображения секции размышлений
+function ThinkingSection({ thinking }) {
+    const [expanded, setExpanded] = useState(false);
+    const theme = useTheme();
+
+    if (!thinking) return null;
+
+    return (
+        <Box sx={{ mt: 1 }}>
+            <Accordion 
+                expanded={expanded} 
+                onChange={() => setExpanded(!expanded)}
+                sx={{
+                    bgcolor: alpha(theme.palette.info.main, 0.1),
+                    border: `1px solid ${alpha(theme.palette.info.main, 0.2)}`,
+                    borderRadius: 1,
+                    boxShadow: 'none',
+                    '&:before': { display: 'none' },
+                    '& .MuiAccordionSummary-root': {
+                        minHeight: 40,
+                        py: 0.5,
+                        '& .MuiAccordionSummary-content': {
+                            margin: '8px 0',
+                        }
+                    }
+                }}
+            >
+                <AccordionSummary>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Icon sx={{ fontSize: 16, color: 'info.main' }}>psychology</Icon>
+                        <Typography variant="caption" sx={{ color: 'info.main', fontWeight: 500 }}>
+                            {expanded ? 'Скрыть размышления' : 'Показать размышления модели'}
+                        </Typography>
+                    </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0, pb: 1 }}>
+                    <Typography 
+                        variant="body2" 
+                        sx={{ 
+                            color: 'text.secondary',
+                            fontStyle: 'italic',
+                            bgcolor: alpha(theme.palette.background.paper, 0.5),
+                            p: 1.5,
+                            borderRadius: 1,
+                            border: `1px dashed ${alpha(theme.palette.info.main, 0.3)}`,
+                            whiteSpace: 'pre-wrap'
+                        }}
+                    >
+                        {thinking}
+                    </Typography>
+                </AccordionDetails>
+            </Accordion>
+        </Box>
+    );
+}
+
+// Компонент для отображения релевантных документов
+function RelevantDocumentsSection({ documents }) {
+    const [expanded, setExpanded] = useState(false);
+    const [expandedDocs, setExpandedDocs] = useState({}); // Состояние для развернутых документов
+    const theme = useTheme();
+
+    if (!documents || documents.length === 0) return null;
+
+    // Функция для очистки содержимого от thinking тегов
+    const cleanContent = (content) => {
+        if (!content) return '';
+        // Удаляем секции размышлений из содержимого документов
+        const thinkingRegex = /<(?:think|thinking|анализ|размышление)[^>]*>([\s\S]*?)<\/(?:think|thinking|анализ|размышление)>/gi;
+        return content.replace(thinkingRegex, '').trim();
+    };
+
+    // Функция для сокращения текста содержимого
+    const truncateContent = (content, maxLength = 150) => {
+        if (!content) return '';
+        const cleanedContent = cleanContent(content);
+        if (cleanedContent.length <= maxLength) return cleanedContent;
+        return cleanedContent.substring(0, maxLength) + '...';
+    };
+
+    // Функция для переключения развернутого состояния документа
+    const toggleDocExpanded = (index) => {
+        setExpandedDocs(prev => ({
+            ...prev,
+            [index]: !prev[index]
+        }));
+    };
+
+    // Функция для форматирования similarity score
+    const formatSimilarity = (score) => {
+        return (score * 100).toFixed(1) + '%';
+    };
+
+    return (
+        <Box sx={{ mt: 1 }}>
+            <Accordion 
+                expanded={expanded} 
+                onChange={() => setExpanded(!expanded)}
+                sx={{
+                    bgcolor: alpha(theme.palette.success.main, 0.1),
+                    border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
+                    borderRadius: 1,
+                    boxShadow: 'none',
+                    '&:before': { display: 'none' },
+                    '& .MuiAccordionSummary-root': {
+                        minHeight: 40,
+                        py: 0.5,
+                        '& .MuiAccordionSummary-content': {
+                            margin: '8px 0',
+                        }
+                    }
+                }}
+            >
+                <AccordionSummary>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Icon sx={{ fontSize: 16, color: 'success.main' }}>description</Icon>
+                        <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 500 }}>
+                            {expanded ? 'Скрыть источники' : `Показать источники (${documents.length} документов)`}
+                        </Typography>
+                    </Box>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0, pb: 1 }}>
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                        {documents.map((doc, index) => (
+                            <Paper
+                                key={index}
+                                sx={{
+                                    p: 1.5,
+                                    bgcolor: alpha(theme.palette.background.paper, 0.5),
+                                    border: `1px solid ${alpha(theme.palette.success.main, 0.2)}`,
+                                    borderRadius: 1,
+                                }}
+                            >
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
+                                    <Box sx={{ flex: 1 }}>
+                                        <Typography variant="subtitle2" sx={{ fontWeight: 600, color: 'text.primary' }}>
+                                            {doc.filename}
+                                        </Typography>
+                                        {doc.project && (
+                                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                                Проект: {doc.project}
+                                            </Typography>
+                                        )}
+                                    </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Icon sx={{ fontSize: 14, color: 'success.main' }}>trending_up</Icon>
+                                        <Typography variant="caption" sx={{ color: 'success.main', fontWeight: 600 }}>
+                                            {formatSimilarity(doc.similarity)}
+                                        </Typography>
+                                    </Box>
+                                </Box>
+                                
+                                {doc.content && (
+                                    <Box>
+                                        <Typography 
+                                            variant="body2" 
+                                            sx={{ 
+                                                color: 'text.secondary',
+                                                fontStyle: 'italic',
+                                                bgcolor: alpha(theme.palette.common.white, 0.3),
+                                                p: 1,
+                                                borderRadius: 0.5,
+                                                border: `1px dashed ${alpha(theme.palette.success.main, 0.3)}`,
+                                                fontSize: '0.8rem',
+                                                whiteSpace: 'pre-wrap'
+                                            }}
+                                        >
+                                            {expandedDocs[index] ? cleanContent(doc.content) : truncateContent(doc.content)}
+                                        </Typography>
+                                        {cleanContent(doc.content).length > 150 && (
+                                            <Button
+                                                size="small"
+                                                onClick={() => toggleDocExpanded(index)}
+                                                sx={{ 
+                                                    mt: 0.5, 
+                                                    fontSize: '0.7rem',
+                                                    color: 'success.main',
+                                                    textTransform: 'none'
+                                                }}
+                                            >
+                                                {expandedDocs[index] ? 'Показать меньше' : 'Показать больше'}
+                                            </Button>
+                                        )}
+                                    </Box>
+                                )}
+                                
+                                {doc.metadata && Object.keys(doc.metadata).length > 0 && (
+                                    <Box sx={{ mt: 1 }}>
+                                        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 500 }}>
+                                            Метаданные:
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+                                            {Object.entries(doc.metadata).map(([key, value]) => (
+                                                <Chip
+                                                    key={key}
+                                                    label={`${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`}
+                                                    size="small"
+                                                    variant="outlined"
+                                                    sx={{ fontSize: '0.7rem', height: 20 }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    </Box>
+                                )}
+                            </Paper>
+                        ))}
+                    </Box>
+                </AccordionDetails>
+            </Accordion>
+        </Box>
+    );
+}
 
 function Chat() {
     const [messageText, setMessageText] = useState('');
@@ -374,8 +593,14 @@ function Chat() {
 
             const data = await response.json();
             
-            // Добавляем только ответ ассистента, т.к. сообщение пользователя уже добавлено
-            setMessages(prev => [...prev, { role: 'assistant', content: data.answer }]);
+            // Добавляем ответ ассистента с возможным thinking и документами, т.к. сообщение пользователя уже добавлено
+            setMessages(prev => [...prev, { 
+                role: 'assistant', 
+                content: data.answer,
+                thinking: data.thinking, // Добавляем секцию размышлений если есть
+                relevantDocuments: data.relevantDocuments, // Добавляем релевантные документы
+                intentQuery: data.intentQuery // Добавляем извлеченный поисковый запрос
+            }]);
         } catch (error) {
             console.error('Error:', error);
             setError(error.message);
@@ -608,58 +833,63 @@ function Chat() {
                                         }}
                                     >
                                         {/* Message Card */}
-                                        <Card
-                                            elevation={0}
-                                            sx={{
-                                                maxWidth: '70%',
-                                                bgcolor: msg.role === 'user' 
-                                                    ? 'primary.main'
-                                                    : theme.palette.mode === 'dark'
-                                                        ? alpha(theme.palette.common.white, 0.05)
-                                                        : alpha(theme.palette.common.black, 0.05),
-                                            }}
-                                        >
-                                            <CardContent sx={{ 
-                                                py: 1.5,
-                                                px: 2,
-                                                '&:last-child': { pb: 1.5 }
-                                            }}>
-                                                <Typography 
-                                                    component="div"
-                                                    sx={{ 
-                                                        color: msg.role === 'user'
-                                                            ? '#fff'
-                                                            : 'text.primary',
-                                                        '& p': { m: 0 },
-                                                        '& pre': {
-                                                            bgcolor: theme.palette.mode === 'dark'
-                                                                ? alpha(theme.palette.common.black, 0.3)
-                                                                : alpha(theme.palette.common.white, 0.3),
-                                                            p: 1,
-                                                            borderRadius: 1,
-                                                            overflowX: 'auto'
-                                                        },
-                                                        '& code': {
-                                                            bgcolor: theme.palette.mode === 'dark'
-                                                                ? alpha(theme.palette.common.black, 0.3)
-                                                                : alpha(theme.palette.common.white, 0.3),
-                                                            px: 0.5,
-                                                            borderRadius: 0.5
-                                                        }
-                                                    }}
-                                                >
-                                                    {msg.role === 'assistant' ? (
-                                                        <>
-                                                            <ReactMarkdown>{msg.content}</ReactMarkdown>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            {msg.content}
-                                                        </>
-                                                    )}
-                                                </Typography>
-                                            </CardContent>
-                                        </Card>
+                                        <Box sx={{ maxWidth: '70%' }}>
+                                            <Card
+                                                elevation={0}
+                                                sx={{
+                                                    bgcolor: msg.role === 'user' 
+                                                        ? 'primary.main'
+                                                        : theme.palette.mode === 'dark'
+                                                            ? alpha(theme.palette.common.white, 0.05)
+                                                            : alpha(theme.palette.common.black, 0.05),
+                                                }}
+                                            >
+                                                <CardContent sx={{ 
+                                                    py: 1.5,
+                                                    px: 2,
+                                                    '&:last-child': { pb: 1.5 }
+                                                }}>
+                                                    <Typography 
+                                                        component="div"
+                                                        sx={{ 
+                                                            color: msg.role === 'user'
+                                                                ? '#fff'
+                                                                : 'text.primary',
+                                                            '& p': { m: 0 },
+                                                            '& pre': {
+                                                                bgcolor: theme.palette.mode === 'dark'
+                                                                    ? alpha(theme.palette.common.black, 0.3)
+                                                                    : alpha(theme.palette.common.white, 0.3),
+                                                                p: 1,
+                                                                borderRadius: 1,
+                                                                overflowX: 'auto'
+                                                            },
+                                                            '& code': {
+                                                                bgcolor: theme.palette.mode === 'dark'
+                                                                    ? alpha(theme.palette.common.black, 0.3)
+                                                                    : alpha(theme.palette.common.white, 0.3),
+                                                                px: 0.5,
+                                                                borderRadius: 0.5
+                                                            }
+                                                        }}
+                                                    >
+                                                        {msg.role === 'assistant' ? (
+                                                            <>
+                                                                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                {msg.content}
+                                                            </>
+                                                        )}
+                                                    </Typography>
+                                                </CardContent>
+                                            </Card>
+                                            {/* Отображаем секцию размышлений только для ассистента */}
+                                            {msg.role === 'assistant' && <ThinkingSection thinking={msg.thinking} />}
+                                            {/* Отображаем релевантные документы только для ассистента */}
+                                            {msg.role === 'assistant' && <RelevantDocumentsSection documents={msg.relevantDocuments} />}
+                                        </Box>
                                     </Box>
                                 ))}
                                 {isLoading && (
