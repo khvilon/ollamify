@@ -14,8 +14,8 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Обновляем PyTorch до nightly версии для поддержки RTX 5070 Ti (sm_120)
-RUN pip install --no-cache-dir --upgrade --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu124
+# Обновляем PyTorch до стабильной версии 2.7.1 с CUDA 12.8 для поддержки RTX 5070 Ti
+RUN pip install --no-cache-dir --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # Устанавливаем дополнительные зависимости, которые могут потребоваться для разных моделей
 RUN pip install --no-cache-dir \
