@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
+FROM pytorch/pytorch:2.7.1-cuda12.4-cudnn9-runtime
 
 WORKDIR /app
 
@@ -13,6 +13,9 @@ RUN apt-get update && apt-get install -y \
 # Копируем и устанавливаем зависимости Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Обновляем PyTorch до самой свежей версии для поддержки RTX 5070 Ti
+RUN pip install --no-cache-dir --upgrade torch==2.7.1 torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
 
 # Устанавливаем дополнительные зависимости, которые могут потребоваться для разных моделей
 RUN pip install --no-cache-dir \
@@ -36,7 +39,8 @@ ENV NVIDIA_VISIBLE_DEVICES=all
 ENV CUDA_VISIBLE_DEVICES=0
 ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
 ENV CUDA_LAUNCH_BLOCKING=1
-ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+ENV TORCH_CUDA_ARCH_LIST="7.0;7.5;8.0;8.6;8.9;9.0"
+ENV TORCH_USE_CUDA_DSA=1
 
 # Копируем код приложения
 COPY app.py .
