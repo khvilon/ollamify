@@ -52,6 +52,8 @@ class RerankerResponse(BaseModel):
 # Функция для загрузки модели Jina Reranker
 def load_jina_reranker(use_flash_attn=True):
     """Загружает модель Jina Reranker"""
+    global device  # Объявляем в начале функции перед использованием
+    
     try:
         logger.info(f"Loading model: {MODEL_NAME}")
         
@@ -82,7 +84,6 @@ def load_jina_reranker(use_flash_attn=True):
         except RuntimeError as gpu_error:
             if "out of memory" in str(gpu_error).lower():
                 logger.warning(f"GPU out of memory, falling back to CPU: {gpu_error}")
-                global device
                 device = "cpu"
                 model.to(device)
                 logger.info(f"Successfully loaded model on CPU as fallback")
