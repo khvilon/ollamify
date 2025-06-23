@@ -75,11 +75,23 @@ def load_jina_reranker(use_flash_attn=True):
         tokenizer = AutoTokenizer.from_pretrained(MODEL_NAME, trust_remote_code=True)
         model = AutoModelForSequenceClassification.from_pretrained(MODEL_NAME, **model_kwargs)
         
-        # Переносим модель на нужное устройство
-        model.to(device)
+        # Переносим модель на нужное устройство с fallback на CPU
+        try:
+            model.to(device)
+            logger.info(f"Successfully loaded model on {device}")
+        except RuntimeError as gpu_error:
+            if "out of memory" in str(gpu_error).lower():
+                logger.warning(f"GPU out of memory, falling back to CPU: {gpu_error}")
+                global device
+                device = "cpu"
+                model.to(device)
+                logger.info(f"Successfully loaded model on CPU as fallback")
+            else:
+                raise gpu_error
+                
         model.eval()
         
-        logger.info(f"Successfully loaded Jina Reranker model")
+        logger.info(f"Successfully loaded Jina Reranker model on {device}")
         return model, tokenizer
     except Exception as e:
         logger.error(f"Error loading model: {str(e)}")

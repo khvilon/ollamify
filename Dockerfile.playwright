@@ -1,0 +1,32 @@
+FROM mcr.microsoft.com/playwright:v1.52.0-jammy
+
+WORKDIR /tests
+
+# Устанавливаем зависимости для headless Chromium
+RUN apt-get update && apt-get install -y \
+    fonts-liberation \
+    libnss3 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libxss1 \
+    libasound2 \
+    libgbm1 \
+    libxshmfence1 \
+    libxcomposite1 \
+    libxrandr2 \
+    libxdamage1 \
+    libxinerama1 \
+    libgl1-mesa-glx \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libcups2 \
+    xvfb \
+    --no-install-recommends && rm -rf /var/lib/apt/lists/*
+
+COPY services/www3/package.e2e.json ./package.json
+COPY services/www3/package-lock.json ./package-lock.json
+RUN npm ci
+
+COPY services/www3/test.e2e.spec.js ./
+
+CMD ["sleep", "infinity"] 

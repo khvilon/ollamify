@@ -114,22 +114,26 @@ services:
       - app-network
 
   ollama:
-    build:
-      context: .
-      dockerfile: services/ollama/Dockerfile
-    volumes:
-      - ollama_data:/root/.ollama
+    image: ollama/ollama:latest
+    container_name: ollama
     expose:
       - "11434"
     healthcheck:
-      test: ["CMD", "pgrep", "ollama"]
-      interval: 5s
+      test:
+        - CMD
+        - pgrep
+        - ollama
       timeout: 5s
+      interval: 5s
       retries: 3
       start_period: 10s
-    container_name: ollama
     networks:
-      - app-network
+      app-network: null
+    volumes:
+      - type: volume
+        source: ollama_data
+        target: /root/.ollama
+        volume: {}
 
   auth:
     container_name: auth
@@ -224,6 +228,20 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  playwright:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    depends_on:
+      - www3
+    network_mode: "service:www3"
+    environment:
+      - HOME=/root
+      - DEBUG=pw:browser*
+    entrypoint: ["sleep", "infinity"]
+    restart: unless-stopped
+    shm_size: 2gb
 
 volumes:
   pg_data:

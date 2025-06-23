@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.1.0-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime
 
 WORKDIR /app
 
@@ -27,12 +27,16 @@ RUN pip install --no-cache-dir \
 # Создаем директорию для кеша моделей и устанавливаем права
 RUN mkdir -p /app/models && chmod 777 /app/models
 ENV TRANSFORMERS_CACHE=/app/models
-# Разрешаем всем пользователям писать в папку site-packages
-RUN chmod -R 777 /opt/conda/lib/python3.10/site-packages
+# Разрешаем всем пользователям писать в папку site-packages (проверяем существование)
+RUN find /opt/conda -name "site-packages" -type d -exec chmod -R 777 {} \; 2>/dev/null || \
+    find /usr/local -name "site-packages" -type d -exec chmod -R 777 {} \; 2>/dev/null || true
 
 # Устанавливаем переменные окружения для GPU
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV CUDA_VISIBLE_DEVICES=0
+ENV PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:128,expandable_segments:True
+ENV CUDA_LAUNCH_BLOCKING=1
+ENV TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
 
 # Копируем код приложения
 COPY app.py .

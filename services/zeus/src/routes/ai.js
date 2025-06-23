@@ -136,7 +136,7 @@ Question: ${question}`
 }
 
 // Отправка запроса к OpenRouter API или Ollama
-async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
+async function getCompletion(messages, model = process.env.OPENROUTER_MODEL, think = true) {
   const maxTokens = 8192;
   const isOpenRouter = model.startsWith('openrouter/');
   const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
@@ -184,7 +184,8 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
           model: actualModel,
           messages: messages,
           temperature: 0.7,
-          max_tokens: maxTokens
+          max_tokens: maxTokens,
+          think: think
         })
       });
 
@@ -222,9 +223,10 @@ async function getCompletion(messages, model = process.env.OPENROUTER_MODEL) {
           model: actualModel,
           messages: messages,
           stream: false,
-          "options": {
-            "num_ctx": maxTokens
-          }
+          options: {
+            num_ctx: maxTokens
+          },
+          think: think
         })
       });
 
@@ -630,7 +632,8 @@ router.post('/complete', async (req, res) => {
     messages,
     temperature = 0.7,
     max_tokens = 1024,
-    stream = false
+    stream = false,
+    think = true
   } = req.body;
   
   try {
@@ -698,7 +701,7 @@ router.post('/complete', async (req, res) => {
       res.write('data: [DONE]\n\n');
       res.end();
     } else {
-      const content = await getCompletion(messages, model);
+      const content = await getCompletion(messages, model, think);
       
       // Форматируем ответ в стиле OpenAI
       const response = {
@@ -1395,6 +1398,11 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                     default: 20
  *                     minimum: 1
  *                     maximum: 100
+ *                   think:
+ *                     type: boolean
+ *                     description: Использовать переранжирование для улучшения качества результатов
+ *                     example: true
+ *                     default: true
  *           examples:
  *             basic_rag:
  *               summary: Простой RAG запрос
@@ -1402,6 +1410,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                 question: "Что такое машинное обучение?"
  *                 project: "ml-documents"
  *                 model: "llama3.1:8b"
+ *                 think: true
  *             advanced_rag:
  *               summary: Продвинутый RAG с настройками
  *               value:
@@ -1412,6 +1421,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                 limit: 15
  *                 temperature: 0.3
  *                 max_tokens: 1500
+ *                 think: true
  *     responses:
  *       200:
  *         description: Успешный ответ с найденными документами
@@ -1506,7 +1516,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag', async (req, res) => {
-  const { question, project, model, useReranker = true, limit = 20 } = req.body;
+  const { question, project, model, useReranker = true, limit = 20, think = true } = req.body;
 
   if (!question || !project || !model) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -1518,7 +1528,8 @@ router.post('/rag', async (req, res) => {
       project,
       model,
       useReranker,
-      limit: limit ? Number(limit) : 20
+      limit: limit ? Number(limit) : 20,
+      think
     });
 
     // Проверяем, не является ли выбранная модель моделью для эмбеддингов
@@ -1651,7 +1662,7 @@ ${context}
 
 Question: ${question}`
       }
-    ], model);
+    ], model, think);
 
     // Извлекаем секции размышлений для RAG запросов
     const { answer, thinking } = extractThinkingSection(rawAnswer);

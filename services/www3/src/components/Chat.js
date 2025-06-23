@@ -264,6 +264,7 @@ function Chat() {
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
     const [useReranker, setUseReranker] = useState(true);
+    const [thinkEnabled, setThinkEnabled] = useState(true);
     const [embeddingModels, setEmbeddingModels] = useState([]); // Список embedding моделей для исключения
     
     // Push-to-talk состояние
@@ -480,7 +481,7 @@ function Chat() {
         
         // Используем новую функцию отправки
         await sendMessage(userMessage);
-    }, [messageText, isLoading, isTranscribing, selectedProject, selectedModel, useReranker]);
+    }, [messageText, isLoading, isTranscribing, selectedProject, selectedModel, useReranker, thinkEnabled]);
 
     // Push-to-talk функции
     const handleStartRecording = async () => {
@@ -581,7 +582,8 @@ function Chat() {
                     question: userMessage,
                     project: selectedProject,
                     model: selectedModel,
-                    useReranker: useReranker
+                    useReranker: useReranker,
+                    think: thinkEnabled
                 })
             });
 
@@ -751,6 +753,14 @@ function Chat() {
                             <Switch
                                 checked={useReranker}
                                 onChange={(e) => setUseReranker(e.target.checked)}
+                                color="primary"
+                            />
+                        </FormControl>
+                        <FormControl sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ mr: 1 }}>Показывать размышления:</Typography>
+                            <Switch
+                                checked={thinkEnabled}
+                                onChange={(e) => setThinkEnabled(e.target.checked)}
                                 color="primary"
                             />
                         </FormControl>
