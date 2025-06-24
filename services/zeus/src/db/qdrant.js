@@ -265,15 +265,21 @@ class QdrantClient {
   // Удаление документа со всеми чанками
   async deleteDocument(collectionName, documentId) {
     try {
+      // Преобразуем documentId в число, если он передан как строка
+      const numericDocumentId = parseInt(documentId, 10);
+      
+      logger.info(`Attempting to delete document ${documentId} (numeric: ${numericDocumentId}) from collection ${collectionName}`);
+      
       const result = await this.client.delete(collectionName, {
         filter: {
           must: [
-            { key: 'document_id', match: { value: documentId } }
+            { key: 'document_id', match: { value: numericDocumentId } }
           ]
         },
         wait: true
       });
       
+      logger.info(`Delete operation result for document ${documentId}:`, result);
       logger.info(`Deleted document ${documentId} from collection ${collectionName}`);
       return result;
     } catch (error) {
