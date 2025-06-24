@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:2.1.2-cuda12.1-cudnn8-runtime
+FROM pytorch/pytorch:2.5.0-cuda12.4-cudnn9-runtime
 
 WORKDIR /app
 
@@ -16,6 +16,9 @@ RUN mkdir -p /app/models
 
 # Копируем файлы зависимостей
 COPY requirements.txt .
+
+# Обновляем PyTorch до версии с поддержкой RTX 5070 Ti
+RUN pip install --no-cache-dir --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
 
 # Оптимизированная установка Python зависимостей
 RUN pip install --no-cache-dir --upgrade pip && \
