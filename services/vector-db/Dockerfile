@@ -6,10 +6,6 @@ RUN wget https://github.com/qdrant/qdrant/releases/download/v1.7.3/qdrant-x86_64
     mv qdrant /usr/local/bin/ && \
     rm qdrant-x86_64-unknown-linux-gnu.tar.gz
 
-# Устанавливаем python пакеты с поддержкой RTX 5070 Ti
-RUN pip install --no-cache-dir torch==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
-RUN pip install --no-cache-dir sentence-transformers
-
 # Создаем директорию для конфигурации и данных
 RUN mkdir -p /qdrant/config /qdrant/storage
 
