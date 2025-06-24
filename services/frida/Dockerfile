@@ -10,7 +10,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Установка зависимостей с поддержкой CUDA 12.8 для RTX 5070 Ti
-RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir torch==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
+RUN pip install --no-cache-dir torchvision==0.22.1+cu128 --index-url https://download.pytorch.org/whl/cu128  
+RUN pip install --no-cache-dir torchaudio==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
 RUN pip install --no-cache-dir sentence-transformers flask gunicorn
 
 # Копирование кода приложения
