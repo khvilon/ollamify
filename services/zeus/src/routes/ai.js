@@ -1516,7 +1516,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag', async (req, res) => {
-  const { question, project, model, useReranker = true, limit = 20, think = true } = req.body;
+  const { question, project, model, useReranker = true, limit = 30, think = true } = req.body;
 
   if (!question || !project || !model) {
     return res.status(400).json({ error: 'Missing required parameters' });
@@ -1528,7 +1528,7 @@ router.post('/rag', async (req, res) => {
       project,
       model,
       useReranker,
-      limit: limit ? Number(limit) : 20,
+      limit: limit ? Number(limit) : 30,
       think
     });
 
@@ -1553,7 +1553,7 @@ router.post('/rag', async (req, res) => {
 
     // Используем извлеченный запрос для поиска релевантных документов
     // Убедимся, что limit всегда число
-    const numLimit = limit ? Number(limit) : 20;
+    const numLimit = limit ? Number(limit) : 30;
     const relevantDocs = await getRelevantChunks(intentQuery, project, null, numLimit);
     
     if (relevantDocs.length === 0) {
@@ -1607,7 +1607,7 @@ ${doc.content.trim()}`);
     }
     
     // Применяем умный отбор документов
-    processedDocs = smartDocumentSelection(processedDocs);
+    processedDocs = smartDocumentSelection(processedDocs, 20);
     logger.info(`Selected ${processedDocs.length} documents using smart selection`);
     
     // Логируем финальный набор чанков, которые будут отправлены в LLM
