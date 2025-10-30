@@ -192,6 +192,8 @@ curl -X POST "http://localhost/api/ai/rag" \\
     "question": "Что такое машинное обучение?",
     "project": "my-documents",
     "model": "llama3.1:8b",
+    "useReranker": true,
+    "useHybridSearch": true,
     "temperature": 0.7
   }'
 
@@ -228,7 +230,7 @@ headers = {
 }
 
 # RAG запрос (поиск по документам)
-def ask_question(question, project="my-documents"):
+def ask_question(question, project="my-documents", *, use_hybrid=True):
     response = requests.post(
         'http://localhost/api/ai/rag',
         headers=headers,
@@ -236,6 +238,8 @@ def ask_question(question, project="my-documents"):
             'question': question,
             'project': project,
             'model': 'llama3.1:8b',
+            'useReranker': True,
+            'useHybridSearch': use_hybrid,
             'temperature': 0.7
         }
     )
@@ -287,7 +291,7 @@ const headers = {
 };
 
 // RAG запрос (поиск по документам)
-async function askQuestion(question, project = "my-documents") {
+async function askQuestion(question, project = "my-documents", { useHybridSearch = true } = {}) {
     const response = await fetch('http://localhost/api/ai/rag', {
         method: 'POST',
         headers,
@@ -295,6 +299,8 @@ async function askQuestion(question, project = "my-documents") {
             question,
             project,
             model: 'llama3.1:8b',
+            useReranker: true,
+            useHybridSearch,
             temperature: 0.7
         })
     });

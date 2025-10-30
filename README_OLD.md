@@ -11,7 +11,23 @@ A powerful document management and RAG (Retrieval Augmented Generation) system b
   - Progress tracking for document processing
   - Document search and filtering
 
-- **RAG Capabilities**  - Question answering based on document content  - Multiple embedding model support  - Semantic search across documents  - Context-aware responses- **Voice Interface (TTS/STT)**  - Text-to-Speech synthesis with multiple voices  - Multi-language support (16+ languages)  - Voice parameter customization (speed, quality)  - Web-based audio player and download  - REST API for voice synthesis  - Future: Speech-to-Text and voice cloning- **Model Management**  - Integration with Ollama models  - Support for OpenRouter models  - Model download and status tracking  - Capability-based model filtering
+- **RAG Capabilities**
+  - Question answering based on document content
+  - Multiple embedding model support
+  - Semantic and hybrid (embeddings + keyword) search with per-request toggle
+  - Context-aware responses
+- **Voice Interface (TTS/STT)**
+  - Text-to-Speech synthesis with multiple voices
+  - Multi-language support (16+ languages)
+  - Voice parameter customization (speed, quality)
+  - Web-based audio player and download
+  - REST API for voice synthesis
+  - Future: Speech-to-Text and voice cloning
+- **Model Management**
+  - Integration with Ollama models
+  - Support for OpenRouter models
+  - Model download and status tracking
+  - Capability-based model filtering
 
 - **User Management & Security**
   - User registration and authentication
@@ -146,6 +162,9 @@ The system consists of several microservices:
 
 ### AI
 - `POST /api/ai/rag` - Question answering
+- `POST /api/ai/rag/chunks` - Retrieve relevant document chunks
+
+> Параметр `useHybridSearch` (по умолчанию `true`) позволяет переключаться между гибридным поиском и поиском только по эмбеддингам.
 - `POST /api/ai/embed` - Get embeddings
 
 ## Technologies

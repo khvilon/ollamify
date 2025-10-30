@@ -82,6 +82,316 @@ async function findRelevantDocuments(questionEmbedding, project, embeddingModel,
   }
 }
 
+async function findKeywordDocuments(keywords, project, limit = 20) {
+  const sanitizedKeywords = Array.isArray(keywords)
+    ? Array.from(new Set(
+        keywords
+          .map(keyword => (typeof keyword === 'string' ? keyword.trim() : ''))
+          .filter(keyword => keyword.length > 0)
+      ))
+    : [];
+
+  if (sanitizedKeywords.length === 0) {
+    logger.info('No keywords provided for keyword-based search');
+    return [];
+  }
+
+  const docMap = new Map();
+
+  const addDocsToMap = (docs, matchLabel) => {
+    docs.forEach(doc => {
+      if (!doc || !doc.content) {
+        return;
+      }
+
+      const docKey = `${doc.project || project}::${doc.filename || 'unknown'}::${doc.content.substring(0, 300)}`;
+
+      if (!docMap.has(docKey)) {
+        docMap.set(docKey, {
+          filename: doc.filename || 'unknown',
+          content: doc.content,
+          project: doc.project || project,
+          metadata: doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
+            ? { ...doc.metadata }
+            : {},
+          keywordScore: typeof doc.similarity === 'number' ? doc.similarity : 0,
+          similarity: typeof doc.similarity === 'number' ? doc.similarity : 0,
+          keywordMatches: new Set()
+        });
+      }
+
+      const entry = docMap.get(docKey);
+      const docScore = typeof doc.similarity === 'number' ? doc.similarity : 0;
+
+      entry.keywordScore = Math.max(entry.keywordScore, docScore);
+      entry.similarity = Math.max(entry.similarity, docScore);
+
+      if (doc.metadata && doc.metadata.__keywordMatches && Array.isArray(doc.metadata.__keywordMatches)) {
+        doc.metadata.__keywordMatches.forEach(match => entry.keywordMatches.add(match));
+      }
+
+      if (matchLabel) {
+        entry.keywordMatches.add(matchLabel);
+      }
+    });
+  };
+
+  const aggregatedQuery = sanitizedKeywords.join(' ');
+
+  try {
+    if (aggregatedQuery.length > 0) {
+      logger.info('Running aggregated keyword search in Qdrant:', {
+        project,
+        aggregatedQuery
+      });
+
+      const aggregatedDocs = await qdrantClient.searchByText(project, aggregatedQuery, limit);
+      addDocsToMap(aggregatedDocs, aggregatedQuery);
+    }
+
+    const perKeywordLimit = Math.max(3, Math.ceil(limit / Math.min(sanitizedKeywords.length, 5)));
+
+    for (const keyword of sanitizedKeywords.slice(0, 10)) {
+      logger.info('Running keyword search in Qdrant:', {
+        project,
+        keyword
+      });
+
+      const keywordDocs = await qdrantClient.searchByText(project, keyword, perKeywordLimit);
+      addDocsToMap(keywordDocs, keyword);
+    }
+  } catch (error) {
+    logger.error('Error during keyword search in Qdrant:', error);
+  }
+
+  const keywordDocs = Array.from(docMap.values()).map(entry => {
+    const keywordMatches = Array.from(entry.keywordMatches);
+    const metadata = { ...entry.metadata };
+
+    if (keywordMatches.length > 0) {
+      metadata.__keywordMatches = keywordMatches;
+    }
+
+    metadata.__keywordScore = entry.keywordScore;
+
+    return {
+      filename: entry.filename,
+      content: entry.content,
+      project: entry.project,
+      similarity: entry.keywordScore,
+      keywordScore: entry.keywordScore,
+      metadata
+    };
+  });
+
+  logger.info('Keyword search summary:', {
+    project,
+    keywords: sanitizedKeywords,
+    aggregatedQuery,
+    totalUniqueDocuments: keywordDocs.length
+  });
+
+  return keywordDocs;
+}
+
+function createScoreNormalizer(values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return () => 0;
+  }
+
+  const numericValues = values.filter(value => typeof value === 'number' && !Number.isNaN(value));
+
+  if (numericValues.length === 0) {
+    return () => 0;
+  }
+
+  const max = Math.max(...numericValues);
+  const min = Math.min(...numericValues);
+  const range = max - min;
+
+  if (range === 0) {
+    return () => 1;
+  }
+
+  return value => {
+    if (typeof value !== 'number' || Number.isNaN(value)) {
+      return 0;
+    }
+    return (value - min) / range;
+  };
+}
+
+function mergeHybridResults(embeddingDocs, keywordDocs, limit) {
+  const docMap = new Map();
+
+  const makeKey = doc => {
+    const project = doc.project || 'unknown_project';
+    const filename = doc.filename || 'unknown_file';
+    const contentPreview = doc.content ? doc.content.substring(0, 400) : '';
+    return `${project}::${filename}::${contentPreview}`;
+  };
+
+  const addDoc = (doc, source) => {
+    if (!doc || !doc.content) {
+      return;
+    }
+
+    const key = makeKey(doc);
+
+    if (!docMap.has(key)) {
+      docMap.set(key, {
+        filename: doc.filename || 'unknown',
+        content: doc.content,
+        project: doc.project,
+        metadata: doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
+          ? { ...doc.metadata }
+          : {},
+        embeddingScore: null,
+        keywordScore: null,
+        keywordMatches: new Set(),
+        sources: new Set()
+      });
+    }
+
+    const entry = docMap.get(key);
+
+    if (source === 'embedding' && typeof doc.similarity === 'number' && !Number.isNaN(doc.similarity)) {
+      entry.embeddingScore = entry.embeddingScore !== null
+        ? Math.max(entry.embeddingScore, doc.similarity)
+        : doc.similarity;
+    }
+
+    if (source === 'keyword') {
+      const keywordScoreCandidate = typeof doc.keywordScore === 'number' && !Number.isNaN(doc.keywordScore)
+        ? doc.keywordScore
+        : (typeof doc.similarity === 'number' && !Number.isNaN(doc.similarity) ? doc.similarity : null);
+
+      if (keywordScoreCandidate !== null) {
+        entry.keywordScore = entry.keywordScore !== null
+          ? Math.max(entry.keywordScore, keywordScoreCandidate)
+          : keywordScoreCandidate;
+      }
+
+      if (doc.metadata && Array.isArray(doc.metadata.__keywordMatches)) {
+        doc.metadata.__keywordMatches.forEach(match => entry.keywordMatches.add(match));
+      }
+    }
+
+    if (doc.metadata && Array.isArray(doc.metadata.__keywordMatches)) {
+      doc.metadata.__keywordMatches.forEach(match => entry.keywordMatches.add(match));
+    }
+
+    if (doc.metadata && doc.metadata.__keywordScore && typeof doc.metadata.__keywordScore === 'number') {
+      entry.keywordScore = entry.keywordScore !== null
+        ? Math.max(entry.keywordScore, doc.metadata.__keywordScore)
+        : doc.metadata.__keywordScore;
+    }
+
+    entry.metadata = {
+      ...entry.metadata,
+      ...(doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata) ? doc.metadata : {})
+    };
+
+    if (!entry.project && doc.project) {
+      entry.project = doc.project;
+    }
+
+    entry.sources.add(source);
+  };
+
+  embeddingDocs.forEach(doc => addDoc(doc, 'embedding'));
+  keywordDocs.forEach(doc => addDoc(doc, 'keyword'));
+
+  const embeddingScores = [];
+  const keywordScores = [];
+
+  docMap.forEach(entry => {
+    if (typeof entry.embeddingScore === 'number' && !Number.isNaN(entry.embeddingScore)) {
+      embeddingScores.push(entry.embeddingScore);
+    }
+    if (typeof entry.keywordScore === 'number' && !Number.isNaN(entry.keywordScore)) {
+      keywordScores.push(entry.keywordScore);
+    }
+  });
+
+  const normalizeEmbedding = createScoreNormalizer(embeddingScores);
+  const normalizeKeyword = createScoreNormalizer(keywordScores);
+
+  const EMBEDDING_WEIGHT = 0.65;
+  const KEYWORD_WEIGHT = 0.35;
+  const DUAL_SOURCE_BONUS = 0.05;
+
+  const hasEmbeddingScores = embeddingScores.length > 0;
+  const hasKeywordScores = keywordScores.length > 0;
+
+  const mergedDocs = Array.from(docMap.values()).map(entry => {
+    const rawEmbeddingScore = entry.embeddingScore;
+    const rawKeywordScore = entry.keywordScore;
+
+    const embeddingComponent = rawEmbeddingScore !== null
+      ? (hasKeywordScores ? normalizeEmbedding(rawEmbeddingScore) : rawEmbeddingScore)
+      : 0;
+
+    const keywordComponent = rawKeywordScore !== null
+      ? (hasEmbeddingScores ? normalizeKeyword(rawKeywordScore) : rawKeywordScore)
+      : 0;
+
+    let hybridScore;
+
+    if (hasEmbeddingScores && hasKeywordScores) {
+      let combinedScore = embeddingComponent * EMBEDDING_WEIGHT + keywordComponent * KEYWORD_WEIGHT;
+
+      if (rawEmbeddingScore !== null && rawKeywordScore !== null) {
+        combinedScore += DUAL_SOURCE_BONUS;
+      }
+
+      if (combinedScore > 1) {
+        combinedScore = Math.min(combinedScore, 1.0);
+      }
+
+      hybridScore = combinedScore;
+    } else if (hasEmbeddingScores) {
+      hybridScore = embeddingComponent;
+    } else {
+      hybridScore = keywordComponent;
+    }
+
+    const keywordMatches = Array.from(entry.keywordMatches);
+    const metadata = entry.metadata && typeof entry.metadata === 'object' && !Array.isArray(entry.metadata)
+      ? { ...entry.metadata }
+      : {};
+
+    if (keywordMatches.length > 0) {
+      metadata.__keywordMatches = Array.from(new Set([...(metadata.__keywordMatches || []), ...keywordMatches]));
+    }
+
+    metadata.__retrieval = {
+      embeddingScore: rawEmbeddingScore,
+      keywordScore: rawKeywordScore,
+      embeddingContribution: embeddingComponent,
+      keywordContribution: keywordComponent,
+      hybridScore,
+      sources: Array.from(entry.sources)
+    };
+
+    return {
+      filename: entry.filename,
+      content: entry.content,
+      project: entry.project,
+      similarity: hybridScore,
+      metadata
+    };
+  });
+
+  mergedDocs.sort((a, b) => b.similarity - a.similarity);
+
+  if (typeof limit === 'number' && limit > 0) {
+    return mergedDocs.slice(0, limit);
+  }
+
+  return mergedDocs;
+}
+
 // Получение ответа от LLM
 async function getAnswer(context, question) {
   logger.info('Sending request to OpenRouter API:', {
@@ -738,148 +1048,165 @@ router.post('/complete', async (req, res) => {
   }
 });
 
-async function getRelevantChunks(question, project, model, limit = 100) {
-  // Если указан конкретный проект, ищем только в нём
+async function getRelevantChunks(question, project, model, limit = 100, options = {}) {
+  const numericLimit = typeof limit === 'number' ? limit : Number(limit) || 100;
+  const {
+    keywords: keywordsFromOptions = [],
+    useHybridSearch = true
+  } = options || {};
+
+  const sanitizedKeywords = useHybridSearch
+    ? Array.from(new Set(
+        keywordsFromOptions
+          .map(keyword => (typeof keyword === 'string' ? keyword.trim() : ''))
+          .filter(keyword => keyword.length > 0)
+      ))
+    : [];
+
+  const embeddingDocs = [];
+  const keywordDocs = [];
+
   if (project) {
-    logger.info(`Project specified: ${project}, searching only in this project`);
-    
-    // Получаем информацию о проекте
+    logger.info(`Project specified: ${project}, running ${useHybridSearch ? 'hybrid' : 'embedding-only'} retrieval within this project`, {
+      keywords: sanitizedKeywords,
+      useHybridSearch
+    });
+
     const projectResult = await pool.query(
       'SELECT name, embedding_model FROM admin.projects WHERE name = $1',
       [project]
     );
-    
+
     if (projectResult.rows.length === 0) {
       throw new Error(`Project "${project}" not found`);
     }
-    
+
     const projectInfo = projectResult.rows[0];
     logger.info(`Found project "${project}" with embedding model: ${projectInfo.embedding_model}`);
-    
-    // Получаем эмбеддинг для вопроса, используя модель проекта
-    logger.info(`Getting embedding for question in project: ${project}`);
+
     const questionEmbedding = await getEmbedding(question, projectInfo.embedding_model);
-    
-    // Ищем документы только в указанном проекте
-    logger.info(`Finding relevant documents in project: ${project}`);
-    let relevantDocs = await findRelevantDocuments(questionEmbedding, project, projectInfo.embedding_model, limit);
-    
-    if (limit && relevantDocs.length > limit) {
-      relevantDocs = relevantDocs.slice(0, limit);
+    logger.info(`Finding embedding-based documents in project: ${project}`);
+
+    const embeddingLimit = Math.max(numericLimit, Math.min(numericLimit * 2, 60));
+    let projectEmbeddingDocs = await findRelevantDocuments(questionEmbedding, project, projectInfo.embedding_model, embeddingLimit);
+
+    projectEmbeddingDocs = projectEmbeddingDocs
+      .filter(doc => doc && doc.content)
+      .map(doc => ({
+        ...doc,
+        project
+      }));
+
+    embeddingDocs.push(...projectEmbeddingDocs);
+
+    if (useHybridSearch && sanitizedKeywords.length > 0) {
+      logger.info('Finding keyword-based documents in project:', {
+        project,
+        keywords: sanitizedKeywords
+      });
+
+      const keywordLimit = Math.max(numericLimit, Math.min(numericLimit * 2, 80));
+      let projectKeywordDocs = await findKeywordDocuments(sanitizedKeywords, project, keywordLimit);
+
+      projectKeywordDocs = projectKeywordDocs
+        .filter(doc => doc && doc.content)
+        .map(doc => ({
+          ...doc,
+          project
+        }));
+
+      keywordDocs.push(...projectKeywordDocs);
     }
-    
-    // Убеждаемся, что у всех документов указан правильный проект
-    relevantDocs = relevantDocs.map(doc => ({
-      ...doc,
-      project: project
-    }));
-    
-    // ДОПОЛНИТЕЛЬНО: фильтруем документы, которые могли прийти из других проектов
-    const originalCount = relevantDocs.length;
-    relevantDocs = relevantDocs.filter(doc => {
-      if (!doc.project || doc.project === project) {
-        return true;
-      }
-      logger.warn(`Filtering out document from wrong project: ${doc.filename} (${doc.project}) - should be in ${project}`);
-      return false;
+  } else {
+    logger.info(`No project specified, running ${useHybridSearch ? 'hybrid' : 'embedding-only'} retrieval across all projects`, {
+      keywords: sanitizedKeywords,
+      useHybridSearch
     });
-    
-    if (originalCount !== relevantDocs.length) {
-      logger.info(`Filtered out ${originalCount - relevantDocs.length} documents from other projects`);
-    }
-    
-    logger.info(`Found ${relevantDocs.length} documents in project "${project}"`);
-    
-    return relevantDocs;
-  } 
-  // Если проект не указан, ищем во всех проектах
-  else {
-    logger.info('No specific project provided, searching across all projects');
-    
+
     const projectResult = await pool.query(
       'SELECT name, embedding_model FROM admin.projects'
     );
-    
+
     const projects = projectResult.rows;
+
     if (projects.length === 0) {
       throw new Error('No projects found');
     }
-    
-    logger.info(`Searching in all projects (${projects.length}): ${projects.map(p => p.name).join(', ')}`);
-    
-    let allRelevantDocs = [];
-    await Promise.all(projects.map(async (proj) => {
-      logger.info('Getting embedding for question in project:', proj.name);
+
+    logger.info(`Searching in ${projects.length} projects: ${projects.map(p => p.name).join(', ')}`);
+
+    await Promise.all(projects.map(async proj => {
+      logger.info('Running embedding search for project:', proj.name);
       const questionEmbedding = await getEmbedding(question, proj.embedding_model);
-      logger.info('Finding relevant documents in project:', proj.name);
-      let relevantDocs = await findRelevantDocuments(questionEmbedding, proj.name, proj.embedding_model, limit);
-      if (limit && relevantDocs.length > limit) {
-        relevantDocs = relevantDocs.slice(0, limit);
+
+      const embeddingLimit = Math.max(numericLimit, Math.min(numericLimit * 2, 60));
+      let projectEmbeddingDocs = await findRelevantDocuments(questionEmbedding, proj.name, proj.embedding_model, embeddingLimit);
+
+      projectEmbeddingDocs = projectEmbeddingDocs
+        .filter(doc => doc && doc.content)
+        .map(doc => ({
+          ...doc,
+          project: proj.name
+        }));
+
+      embeddingDocs.push(...projectEmbeddingDocs);
+
+      if (useHybridSearch && sanitizedKeywords.length > 0) {
+        logger.info('Running keyword search for project:', {
+          project: proj.name,
+          keywords: sanitizedKeywords
+        });
+
+        const keywordLimit = Math.max(numericLimit, Math.min(numericLimit * 2, 80));
+        let projectKeywordDocs = await findKeywordDocuments(sanitizedKeywords, proj.name, keywordLimit);
+
+        projectKeywordDocs = projectKeywordDocs
+          .filter(doc => doc && doc.content)
+          .map(doc => ({
+            ...doc,
+            project: proj.name
+          }));
+
+        keywordDocs.push(...projectKeywordDocs);
       }
-      // Добавляем информацию о проекте к каждому документу
-      relevantDocs = relevantDocs.map(doc => ({
-        ...doc,
-        project: proj.name
-      }));
-      allRelevantDocs.push(...relevantDocs);
     }));
-    
-    // Проверка на дубликаты и неправильные проекты
-    // Вместо дедупликации по файлу проверяем полное содержимое чанка
-    const uniqueContentIds = new Set();
-    const uniqueDocs = [];
-    
-    // Логируем распределение по проектам до дедупликации
-    const projectStats = {};
-    allRelevantDocs.forEach(doc => {
-      if (!projectStats[doc.project]) {
-        projectStats[doc.project] = 0;
-      }
-      projectStats[doc.project]++;
-    });
-    logger.info(`Documents by project before deduplication: ${JSON.stringify(projectStats)}`);
-    
-    for (const doc of allRelevantDocs) {
-      // Проверяем, что у документа есть содержимое
-      if (!doc.content) {
-        logger.warn(`Document without content detected and filtered: ${doc.project}:${doc.filename}`);
-        continue;
-      }
-      
-      // Создаем уникальный ID на основе содержимого чанка - используем первые 50 символов
-      // это достаточно, чтобы отличить разные чанки, но избежать слишком длинных ключей
-      const contentPreview = doc.content.trim().substring(0, 50);
-      const docId = `${doc.project}:${doc.filename}:${contentPreview}`;
-      
-      if (!uniqueContentIds.has(docId)) {
-        uniqueContentIds.add(docId);
-        uniqueDocs.push(doc);
-      } else {
-        logger.warn(`True duplicate content detected and filtered: ${doc.project}:${doc.filename}`);
-      }
-    }
-    
-    if (uniqueDocs.length < allRelevantDocs.length) {
-      logger.info(`Filtered ${allRelevantDocs.length - uniqueDocs.length} documents with duplicate content`);
-    }
-    
-    // Сортируем по релевантности перед возвратом
-    uniqueDocs.sort((a, b) => b.similarity - a.similarity);
-    
-    // Логируем распределение по проектам после дедупликации
-    const finalProjectStats = {};
-    uniqueDocs.forEach(doc => {
-      if (!finalProjectStats[doc.project]) {
-        finalProjectStats[doc.project] = 0;
-      }
-      finalProjectStats[doc.project]++;
-    });
-    logger.info(`Documents by project after deduplication: ${JSON.stringify(finalProjectStats)}`);
-    
-    logger.info(`Returning ${uniqueDocs.length} relevant documents (after content deduplication) with projects: ${[...new Set(uniqueDocs.map(doc => doc.project))].join(', ')}`);
-    
-    return uniqueDocs;
   }
+
+  const filteredEmbeddingDocs = embeddingDocs.filter(doc => doc && doc.content);
+  const filteredKeywordDocs = keywordDocs.filter(doc => doc && doc.content);
+
+  const hybridDocs = mergeHybridResults(filteredEmbeddingDocs, filteredKeywordDocs, numericLimit);
+
+  // Для конкретного проекта убеждаемся, что документы принадлежат этому проекту
+  const projectAwareDocs = project
+    ? hybridDocs
+        .filter(doc => doc.project === project || !doc.project)
+        .map(doc => ({
+          ...doc,
+          project: project
+        }))
+    : hybridDocs;
+
+  const finalDocs = projectAwareDocs.filter(doc => doc && doc.content).slice(0, numericLimit);
+
+  const projectStats = finalDocs.reduce((acc, doc) => {
+    const docProject = doc.project || 'unknown_project';
+    acc[docProject] = (acc[docProject] || 0) + 1;
+    return acc;
+  }, {});
+
+  logger.info('Hybrid retrieval summary:', {
+    project: project || 'all_projects',
+    requestedLimit: numericLimit,
+    keywords: sanitizedKeywords,
+    useHybridSearch,
+    embeddingDocs: filteredEmbeddingDocs.length,
+    keywordDocs: filteredKeywordDocs.length,
+    returnedDocs: finalDocs.length,
+    projectStats
+  });
+
+  return finalDocs;
 }
 
 // Функция для проверки состояния реранкера
@@ -1224,6 +1551,69 @@ async function extractQueryIntent(originalQuery, model) {
   }
 }
 
+async function extractKeywords(originalQuery, model, maxKeywords = 8) {
+  try {
+    const targetModel = model || process.env.OPENROUTER_MODEL;
+
+    logger.info('Extracting keywords from query:', {
+      query: originalQuery,
+      model: targetModel,
+      maxKeywords
+    });
+
+    const messages = [
+      {
+        role: "system",
+        content: `You are a helper that extracts up to ${maxKeywords} distinct keywords or short key phrases (1-4 words each) from the user's question.
+
+Return ONLY a valid JSON array of strings. Do not add explanations or other text.
+If there are no clear keywords, return an empty JSON array [].
+Preserve the language of the query.`
+      },
+      {
+        role: "user",
+        content: originalQuery
+      }
+    ];
+
+    const rawResponse = await getCompletion(messages, targetModel, false);
+
+    let keywords = [];
+
+    try {
+      const parsed = JSON.parse(rawResponse);
+      if (Array.isArray(parsed)) {
+        keywords = parsed;
+      } else {
+        throw new Error('Parsed keywords is not an array');
+      }
+    } catch (parseError) {
+      logger.warn('Failed to parse keywords JSON, falling back to delimiter split', {
+        error: parseError.message,
+        rawResponse
+      });
+
+      keywords = rawResponse
+        .split(/[,;\n]/)
+        .map(keyword => keyword.trim())
+        .filter(Boolean);
+    }
+
+    const uniqueKeywords = Array.from(new Set(
+      keywords
+        .map(keyword => keyword.trim())
+        .filter(keyword => keyword.length > 0)
+    )).slice(0, maxKeywords);
+
+    logger.info('Keywords extracted:', { keywords: uniqueKeywords });
+
+    return uniqueKeywords;
+  } catch (error) {
+    logger.error('Error extracting keywords:', error);
+    return [];
+  }
+}
+
 // Функция для умного отбора документов на основе падения релевантности
 function smartDocumentSelection(documents, maxDocs = 8) {
   if (!documents || documents.length === 0) {
@@ -1403,6 +1793,11 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                     description: Использовать переранжирование для улучшения качества результатов
  *                     example: true
  *                     default: true
+ *                   useHybridSearch:
+ *                     type: boolean
+ *                     description: Включить гибридный поиск (эмбеддинги + ключевые слова). Если false, используется только поиск по эмбеддингам
+ *                     example: true
+ *                     default: true
  *           examples:
  *             basic_rag:
  *               summary: Простой RAG запрос
@@ -1411,6 +1806,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                 project: "ml-documents"
  *                 model: "llama3.1:8b"
  *                 think: true
+  *                 useHybridSearch: true
  *             advanced_rag:
  *               summary: Продвинутый RAG с настройками
  *               value:
@@ -1418,6 +1814,7 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *                 project: "cv-research"
  *                 model: "llama3.1:8b"
  *                 useReranker: true
+  *                 useHybridSearch: false
  *                 limit: 15
  *                 temperature: 0.3
  *                 max_tokens: 1500
@@ -1516,20 +1913,28 @@ function smartDocumentSelection(documents, maxDocs = 8) {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag', async (req, res) => {
-  const { question, project, model, useReranker = true, limit = 30, think = true } = req.body;
+  const { question, project, model, useReranker = true, limit = 30, think = true, useHybridSearch } = req.body;
 
   if (!question || !project || !model) {
     return res.status(400).json({ error: 'Missing required parameters' });
   }
 
   try {
+    let hybridEnabled = true;
+    if (typeof useHybridSearch === 'boolean') {
+      hybridEnabled = useHybridSearch;
+    } else if (typeof useHybridSearch === 'string') {
+      hybridEnabled = !['false', '0', 'no', 'off'].includes(useHybridSearch.toLowerCase());
+    }
+
     logger.info('POST /ai/rag request received:', {
       question,
       project,
       model,
       useReranker,
       limit: limit ? Number(limit) : 30,
-      think
+      think,
+      useHybridSearch: hybridEnabled
     });
 
     // Проверяем, не является ли выбранная модель моделью для эмбеддингов
@@ -1543,18 +1948,28 @@ router.post('/rag', async (req, res) => {
       });
     }
     
-    // Извлекаем смысловую часть запроса для поиска, используя указанную модель
-    const { originalQuery, intentQuery } = await extractQueryIntent(question, model);
+    // Извлекаем смысловую часть запроса и ключевые слова в зависимости от режима поиска
+    const intentPromise = extractQueryIntent(question, model);
+    const keywordPromise = hybridEnabled ? extractKeywords(question, model) : Promise.resolve([]);
+    const [intentResult, keywords] = await Promise.all([intentPromise, keywordPromise]);
+
+    const { originalQuery, intentQuery } = intentResult;
+
     logger.info('Query intent extraction:', {
       originalQuery: question,
       extractedIntent: intentQuery,
-      model
+      model,
+      keywords,
+      useHybridSearch: hybridEnabled
     });
 
     // Используем извлеченный запрос для поиска релевантных документов
     // Убедимся, что limit всегда число
     const numLimit = limit ? Number(limit) : 30;
-    const relevantDocs = await getRelevantChunks(intentQuery, project, null, numLimit);
+    const relevantDocs = await getRelevantChunks(intentQuery, project, null, numLimit, {
+      keywords,
+      useHybridSearch: hybridEnabled
+    });
     
     if (relevantDocs.length === 0) {
       logger.info('No relevant documents found');
@@ -1740,18 +2155,25 @@ Question: ${question}`
  *                 default: 100
  *                 minimum: 1
  *                 maximum: 100
+ *               useHybridSearch:
+ *                 type: boolean
+ *                 description: Включить гибридный поиск (эмбеддинги + ключевые слова). Если false, используется только поиск по эмбеддингам
+ *                 example: true
+ *                 default: true
  *           examples:
  *             simple_chunks:
  *               summary: Поиск по всем проектам
  *               value:
  *                 question: "Что такое нейронные сети?"
  *                 limit: 5
+  *                 useHybridSearch: true
  *             project_chunks:
  *               summary: Поиск в конкретном проекте
  *               value:
  *                 question: "Как обучать модели?"
  *                 project: "ml-tutorials"
  *                 limit: 10
+  *                 useHybridSearch: false
  *     responses:
  *       200:
  *         description: Список релевантных фрагментов документов
@@ -1818,30 +2240,48 @@ Question: ${question}`
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag/chunks', async (req, res) => {
-  const { question, project, limit = 100 } = req.body;
+  const { question, project, limit = 100, useHybridSearch } = req.body;
 
   if (!question) {
     return res.status(400).json({ error: 'Missing required parameters: question' });
   }
 
   try {
+    let hybridEnabled = true;
+    if (typeof useHybridSearch === 'boolean') {
+      hybridEnabled = useHybridSearch;
+    } else if (typeof useHybridSearch === 'string') {
+      hybridEnabled = !['false', '0', 'no', 'off'].includes(useHybridSearch.toLowerCase());
+    }
+
     logger.info('POST /ai/rag/chunks request received:', { 
       question, 
       project, 
-      limit: limit ? Number(limit) : 100 
+      limit: limit ? Number(limit) : 100,
+      useHybridSearch: hybridEnabled
     });
     
     // Извлекаем смысловую часть запроса для поиска
-    const { originalQuery, intentQuery } = await extractQueryIntent(question, process.env.OPENROUTER_MODEL);
+    const intentPromise = extractQueryIntent(question, process.env.OPENROUTER_MODEL);
+    const keywordPromise = hybridEnabled ? extractKeywords(question, process.env.OPENROUTER_MODEL) : Promise.resolve([]);
+    const [intentResult, keywords] = await Promise.all([intentPromise, keywordPromise]);
+
+    const { originalQuery, intentQuery } = intentResult;
+
     logger.info('Query intent extraction for chunks:', {
       originalQuery: question,
-      extractedIntent: intentQuery
+      extractedIntent: intentQuery,
+      keywords,
+      useHybridSearch: hybridEnabled
     });
     
     // Используем извлеченный запрос для поиска релевантных документов
     // Убедимся, что limit всегда число
     const numLimit = limit ? Number(limit) : 100;
-    const relevantDocs = await getRelevantChunks(intentQuery, project, null, numLimit);
+    const relevantDocs = await getRelevantChunks(intentQuery, project, null, numLimit, {
+      keywords,
+      useHybridSearch: hybridEnabled
+    });
     
     if (relevantDocs.length === 0) {
       logger.info('No relevant documents found for chunks');

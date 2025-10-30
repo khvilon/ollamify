@@ -265,6 +265,7 @@ function Chat() {
     const [isModelSelectOpen, setIsModelSelectOpen] = useState(false);
     const [useReranker, setUseReranker] = useState(true);
     const [thinkEnabled, setThinkEnabled] = useState(true);
+    const [hybridSearchEnabled, setHybridSearchEnabled] = useState(true);
     const [embeddingModels, setEmbeddingModels] = useState([]); // Список embedding моделей для исключения
     
     // Push-to-talk состояние
@@ -481,7 +482,7 @@ function Chat() {
         
         // Используем новую функцию отправки
         await sendMessage(userMessage);
-    }, [messageText, isLoading, isTranscribing, selectedProject, selectedModel, useReranker, thinkEnabled]);
+    }, [messageText, isLoading, isTranscribing, selectedProject, selectedModel, useReranker, thinkEnabled, hybridSearchEnabled]);
 
     // Push-to-talk функции
     const handleStartRecording = async () => {
@@ -583,7 +584,8 @@ function Chat() {
                     project: selectedProject,
                     model: selectedModel,
                     useReranker: useReranker,
-                    think: thinkEnabled
+                    think: thinkEnabled,
+                    useHybridSearch: hybridSearchEnabled
                 })
             });
 
@@ -753,6 +755,14 @@ function Chat() {
                             <Switch
                                 checked={useReranker}
                                 onChange={(e) => setUseReranker(e.target.checked)}
+                                color="primary"
+                            />
+                        </FormControl>
+                        <FormControl sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center' }}>
+                            <Typography variant="body2" sx={{ mr: 1 }}>Гибридный поиск:</Typography>
+                            <Switch
+                                checked={hybridSearchEnabled}
+                                onChange={(e) => setHybridSearchEnabled(e.target.checked)}
                                 color="primary"
                             />
                         </FormControl>

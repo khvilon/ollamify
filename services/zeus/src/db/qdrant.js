@@ -15,6 +15,34 @@ class QdrantClient {
     logger.info(`QdrantClient initialized with URL: ${this.url}`);
   }
 
+  _formatSearchResults(collectionName, points) {
+    if (!Array.isArray(points)) {
+      return [];
+    }
+
+    return points
+      .map(item => {
+        if (!item || !item.payload) {
+          logger.warn(`Invalid point returned from Qdrant in collection ${collectionName}`);
+          return {
+            filename: 'unknown',
+            content: '',
+            project: collectionName,
+            similarity: 0.0
+          };
+        }
+
+        return {
+          filename: item.payload.filename || 'unknown',
+          content: item.payload.content || '',
+          project: item.payload.project || collectionName,
+          similarity: typeof item.score === 'number' ? item.score : 0.0,
+          metadata: item.payload.metadata || {}
+        };
+      })
+      .filter(item => item.content);
+  }
+
   // Проверка статуса Qdrant
   async healthCheck() {
     try {
@@ -230,35 +258,57 @@ class QdrantClient {
           logger.warn(`${missingScore.length} points in collection ${collectionName} don't have score field`);
         }
       }
-      
-      // Преобразуем формат ответа для совместимости с текущим API
-      // И обеспечиваем безопасный доступ к свойствам
-      return points.map(item => {
-        // Проверяем, что item и item.payload существуют
-        if (!item || !item.payload) {
-          logger.warn(`Invalid point returned from Qdrant in collection ${collectionName}`);
-          return {
-            filename: 'unknown',
-            content: '',
-            project: collectionName,
-            similarity: 0.0
-          };
-        }
-        
-        return {
-          filename: item.payload.filename || 'unknown',
-          content: item.payload.content || '',
-          project: item.payload.project || collectionName,
-          // Убедимся, что similarity - это число
-          similarity: typeof item.score === 'number' ? item.score : 0.0,
-          // Добавляем метаданные документа если они есть
-          metadata: item.payload.metadata || {}
-        };
-      }).filter(item => item.content); // Отфильтровываем пустые результаты
+
+      return this._formatSearchResults(collectionName, points);
     } catch (error) {
       logger.error(`Error searching in collection ${collectionName}:`, error);
       // Возвращаем пустой массив вместо выбрасывания исключения
       return [];
+    }
+  }
+
+  async searchByText(collectionName, textQuery, limit = 10) {
+    if (!textQuery || !textQuery.trim()) {
+      logger.warn(`Empty text query provided for collection ${collectionName}`);
+      return [];
+    }
+
+    const trimmedQuery = textQuery.trim();
+
+    const filter = {
+      must: [
+        { key: 'project', match: { value: collectionName } },
+        { key: 'content', match: { text: trimmedQuery } }
+      ]
+    };
+
+    const searchParams = {
+      limit,
+      with_payload: true,
+      filter
+    };
+
+    try {
+      logger.info(`Performing text search in collection ${collectionName} with query: "${trimmedQuery}"`);
+      const result = await this.client.search(collectionName, searchParams);
+      const points = Array.isArray(result) ? result : [];
+      logger.info(`Text search returned ${points.length} points for collection ${collectionName}`);
+      return this._formatSearchResults(collectionName, points);
+    } catch (error) {
+      logger.error(`Text search failed in collection ${collectionName}, attempting fallback:`, error);
+      try {
+        const fallbackResult = await this.client.scroll(collectionName, {
+          limit,
+          filter,
+          with_payload: true
+        });
+        const points = Array.isArray(fallbackResult.points) ? fallbackResult.points : [];
+        logger.info(`Fallback scroll returned ${points.length} points for text query in collection ${collectionName}`);
+        return this._formatSearchResults(collectionName, points);
+      } catch (fallbackError) {
+        logger.error(`Fallback scroll failed for text search in collection ${collectionName}:`, fallbackError);
+        return [];
+      }
     }
   }
 
