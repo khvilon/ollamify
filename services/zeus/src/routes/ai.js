@@ -1626,11 +1626,15 @@ async function extractKeywords(originalQuery, model, maxKeywords = 8) {
     const messages = [
       {
         role: "system",
-        content: `You are a helper that extracts up to ${maxKeywords} distinct keywords or short key phrases (1-4 words each) from the user's question.
+        content: `You are a retrieval assistant. Extract up to ${maxKeywords} key terms from the user query that best capture its subject matter for document search.
 
-Return ONLY a valid JSON array of strings. Do not add explanations or other text.
-If there are no clear keywords, return an empty JSON array [].
-Preserve the language of the query.`
+Rules:
+- Only return concrete domain terms or multi-word phrases appearing in the query (including abbreviations).
+- Exclude generic words such as "процедура", "алгоритм", "использование", "что", "как", "какие" unless they are part of a longer domain-specific phrase.
+- Keep hyphenated or mixed-language tokens intact.
+- Preserve the language and casing used in the query.
+- Return ONLY a valid JSON array of strings without comments or extra text.
+- If no suitable terms exist, return [] immediately.`
       },
       {
         role: "user",
