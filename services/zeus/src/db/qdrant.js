@@ -274,6 +274,7 @@ class QdrantClient {
     }
 
     const trimmedQuery = textQuery.trim();
+    const truncatedForLog = trimmedQuery.length > 200 ? `${trimmedQuery.slice(0, 200)}…` : trimmedQuery;
 
     const filter = {
       must: [
@@ -282,33 +283,20 @@ class QdrantClient {
       ]
     };
 
-    const searchParams = {
-      limit,
-      with_payload: true,
-      filter
-    };
-
     try {
-      logger.info(`Performing text search in collection ${collectionName} with query: "${trimmedQuery}"`);
-      const result = await this.client.search(collectionName, searchParams);
-      const points = Array.isArray(result) ? result : [];
-      logger.info(`Text search returned ${points.length} points for collection ${collectionName}`);
+      logger.info(`Performing text search (scroll) in collection ${collectionName} with query: "${truncatedForLog}"`);
+      const result = await this.client.scroll(collectionName, {
+        limit,
+        filter,
+        with_payload: true,
+        with_vector: false
+      });
+      const points = Array.isArray(result.points) ? result.points : [];
+      logger.info(`Text scroll returned ${points.length} points for collection ${collectionName}`);
       return this._formatSearchResults(collectionName, points);
     } catch (error) {
-      logger.error(`Text search failed in collection ${collectionName}, attempting fallback:`, error);
-      try {
-        const fallbackResult = await this.client.scroll(collectionName, {
-          limit,
-          filter,
-          with_payload: true
-        });
-        const points = Array.isArray(fallbackResult.points) ? fallbackResult.points : [];
-        logger.info(`Fallback scroll returned ${points.length} points for text query in collection ${collectionName}`);
-        return this._formatSearchResults(collectionName, points);
-      } catch (fallbackError) {
-        logger.error(`Fallback scroll failed for text search in collection ${collectionName}:`, fallbackError);
-        return [];
-      }
+      logger.error(`Text scroll search failed in collection ${collectionName}:`, error);
+      return [];
     }
   }
 

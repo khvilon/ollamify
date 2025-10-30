@@ -8,6 +8,68 @@ import qdrantClient from '../db/qdrant.js';
 
 const router = express.Router();
 
+const MAX_KEYWORD_LENGTH = 60;
+const MAX_KEYWORD_WORDS = 4;
+const MAX_KEYWORDS_FOR_SEARCH = 10;
+const MAX_AGGREGATED_QUERY_LENGTH = 200;
+const THINK_TAG_REGEX = /<(?:think|thinking|анализ|размышление)[^>]*>[\s\S]*?<\/(?:think|thinking|анализ|размышление)[^>]*>/gi;
+
+function normalizeKeywordCandidates(candidates, maxKeywords) {
+  if (!Array.isArray(candidates) || candidates.length === 0) {
+    return [];
+  }
+
+  const normalizedKeywords = [];
+  const seen = new Set();
+
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string') {
+      continue;
+    }
+
+    const trimmed = candidate
+      .replace(THINK_TAG_REGEX, '')
+      .trim()
+      .replace(/^['"`«»]+|['"`«»]+$/g, '')
+      .replace(/\s+/g, ' ');
+
+    if (!trimmed) {
+      continue;
+    }
+
+    if (trimmed.length > MAX_KEYWORD_LENGTH) {
+      continue;
+    }
+
+    if (/^</.test(trimmed) || trimmed.includes('>')) {
+      continue;
+    }
+
+    const words = trimmed.split(/\s+/).filter(Boolean);
+    if (words.length === 0 || words.length > MAX_KEYWORD_WORDS) {
+      continue;
+    }
+
+    if (!/[A-Za-zА-Яа-я0-9]/.test(trimmed)) {
+      continue;
+    }
+
+    const canonical = trimmed.toLowerCase();
+    if (seen.has(canonical)) {
+      continue;
+    }
+
+    seen.add(canonical);
+    normalizedKeywords.push(trimmed);
+
+    if (normalizedKeywords.length >= maxKeywords) {
+      break;
+    }
+  }
+
+  return normalizedKeywords;
+}
+
 // Функция для извлечения секций размышлений из ответа LLM
 function extractThinkingSection(response) {
   if (!response || typeof response !== 'string') {
@@ -84,11 +146,7 @@ async function findRelevantDocuments(questionEmbedding, project, embeddingModel,
 
 async function findKeywordDocuments(keywords, project, limit = 20) {
   const sanitizedKeywords = Array.isArray(keywords)
-    ? Array.from(new Set(
-        keywords
-          .map(keyword => (typeof keyword === 'string' ? keyword.trim() : ''))
-          .filter(keyword => keyword.length > 0)
-      ))
+    ? normalizeKeywordCandidates(keywords, MAX_KEYWORDS_FOR_SEARCH)
     : [];
 
   if (sanitizedKeywords.length === 0) {
@@ -136,22 +194,26 @@ async function findKeywordDocuments(keywords, project, limit = 20) {
     });
   };
 
-  const aggregatedQuery = sanitizedKeywords.join(' ');
+  const aggregatedKeywordsSubset = sanitizedKeywords.slice(0, Math.min(sanitizedKeywords.length, 5));
+  const aggregatedQuery = aggregatedKeywordsSubset.join(' ');
+  const aggregatedQueryForSearch = aggregatedQuery.length > MAX_AGGREGATED_QUERY_LENGTH
+    ? aggregatedQuery.slice(0, MAX_AGGREGATED_QUERY_LENGTH)
+    : aggregatedQuery;
 
   try {
-    if (aggregatedQuery.length > 0) {
+    if (aggregatedQueryForSearch.length > 0) {
       logger.info('Running aggregated keyword search in Qdrant:', {
         project,
-        aggregatedQuery
+        aggregatedQuery: aggregatedQueryForSearch
       });
 
-      const aggregatedDocs = await qdrantClient.searchByText(project, aggregatedQuery, limit);
-      addDocsToMap(aggregatedDocs, aggregatedQuery);
+      const aggregatedDocs = await qdrantClient.searchByText(project, aggregatedQueryForSearch, limit);
+      addDocsToMap(aggregatedDocs, aggregatedQueryForSearch);
     }
 
     const perKeywordLimit = Math.max(3, Math.ceil(limit / Math.min(sanitizedKeywords.length, 5)));
 
-    for (const keyword of sanitizedKeywords.slice(0, 10)) {
+    for (const keyword of sanitizedKeywords) {
       logger.info('Running keyword search in Qdrant:', {
         project,
         keyword
@@ -187,7 +249,7 @@ async function findKeywordDocuments(keywords, project, limit = 20) {
   logger.info('Keyword search summary:', {
     project,
     keywords: sanitizedKeywords,
-    aggregatedQuery,
+    aggregatedQuery: aggregatedQueryForSearch,
     totalUniqueDocuments: keywordDocs.length
   });
 
@@ -1577,37 +1639,56 @@ Preserve the language of the query.`
     ];
 
     const rawResponse = await getCompletion(messages, targetModel, false);
+    const strippedResponse = rawResponse
+      .replace(THINK_TAG_REGEX, '')
+      .replace(/```json?/gi, '')
+      .replace(/```/g, '')
+      .trim();
 
-    let keywords = [];
-
-    try {
-      const parsed = JSON.parse(rawResponse);
-      if (Array.isArray(parsed)) {
-        keywords = parsed;
-      } else {
-        throw new Error('Parsed keywords is not an array');
+    const tryParseArray = (text) => {
+      if (!text) return null;
+      try {
+        const directParsed = JSON.parse(text);
+        if (Array.isArray(directParsed)) {
+          return directParsed;
+        }
+      } catch (error) {
+        // ignore, attempt substring parsing below
       }
-    } catch (parseError) {
-      logger.warn('Failed to parse keywords JSON, falling back to delimiter split', {
-        error: parseError.message,
-        rawResponse
+
+      const start = text.indexOf('[');
+      const end = text.lastIndexOf(']');
+      if (start !== -1 && end !== -1 && end > start) {
+        const jsonSlice = text.slice(start, end + 1);
+        try {
+          const sliceParsed = JSON.parse(jsonSlice);
+          if (Array.isArray(sliceParsed)) {
+            return sliceParsed;
+          }
+        } catch (error) {
+          // ignore, fallback later
+        }
+      }
+
+      return null;
+    };
+
+    let keywordCandidates = tryParseArray(strippedResponse);
+
+    if (!Array.isArray(keywordCandidates) || keywordCandidates.length === 0) {
+      logger.warn('Failed to parse keywords JSON, using regex-based extraction', {
+        rawResponse: strippedResponse
       });
 
-      keywords = rawResponse
-        .split(/[,;\n]/)
-        .map(keyword => keyword.trim())
-        .filter(Boolean);
+      const regexMatches = strippedResponse.match(/[A-Za-zА-Яа-я0-9]+(?:[\s\-][A-Za-zА-Яа-я0-9]+){0,3}/g);
+      keywordCandidates = regexMatches || [];
     }
 
-    const uniqueKeywords = Array.from(new Set(
-      keywords
-        .map(keyword => keyword.trim())
-        .filter(keyword => keyword.length > 0)
-    )).slice(0, maxKeywords);
+    const normalizedKeywords = normalizeKeywordCandidates(keywordCandidates, maxKeywords);
 
-    logger.info('Keywords extracted:', { keywords: uniqueKeywords });
+    logger.info('Keywords extracted:', { keywords: normalizedKeywords });
 
-    return uniqueKeywords;
+    return normalizedKeywords;
   } catch (error) {
     logger.error('Error extracting keywords:', error);
     return [];
