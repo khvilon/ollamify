@@ -2076,13 +2076,12 @@ router.post('/rag', async (req, res) => {
     const originalContext = relevantDocs.map((doc, index) => `${index + 1}. Из документа ${doc.filename}:\n${doc.content.trim()}`).join('\n\n');
     logger.info('Original context order:');
     relevantDocs.forEach((doc, index) => {
-      // Выводим полный текст для отладки
+      const preview = doc.content ? doc.content.trim().slice(0, 50) : '';
       logger.info(`-------- ORIGINAL CHUNK ${index + 1} --------`);
       logger.info(`Filename: ${doc.filename}`);
       logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
       logger.info(`Project: ${doc.project}`);
-      logger.info(`Content: 
-${doc.content.trim()}`);
+      logger.info(`Content preview: ${preview}${doc.content && doc.content.trim().length > 50 ? '…' : ''}`);
       logger.info(`------- END ORIGINAL CHUNK ${index + 1} -------`);
     });
 
@@ -2095,13 +2094,12 @@ ${doc.content.trim()}`);
       logger.info('Documents reranked');
       logger.info('Reranked context order:');
       processedDocs.forEach((doc, index) => {
-        // Выводим полный текст чанка для отладки
+        const preview = doc.content ? doc.content.trim().slice(0, 50) : '';
         logger.info(`-------- CHUNK ${index + 1} --------`);
         logger.info(`Filename: ${doc.filename}`);
         logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
         logger.info(`Project: ${doc.project}`);
-        logger.info(`Content: 
-${doc.content.trim()}`);
+        logger.info(`Content preview: ${preview}${doc.content && doc.content.trim().length > 50 ? '…' : ''}`);
         logger.info(`------- END CHUNK ${index + 1} -------`);
       });
     }
@@ -2113,15 +2111,15 @@ ${doc.content.trim()}`);
     // Логируем финальный набор чанков, которые будут отправлены в LLM
     logger.info('FINAL CHUNKS FOR LLM INPUT:');
     processedDocs.forEach((doc, index) => {
+      const preview = doc.content ? doc.content.trim().slice(0, 50) : '';
       logger.info(`-------- FINAL CHUNK ${index + 1} --------`);
       logger.info(`Filename: ${doc.filename}`);
       logger.info(`Similarity: ${doc.similarity.toFixed(4)}`);
       logger.info(`Project: ${doc.project}`);
       if (doc.metadata && Object.keys(doc.metadata).length > 0) {
-        logger.info(`Metadata: ${JSON.stringify(doc.metadata, null, 2)}`);
+        logger.info(`Metadata keys: ${Object.keys(doc.metadata).join(', ')}`);
       }
-      logger.info(`Content: 
-${doc.content.trim()}`);
+      logger.info(`Content preview: ${preview}${doc.content && doc.content.trim().length > 50 ? '…' : ''}`);
       logger.info(`------- END FINAL CHUNK ${index + 1} -------`);
     });
 
