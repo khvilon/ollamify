@@ -99,6 +99,8 @@ Optional:
 docker compose up -d
 # GPU mode
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# 2x GPU (two Ollama instances: GPU0 + GPU1)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.gpu-2.yml up -d
 ```
 
 ### 3) Open the UI

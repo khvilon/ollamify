@@ -70,6 +70,7 @@ function Layout({ children }) {
         { text: 'Documents', icon: 'description', path: '/documents' },
         { text: 'Projects', icon: 'folder', path: '/projects' },
         { text: 'Models', icon: 'model_training', path: '/models' },
+        { text: 'GPUs', icon: 'memory', path: '/gpus' },
         { text: 'Chat', icon: 'chat', path: '/chat' },
         { text: 'Voice', icon: 'record_voice_over', path: '/voice' },
         { text: 'API', icon: 'api', path: '/swagger' },

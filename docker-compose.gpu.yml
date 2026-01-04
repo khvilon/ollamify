@@ -41,13 +41,14 @@ services:
 
   ollama:
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
+      # Bind primary Ollama instance to GPU 0
+      - NVIDIA_VISIBLE_DEVICES=0
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              device_ids: ["0"]
               capabilities: [gpu]
 
   frida:
@@ -145,6 +146,32 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  gpu-info:
+    build:
+      context: .
+      dockerfile: services/gpu-info/Dockerfile
+    environment:
+      - PORT=8005
+      - NVIDIA_VISIBLE_DEVICES=all
+    expose:
+      - "8005"
+    container_name: gpu-info
+    networks:
+      - app-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 volumes:
   tts_models:

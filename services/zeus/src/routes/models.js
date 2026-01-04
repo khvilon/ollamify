@@ -4,6 +4,7 @@ import { JSDOM } from 'jsdom';
 import crypto from 'crypto';
 import logger from '../utils/logger.js';
 import { broadcastModelUpdate } from '../websocket/index.js';
+import { getOllamaInstances, refreshOllamaModelIndex, resolveOllamaInstanceForModel, fetchWithTimeout } from '../utils/ollama.js';
 
 const router = express.Router();
 
@@ -184,9 +185,9 @@ async function fetchOpenRouterModels() {
 }
 
 // Функция для проверки статуса модели в Ollama
-async function checkModelStatus(modelName) {
+async function checkModelStatus(modelName, ollamaBaseUrl) {
   try {
-    const response = await fetch('http://ollama:11434/api/pull', {
+    const response = await fetch(`${ollamaBaseUrl}/api/pull`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -209,11 +210,13 @@ async function checkModelStatus(modelName) {
             modelDownloadStatus.set(modelName, {
               status: 'ready',
               progress: 100,
-              message: 'Model is ready'
+              message: 'Model is ready',
+              gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0
             });
             // Оповещаем через WebSocket
             broadcastModelUpdate({
               name: modelName,
+              gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0,
               downloadStatus: {
                 status: 'ready',
                 progress: 100,
@@ -229,12 +232,14 @@ async function checkModelStatus(modelName) {
             modelDownloadStatus.set(modelName, {
               status: 'downloading',
               progress,
-              message: `Downloading: ${progress}%`
+              message: `Downloading: ${progress}%`,
+              gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0
             });
             
             // Оповещаем через WebSocket
             broadcastModelUpdate({
               name: modelName,
+              gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0,
               downloadStatus: {
                 status: 'downloading',
                 progress,
@@ -252,12 +257,14 @@ async function checkModelStatus(modelName) {
     modelDownloadStatus.set(modelName, {
       status: 'error',
       progress: 0,
-      message: error.message
+      message: error.message,
+      gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0
     });
     
     // Оповещаем через WebSocket
     broadcastModelUpdate({
       name: modelName,
+      gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0,
       downloadStatus: {
         status: 'error',
         progress: 0,
@@ -268,12 +275,13 @@ async function checkModelStatus(modelName) {
 }
 
 // Функция для запуска мониторинга скачивания модели
-function startModelMonitoring(modelName) {
+function startModelMonitoring(modelName, ollamaBaseUrl) {
   // Устанавливаем начальный статус
   modelDownloadStatus.set(modelName, {
     status: 'starting',
     progress: 0,
-    message: 'Starting download'
+    message: 'Starting download',
+    gpu: modelDownloadStatus.get(modelName)?.gpu ?? 0
   });
 
   // Запускаем периодическую проверку
@@ -286,7 +294,7 @@ function startModelMonitoring(modelName) {
       return;
     }
 
-    await checkModelStatus(modelName);
+    await checkModelStatus(modelName, ollamaBaseUrl);
   }, 1000);
 
   // Сохраняем ID интервала для возможной очистки
@@ -299,7 +307,8 @@ function startModelMonitoring(modelName) {
 async function initializeModelStatus() {
   try {
     logger.info('Initializing model status...');
-    const response = await fetch('http://ollama:11434/api/pull', {
+    const primaryBaseUrl = (await getOllamaInstances())[0]?.baseUrl || 'http://ollama:11434';
+    const response = await fetch(`${primaryBaseUrl}/api/pull`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -323,9 +332,10 @@ async function initializeModelStatus() {
             modelDownloadStatus.set(data.model, {
               status: 'downloading',
               progress: Math.round((data.completed / data.total) * 100),
-              message: `Downloading: ${Math.round((data.completed / data.total) * 100)}%`
+              message: `Downloading: ${Math.round((data.completed / data.total) * 100)}%`,
+              gpu: 0
             });
-            startModelMonitoring(data.model);
+            startModelMonitoring(data.model, primaryBaseUrl);
           }
         } catch (e) {
           // Игнорируем ошибки парсинга - некоторые строки могут быть не JSON
@@ -356,15 +366,26 @@ setInterval(() => {
 // Получение списка моделей
 router.get('/', async (req, res) => {
   try {
-    // Получаем список установленных моделей
-    const response = await fetch('http://ollama:11434/api/tags');
-    const data = await response.json();
+    // Получаем список установленных моделей (со всех Ollama инстансов)
+    const idx = await refreshOllamaModelIndex({ force: true });
+    const installedRaw = [];
+
+    for (const inst of idx.instances) {
+      const instModels = idx.modelsByInstance.get(inst.id) || [];
+      for (const model of instModels) {
+        installedRaw.push({
+          ...model,
+          gpu: inst.id,
+          gpu_label: inst.name,
+        });
+      }
+    }
     
     // Получаем список доступных моделей для обогащения данных
     const availableModels = await fetchOllamaModels();
     
     // Преобразуем установленные модели и добавляем статус
-    const models = (data.models || []).map(model => {
+    const models = installedRaw.map(model => {
       const downloadStatus = modelDownloadStatus.get(model.name) || {
         status: 'ready',
         progress: 100,
@@ -407,6 +428,8 @@ router.get('/', async (req, res) => {
 
         models.push({
           name: modelName,
+          gpu: status.gpu ?? 0,
+          gpu_label: (idx.instances.find(i => i.id === (status.gpu ?? 0))?.name) || `GPU ${status.gpu ?? 0}`,
           description: availableModel?.description || 'No description available',
           capabilities: availableModel?.capabilities || [],
           downloadStatus: status
@@ -415,7 +438,7 @@ router.get('/', async (req, res) => {
     }
 
     // Оборачиваем массив моделей в объект
-    res.json({ models });
+    res.json({ models, instances: idx.instances });
   } catch (error) {
     logger.error('Error getting models:', error);
     res.status(500).json({ error: error.message });
@@ -425,16 +448,20 @@ router.get('/', async (req, res) => {
 // Получение списка доступных для скачивания моделей
 router.get('/available', async (req, res) => {
   try {
-    // Получаем список установленных моделей
-    const response = await fetch('http://ollama:11434/api/tags');
-    const data = await response.json();
+    // Получаем список установленных моделей (со всех Ollama инстансов)
+    const idx = await refreshOllamaModelIndex({ force: true });
+    const installedModelNames = new Set();
+    for (const models of idx.modelsByInstance.values()) {
+      for (const m of models) {
+        if (m?.name) installedModelNames.add(m.name);
+      }
+    }
     
     // Получаем список моделей с ollama.com
     const availableModels = await fetchOllamaModels();
     
     // Фильтруем уже установленные модели
-    const installedModels = new Set(data.models.map(m => m.name));
-    const availableForDownload = availableModels.filter(m => !installedModels.has(m.name));
+    const availableForDownload = availableModels.filter(m => !installedModelNames.has(m.name));
     
     res.json({ models: availableForDownload });
   } catch (error) {
@@ -451,10 +478,18 @@ router.get('/models', async (req, res) => {
       fetchOpenRouterModels()
     ]);
 
-    const installedModels = await fetch('http://ollama:11434/api/tags')
-      .then(response => response.json())
-      .then(data => data.models || [])
-      .catch(() => []);
+    const idx = await refreshOllamaModelIndex({ force: true });
+    const installedModels = [];
+    for (const inst of idx.instances) {
+      const instModels = idx.modelsByInstance.get(inst.id) || [];
+      for (const m of instModels) {
+        installedModels.push({
+          ...m,
+          gpu: inst.id,
+          gpu_label: inst.name,
+        });
+      }
+    }
 
     res.json({
       models: {
@@ -463,7 +498,8 @@ router.get('/models', async (req, res) => {
           ollama: ollamaModels,
           openrouter: openRouterModels
         }
-      }
+      },
+      instances: idx.instances
     });
   } catch (error) {
     logger.error('Error fetching models:', error);
@@ -508,33 +544,60 @@ router.get('/models', async (req, res) => {
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/pull', async (req, res) => {
-  const { name, size } = req.body;
+  const { name, size, gpu } = req.body;
   if (!name) {
     return res.status(400).json({ error: 'Model name is required' });
   }
   
   try {
+    const gpuId = Number.isFinite(Number(gpu)) ? Number(gpu) : 0;
+    const instances = await getOllamaInstances();
+
+    if (gpuId !== 0 && !instances.some(i => i.id === gpuId)) {
+      return res.status(400).json({ error: `Requested GPU ${gpuId} is not available` });
+    }
+
+    const targetInstance = instances.find(i => i.id === gpuId) || instances[0];
+
+    if (!targetInstance) {
+      return res.status(400).json({ error: 'No Ollama instances available' });
+    }
+
     // Формируем полное имя модели с учетом размера
     const modelName = size ? `${name}:${size}` : name;
+
+    // Не даём скачать ту же модель на другой GPU (и вообще повторно)
+    const idx = await refreshOllamaModelIndex({ force: true });
+    if (idx.modelToInstance.has(modelName)) {
+      const existing = idx.modelToInstance.get(modelName);
+      return res.status(409).json({
+        error: `Model ${modelName} is already installed on ${existing?.name || `GPU ${existing?.id ?? 0}`}`
+      });
+    }
     
     // Устанавливаем начальный статус скачивания
     modelDownloadStatus.set(modelName, {
       status: 'starting',
       progress: 0,
-      message: 'Starting download'
+      message: 'Starting download',
+      gpu: targetInstance.id
     });
     
     // Отправляем начальное уведомление через WebSocket
     logger.info(`Broadcasting initial download status for model ${modelName}`);
     broadcastModelUpdate({
       name: modelName,
-      status: 'starting',
-      progress: 0
+      gpu: targetInstance.id,
+      downloadStatus: {
+        status: 'starting',
+        progress: 0,
+        message: 'Starting download'
+      }
     });
     
     // Запускаем скачивание
-    const pullUrl = 'http://ollama:11434/api/pull';
-    logger.info(`Pulling model ${modelName} from Ollama`);
+    const pullUrl = `${targetInstance.baseUrl}/api/pull`;
+    logger.info(`Pulling model ${modelName} from Ollama (${targetInstance.name})`);
     
     const ollamaResponse = await fetch(pullUrl, {
       method: 'POST',
@@ -584,7 +647,8 @@ router.post('/pull', async (req, res) => {
               modelDownloadStatus.set(modelName, {
                 status: 'downloading',
                 progress,
-                message: `Downloading: ${progress}%`
+                message: `Downloading: ${progress}%`,
+                gpu: targetInstance.id
               });
               
               // Отправляем данные клиенту через SSE
@@ -596,8 +660,12 @@ router.post('/pull', async (req, res) => {
                 logger.info(`Broadcasting progress update for ${modelName}: ${progress}%`);
                 broadcastModelUpdate({
                   name: modelName,
-                  status: 'downloading',
-                  progress,
+                  gpu: targetInstance.id,
+                  downloadStatus: {
+                    status: 'downloading',
+                    progress,
+                    message: `Downloading: ${progress}%`
+                  }
                 });
               }
             }
@@ -606,15 +674,20 @@ router.post('/pull', async (req, res) => {
               modelDownloadStatus.set(modelName, {
                 status: 'ready',
                 progress: 100,
-                message: 'Model is ready'
+                message: 'Model is ready',
+                gpu: targetInstance.id
               });
               
               // Оповещаем через WebSocket
               logger.info(`Broadcasting completion for model ${modelName}`);
               broadcastModelUpdate({
                 name: modelName,
-                status: 'ready',
-                progress: 100
+                gpu: targetInstance.id,
+                downloadStatus: {
+                  status: 'ready',
+                  progress: 100,
+                  message: 'Model is ready'
+                }
               });
             }
           } catch (e) {
@@ -676,7 +749,7 @@ router.post('/pull', async (req, res) => {
       logger.error('Error reading stream:', streamError);
       // Даже при ошибке чтения потока отправляем сообщение об ошибке, но продолжаем
       // мониторить состояние модели через существующий механизм
-      startModelMonitoring(modelName);
+      startModelMonitoring(modelName, targetInstance.baseUrl);
       
       if (!res.headersSent) {
         res.status(500).json({ error: `Stream error: ${streamError.message}` });
@@ -693,15 +766,20 @@ router.post('/pull', async (req, res) => {
     modelDownloadStatus.set(name, {
       status: 'error',
       progress: 0,
-      message: error.message
+      message: error.message,
+      gpu: Number.isFinite(Number(gpu)) ? Number(gpu) : 0
     });
     
     // Оповещаем через WebSocket
     logger.info(`Broadcasting error for model ${name}: ${error.message}`);
     broadcastModelUpdate({
       name,
-      status: 'error',
-      progress: 0
+      gpu: Number.isFinite(Number(gpu)) ? Number(gpu) : 0,
+      downloadStatus: {
+        status: 'error',
+        progress: 0,
+        message: error.message
+      }
     });
     
     if (!res.headersSent) {
@@ -719,7 +797,8 @@ router.get('/status/:name', async (req, res) => {
   
   try {
     // Проверяем статус модели через show
-    const response = await fetch('http://ollama:11434/api/show', {
+    const inst = await resolveOllamaInstanceForModel(name);
+    const response = await fetch(`${inst.baseUrl}/api/show`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -758,7 +837,8 @@ router.delete('/:name', async (req, res) => {
   const { name } = req.params;
   
   try {
-    const response = await fetch('http://ollama:11434/api/delete', {
+    const inst = await resolveOllamaInstanceForModel(name);
+    const response = await fetch(`${inst.baseUrl}/api/delete`, {
       method: 'DELETE',
       headers: {
         'Content-Type': 'application/json',

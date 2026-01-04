@@ -4,6 +4,7 @@ import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import logger from '../utils/logger.js';
+import { resolveOllamaBaseUrlForModel } from '../utils/ollama.js';
 import qdrantClient from '../db/qdrant.js';
 
 const router = express.Router();
@@ -598,7 +599,8 @@ async function getCompletion(messages, model, think = true) {
       
       return llmResponse;
     } else {
-      const response = await fetch('http://ollama:11434/v1/chat/completions', {
+      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(actualModel);
+      const response = await fetch(`${ollamaBaseUrl}/v1/chat/completions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -769,7 +771,8 @@ router.post('/embed', async (req, res) => {
     
     // Получаем эмбеддинги для каждого текста
     const embeddings = await Promise.all(inputs.map(async (text) => {
-      const response = await fetch('http://ollama:11434/api/embeddings', {
+      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(model);
+      const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -1036,7 +1039,8 @@ router.post('/complete', async (req, res) => {
         throw new Error('Streaming is not supported for OpenRouter models');
       }
 
-      const response = await fetch('http://ollama:11434/api/chat', {
+      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(actualModel);
+      const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

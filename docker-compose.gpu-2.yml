@@ -1,0 +1,37 @@
+services:
+  # Secondary Ollama instance bound to GPU 1 (started only when 2+ NVIDIA GPUs are detected)
+  ollama1:
+    image: ollama/ollama:latest
+    container_name: ollama1
+    expose:
+      - "11434"
+    healthcheck:
+      test:
+        - CMD
+        - pgrep
+        - ollama
+      timeout: 5s
+      interval: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      app-network: null
+    volumes:
+      - type: volume
+        source: ollama_data1
+        target: /root/.ollama
+        volume: {}
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["1"]
+              capabilities: [gpu]
+
+volumes:
+  ollama_data1:
+    name: ollamify-ollama-data-1
+

@@ -19,7 +19,11 @@ const {
     InputAdornment,
     ButtonGroup,
     TextField,
-    alpha
+    alpha,
+    Dialog,
+    DialogTitle,
+    DialogContent,
+    DialogActions
 } = window.MaterialUI;
 
 const { useState, useEffect, useCallback, useMemo, useRef } = window.React;
@@ -33,6 +37,10 @@ function Models() {
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCapability, setSelectedCapability] = useState('all');
     const [selectedVersions, setSelectedVersions] = useState({});
+    const [ollamaInstances, setOllamaInstances] = useState([]);
+    const [gpuDialogOpen, setGpuDialogOpen] = useState(false);
+    const [pendingInstall, setPendingInstall] = useState(null);
+    const [selectedGpu, setSelectedGpu] = useState(0);
 
     // Храним состояние прогресса отдельно
     const [modelProgress, setModelProgress] = useState({});
@@ -134,6 +142,7 @@ function Models() {
             }
 
             const data = await response.json();
+            setOllamaInstances(data.instances || []);
             
             // Обновляем прогресс для загружающихся моделей
             data.models.forEach(model => {
@@ -236,33 +245,25 @@ function Models() {
         });
     }, [enrichedModels, searchQuery, selectedCapability]);
 
-    const handlePullModel = useCallback(async (modelName) => {
-        const selectedSize = selectedVersions[modelName];
-        if (!selectedSize) {
-            window.enqueueSnackbar('Please select a model size first', { variant: 'warning' });
-            return;
-        }
-
+    const startPullModel = useCallback(async (modelName, selectedSize, gpuId = 0) => {
         try {
+            const newModelName = selectedSize ? `${modelName}:${selectedSize}` : modelName;
+
             // Сразу устанавливаем начальный прогресс
             setModelProgress(prev => ({
                 ...prev,
-                [modelName]: 0
+                [newModelName]: 0
             }));
-            
-            // Немедленно обновляем модель в списке, чтобы показать прогресс загрузки
-            const newModelName = selectedSize ? `${modelName}:${selectedSize}` : modelName;
             
             // Сначала добавляем модель в список моделей с начальным статусом
             setModels(prevModels => {
-                // Проверяем, есть ли уже такая модель
                 const existingModel = prevModels.find(m => m.name === newModelName);
                 if (existingModel) {
-                    // Обновляем статус существующей модели
                     return prevModels.map(model => 
                         model.name === newModelName
                             ? { 
-                                ...model, 
+                                ...model,
+                                gpu: gpuId,
                                 downloadStatus: { 
                                     status: 'downloading', 
                                     progress: 0, 
@@ -272,10 +273,10 @@ function Models() {
                             : model
                     );
                 } else {
-                    // Добавляем новую модель
                     const availableModel = availableModels.find(m => m.name === modelName) || {};
                     const newModel = {
                         name: newModelName,
+                        gpu: gpuId,
                         description: availableModel.description || `Model ${newModelName}`,
                         capabilities: availableModel.capabilities || [],
                         downloadStatus: {
@@ -288,17 +289,15 @@ function Models() {
                 }
             });
             
-            // Показываем уведомление о начале загрузки
-            window.enqueueSnackbar(`Starting download of ${newModelName}`, { variant: 'info' });
+            window.enqueueSnackbar(`Starting download of ${newModelName} on GPU ${gpuId}`, { variant: 'info' });
             
             const response = await window.api.fetch('/api/models/pull', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ 
                     name: modelName,
-                    size: selectedSize 
+                    size: selectedSize,
+                    gpu: gpuId
                 })
             });
 
@@ -369,7 +368,25 @@ function Models() {
             setError(err.message || 'Failed to pull model');
             window.enqueueSnackbar(err.message || 'Failed to pull model', { variant: 'error' });
         }
-    }, [selectedVersions, loadModels, availableModels]);
+    }, [loadModels, availableModels]);
+
+    const handlePullModel = useCallback(async (modelName) => {
+        const selectedSize = selectedVersions[modelName];
+        if (!selectedSize) {
+            window.enqueueSnackbar('Please select a model size first', { variant: 'warning' });
+            return;
+        }
+
+        // If multiple Ollama instances are available, ask user which GPU to use
+        if ((ollamaInstances || []).length > 1) {
+            setPendingInstall({ modelName, selectedSize });
+            setSelectedGpu(ollamaInstances[0]?.id ?? 0);
+            setGpuDialogOpen(true);
+            return;
+        }
+
+        await startPullModel(modelName, selectedSize, 0);
+    }, [selectedVersions, ollamaInstances, startPullModel]);
 
     const handleVersionSelect = useCallback((modelName, size) => {
         setSelectedVersions(prev => ({
@@ -441,6 +458,15 @@ function Models() {
                         <Typography variant="h6" sx={{ flexGrow: 1 }}>
                             {model.name}
                         </Typography>
+                        {(isInstalled || isDownloading) && model.gpu !== undefined && model.gpu !== null && (
+                            <Chip
+                                label={`GPU ${model.gpu}`}
+                                color="info"
+                                size="small"
+                                variant="outlined"
+                                icon={<Icon>memory</Icon>}
+                            />
+                        )}
                         {isInstalled && (
                             <Chip 
                                 label="Installed" 
@@ -684,13 +710,54 @@ function Models() {
                         />
                     </Box>
                 ) : (
-                    <Grid container spacing={3}>
-                        {filteredModels.map(model => (
-                            <Grid item xs={12} sm={6} md={4} key={model.name}>
-                                {renderModelCard(model)}
-                            </Grid>
-                        ))}
-                    </Grid>
+                    <>
+                        <Dialog open={gpuDialogOpen} onClose={() => { setGpuDialogOpen(false); setPendingInstall(null); }}>
+                            <DialogTitle>Select GPU for model download</DialogTitle>
+                            <DialogContent>
+                                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                                    Choose which GPU (Ollama instance) will download and run this model.
+                                </Typography>
+                                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    {(ollamaInstances || []).map(inst => (
+                                        <Button
+                                            key={inst.id}
+                                            variant={selectedGpu === inst.id ? 'contained' : 'outlined'}
+                                            onClick={() => setSelectedGpu(inst.id)}
+                                            startIcon={<Icon>memory</Icon>}
+                                            fullWidth
+                                        >
+                                            {inst.name}
+                                        </Button>
+                                    ))}
+                                </Box>
+                            </DialogContent>
+                            <DialogActions>
+                                <Button onClick={() => { setGpuDialogOpen(false); setPendingInstall(null); }}>
+                                    Cancel
+                                </Button>
+                                <Button
+                                    variant="contained"
+                                    onClick={async () => {
+                                        if (!pendingInstall) return;
+                                        const { modelName, selectedSize } = pendingInstall;
+                                        setGpuDialogOpen(false);
+                                        setPendingInstall(null);
+                                        await startPullModel(modelName, selectedSize, selectedGpu);
+                                    }}
+                                >
+                                    Install
+                                </Button>
+                            </DialogActions>
+                        </Dialog>
+
+                        <Grid container spacing={3}>
+                            {filteredModels.map(model => (
+                                <Grid item xs={12} sm={6} md={4} key={model.name}>
+                                    {renderModelCard(model)}
+                                </Grid>
+                            ))}
+                        </Grid>
+                    </>
                 )}
             </Box>
         </Container>

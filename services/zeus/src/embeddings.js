@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import logger from './utils/logger.js';
+import { resolveOllamaBaseUrlForModel } from './utils/ollama.js';
 
 export async function getEmbeddingDimension(model) {
     try {
@@ -9,7 +10,8 @@ export async function getEmbeddingDimension(model) {
         return 1536;
       }
       
-      const response = await fetch('http://ollama:11434/api/embeddings', {
+      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(model);
+      const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, prompt: 'test' })
@@ -35,7 +37,8 @@ export async function getEmbedding(text, model) {
       return getEmbeddingFromFrida(text);
     }
     
-    const response = await fetch('http://ollama:11434/api/embeddings', {
+    const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(model);
+    const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, prompt: text })

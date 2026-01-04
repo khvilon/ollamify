@@ -99,6 +99,8 @@ cp .env_example .env
 docker compose up -d
 # GPU режим
 docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# 2x GPU (два Ollama инстанса: GPU0 + GPU1)
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose.gpu-2.yml up -d
 ```
 
 ### 3) Откройте UI
