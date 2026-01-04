@@ -2,40 +2,34 @@
 
 **Language:** **English** | [Русский](README.ru.md)
 
-Ollamify is a self-hosted **RAG (Retrieval-Augmented Generation)** stack: upload documents, search (hybrid vectors + keywords), and chat with LLMs — with optional **voice** (TTS/STT).
+Ollamify is a self‑hosted **AI gateway** for developers: deploy it locally (or run it as your own SaaS) and integrate AI into your products via a single, stable API.
 
-It ships as a Docker-first, multi-service setup with a web UI and an external API (including an OpenAI-compatible endpoint).
+It provides production‑ready building blocks out of the box:
+- **RAG over documents** (ingestion → hybrid retrieval → optional rerank → answer)
+- **Text generation** (including an **OpenAI‑compatible** Chat Completions endpoint)
+- **Speech**: **TTS** (text → speech) and **STT** (speech → text)
+- **Model routing**:
+  - local models via **Ollama**
+  - proxied models via **OpenRouter** (by using `openrouter/...` model names)
+- **Multi-tenant access control**: users + API keys (one Ollamify instance can serve multiple apps)
+- **Web UI** to manage projects/models/users and to test everything in a chat
 
-## High-level architecture
+For architecture details: [`docs/architecture.md`](docs/architecture.md)
 
-```mermaid
-flowchart LR
-  user[User / Browser] -->|HTTP :80| nginx[www3 / Nginx]
+## Model routing (local Ollama vs OpenRouter)
 
-  nginx -->|/auth/login| auth[auth]
-  nginx -->|/api/*| zeus[zeus]
-  nginx -->|/api/tts/*| tts[tts]
-  nginx -->|/api/stt/*| stt[stt]
+You choose the provider **per request**:
 
-  zeus --> pg[(PostgreSQL)]
-  zeus --> qdrant[(Qdrant)]
-  zeus --> ollama[Ollama]
-  zeus --> reranker[Reranker]
-  zeus --> frida[Frida]
-```
+- **Local (Ollama)**: send a normal model name, for example:
+  - `model: "llama3.1:8b"`
+- **Proxy (OpenRouter)**: prefix with `openrouter/`, for example:
+  - `model: "openrouter/anthropic/claude-3.5-sonnet"`
 
-For details: [`docs/architecture.md`](docs/architecture.md)
+This works for:
+- `POST /api/ai/rag`
+- `POST /api/v1/chat/completions` (OpenAI-compatible)
 
-## What’s included
-
-- **Web UI** (served by `www3` / Nginx): documents, chat, projects, models, users/API keys, request logs, voice.
-- **RAG backend** (`zeus`): projects, ingestion, embeddings via Ollama, Qdrant vector search, hybrid search, optional reranking.
-- **Auth gateway** (`auth` + Nginx `auth_request`): JWT for UI + API keys for external usage.
-- **LLM runtime**: local **Ollama** (optionally OpenRouter).
-- **Vector DB**: **Qdrant**.
-- **Speech**:
-  - **TTS**: Silero TTS (RU voices)
-  - **STT**: OpenAI Whisper
+See: [`docs/api/reference.md`](docs/api/reference.md)
 
 ## Quickstart
 
@@ -52,7 +46,7 @@ Minimum required for local run:
 - `JWT_SECRET`
 
 Optional:
-- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_URL` (only if you want OpenRouter models)
+- `OPENROUTER_API_KEY`, `OPENROUTER_URL` (only if you want OpenRouter models)
 
 ### 2) Start (CPU or GPU)
 

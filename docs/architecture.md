@@ -14,11 +14,21 @@ flowchart LR
   nginx -->|/api/stt/* (protected)| stt[stt service]
   nginx -->|/ws/* (WebSocket)| zeus
 
+  auth -->|SQL| pg[(PostgreSQL)]
   zeus -->|SQL| pg[(PostgreSQL)]
   zeus -->|REST :6333| qdrant[(Qdrant)]
   zeus -->|HTTP :11434| ollama[Ollama]
   zeus -->|HTTP :8001| reranker[Reranker]
   zeus -->|HTTP :8002| frida[Frida]
+  zeus -->|HTTPS| openrouter[(OpenRouter)]
+
+  tts -->|model cache| tts_models[(tts_models volume)]
+  stt -->|model cache| stt_models[(stt_models volume)]
+
+  tts -->|download on first run| model_hub[[Model hubs<br/>(Silero, Whisper, HF)]]
+  stt -->|download on first run| model_hub
+  reranker -->|download on first run| model_hub
+  frida -->|download on first run| model_hub
 ```
 
 ## High-level view

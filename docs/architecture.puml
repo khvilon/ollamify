@@ -13,6 +13,14 @@ node "tts" as tts
 node "stt" as stt
 node "reranker" as reranker
 node "frida" as frida
+cloud "OpenRouter" as openrouter
+cloud "Model hubs\n(Silero, Whisper, HF)" as modelhub
+
+folder "ollama_data\n(volume)" as ollama_data
+folder "tts_models\n(volume)" as tts_models
+folder "stt_models\n(volume)" as stt_models
+folder "reranker_models\n(volume)" as reranker_models
+folder "frida_models\n(volume)" as frida_models
 
 user --> nginx : HTTP :80
 
@@ -21,11 +29,24 @@ nginx --> zeus : /api/*, /ws/*
 nginx --> tts : /api/tts/*
 nginx --> stt : /api/stt/*
 
+auth --> pg : SQL
 zeus --> pg : SQL
 zeus --> qdrant : REST :6333
 zeus --> ollama : HTTP :11434
 zeus --> reranker : HTTP :8001
 zeus --> frida : HTTP :8002
+zeus --> openrouter : HTTPS (model starts with openrouter/)
+
+ollama --> ollama_data : models cache
+tts --> tts_models : models cache
+stt --> stt_models : models cache
+reranker --> reranker_models : models cache
+frida --> frida_models : models cache
+
+tts ..> modelhub : download on first run
+stt ..> modelhub : download on first run
+reranker ..> modelhub : download on first run
+frida ..> modelhub : download on first run
 
 @enduml
 

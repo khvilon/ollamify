@@ -2,40 +2,34 @@
 
 [English](README.md) | **Русский**
 
-Ollamify — это self-hosted стек для **RAG (Retrieval‑Augmented Generation)**: загрузка документов, поиск (гибрид: вектора + ключевые слова) и чат с LLM — с опциональным **голосом** (TTS/STT).
+Ollamify — это self‑hosted **AI‑gateway** для разработчиков: вы можете развернуть его локально (или предоставлять как собственный SaaS) и подключать ИИ‑возможности в свои продукты через единый API.
 
-Проект поставляется как Docker‑ориентированная мультисервисная система с веб‑интерфейсом и внешним API (включая OpenAI‑совместимый эндпоинт).
+Из коробки доступны production‑ready компоненты:
+- **RAG по документам** (ингест → гибридная выдача → опциональный реранкер → ответ)
+- **Текстовые ответы** (включая **OpenAI‑совместимый** Chat Completions эндпоинт)
+- **Голос**: **TTS** (текст → речь) и **STT** (речь → текст)
+- **Маршрутизация моделей**:
+  - локальные модели через **Ollama**
+  - проксирование в **OpenRouter** (через имена моделей с префиксом `openrouter/...`)
+- **Разделение доступа под разные приложения**: пользователи + API‑ключи (один Ollamify может обслуживать несколько систем)
+- **Web UI** для управления проектами/моделями/пользователями и тестирования в виде чата
 
-## Архитектура (высокий уровень)
+Детали архитектуры: [`docs/architecture.ru.md`](docs/architecture.ru.md)
 
-```mermaid
-flowchart LR
-  user[Пользователь / Браузер] -->|HTTP :80| nginx[www3 / Nginx]
+## Маршрутизация моделей (локальные Ollama vs OpenRouter)
 
-  nginx -->|/auth/login| auth[auth]
-  nginx -->|/api/*| zeus[zeus]
-  nginx -->|/api/tts/*| tts[tts]
-  nginx -->|/api/stt/*| stt[stt]
+Провайдер выбирается **на каждый запрос**:
 
-  zeus --> pg[(PostgreSQL)]
-  zeus --> qdrant[(Qdrant)]
-  zeus --> ollama[Ollama]
-  zeus --> reranker[Reranker]
-  zeus --> frida[Frida]
-```
+- **Локально (Ollama)**: обычное имя модели, например:
+  - `model: "llama3.1:8b"`
+- **Прокси (OpenRouter)**: префикс `openrouter/`, например:
+  - `model: "openrouter/anthropic/claude-3.5-sonnet"`
 
-Подробнее: [`docs/architecture.ru.md`](docs/architecture.ru.md)
+Это работает для:
+- `POST /api/ai/rag`
+- `POST /api/v1/chat/completions` (OpenAI‑совместимый)
 
-## Что внутри
-
-- **Web UI** (через `www3` / Nginx): документы, чат, проекты, модели, пользователи/API‑ключи, логи запросов, голос.
-- **RAG backend** (`zeus`): проекты, загрузка/индексация, эмбеддинги через Ollama, поиск в Qdrant, гибридный поиск, опциональный реранкер.
-- **Auth gateway** (`auth` + Nginx `auth_request`): JWT для UI + API‑ключи для внешнего доступа.
-- **LLM runtime**: локальный **Ollama** (опционально OpenRouter).
-- **Vector DB**: **Qdrant**.
-- **Speech**:
-  - **TTS**: Silero TTS (русские голоса)
-  - **STT**: OpenAI Whisper
+См.: [`docs/api/reference.ru.md`](docs/api/reference.ru.md)
 
 ## Быстрый старт
 
@@ -52,7 +46,7 @@ cp .env_example .env
 - `JWT_SECRET`
 
 Опционально:
-- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_URL` (если хотите OpenRouter)
+- `OPENROUTER_API_KEY`, `OPENROUTER_URL` (если хотите OpenRouter)
 
 ### 2) Запуск (CPU или GPU)
 

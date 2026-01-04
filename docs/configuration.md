@@ -19,9 +19,10 @@ cp .env_example .env
 
 ### Optional
 
-- `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL` (use `openrouter/...` prefix in requests)
-- `OPENROUTER_URL` (default OpenRouter chat completions endpoint)
+- `OPENROUTER_API_KEY` (only if you want OpenRouter models)
+- `OPENROUTER_URL` (optional; default OpenRouter chat completions endpoint)
+
+> You select OpenRouter models **per request** by using the `openrouter/...` prefix in the `model` field.
 
 ## Defaults created on first start
 

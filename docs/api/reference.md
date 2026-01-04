@@ -30,6 +30,22 @@ See: [`authentication.md`](authentication.md)
 
 ---
 
+## Choosing models (Ollama vs OpenRouter)
+
+You select the provider **per request** via the `model` field.
+
+### Local (Ollama)
+
+- Use a normal model name, e.g. `llama3.1:8b`
+- The model must be available in Ollama (use the UI → **Models** to install/pull)
+
+### Proxied (OpenRouter)
+
+- Prefix with `openrouter/`, e.g. `openrouter/anthropic/claude-3.5-sonnet`
+- Requires `OPENROUTER_API_KEY` in `.env`
+
+---
+
 ## Documents
 
 ### GET `/documents`

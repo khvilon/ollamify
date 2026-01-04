@@ -19,9 +19,10 @@ cp .env_example .env
 
 ### Опциональные
 
-- `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL` (в запросах используется префикс `openrouter/...`)
-- `OPENROUTER_URL` (эндпоинт OpenRouter chat completions)
+- `OPENROUTER_API_KEY` (только если хотите OpenRouter модели)
+- `OPENROUTER_URL` (опционально; эндпоинт OpenRouter chat completions)
+
+> OpenRouter модели выбираются **в каждом запросе** через префикс `openrouter/...` в поле `model`.
 
 ## Дефолты при первом запуске
 

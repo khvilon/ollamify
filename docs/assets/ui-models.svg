@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="650" viewBox="0 0 1400 650">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0b0f14"/>
+      <stop offset="1" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#1d9bf0"/>
+      <stop offset="1" stop-color="#21cbf3"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.35"/>
+    </filter>
+    <style>
+      .muted { fill: #9aa4b2; font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .text { fill: #e5e7eb; font: 14px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .title { fill: url(#accent); font: 700 34px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .h1 { fill: #e5e7eb; font: 700 28px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .h2 { fill: #e5e7eb; font: 700 18px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+      .mono { fill: #cbd5e1; font: 12px/1.2 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="1400" height="650" fill="url(#bg)"/>
+
+  <!-- Left navigation -->
+  <rect x="0" y="0" width="250" height="650" fill="#0b1220" opacity="0.85"/>
+  <rect x="0" y="0" width="250" height="72" fill="#0b1220" opacity="0.95"/>
+  <circle cx="28" cy="36" r="10" fill="url(#accent)"/>
+  <text x="48" y="42" class="text" style="font-weight:700; font-size:18px;">Ollamify</text>
+
+  <!-- Menu items -->
+  <g>
+    <text x="28" y="118" class="muted">Documents</text>
+    <text x="28" y="158" class="muted">Projects</text>
+    <rect x="12" y="182" width="226" height="40" rx="10" fill="#0f1b2d" opacity="0.9"/>
+    <text x="28" y="208" class="text" style="font-weight:600;">Models</text>
+    <text x="28" y="248" class="muted">Chat</text>
+    <text x="28" y="288" class="muted">Voice</text>
+    <text x="28" y="328" class="muted">API</text>
+    <text x="28" y="368" class="muted">Users</text>
+    <text x="28" y="408" class="muted">Request Logs</text>
+    <text x="28" y="448" class="muted">Profile</text>
+  </g>
+
+  <!-- Top bar -->
+  <rect x="250" y="0" width="1150" height="72" fill="#0b1220" opacity="0.55"/>
+  <circle cx="1358" cy="36" r="18" fill="#0f1b2d"/>
+  <circle cx="1358" cy="32" r="6" fill="#93c5fd"/>
+  <path d="M1346,48 C1349,41 1367,41 1370,48" stroke="#93c5fd" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+  <!-- Main content -->
+  <g transform="translate(290,110)">
+    <text x="0" y="0" class="h1">AI Models</text>
+
+    <!-- Search + filters -->
+    <rect x="0" y="28" width="1030" height="72" rx="14" fill="#0b1220" opacity="0.55" filter="url(#shadow)"/>
+    <rect x="22" y="46" width="630" height="36" rx="10" fill="#111827" opacity="0.9" stroke="#263244"/>
+    <text x="40" y="69" class="muted">Search models…</text>
+
+    <g transform="translate(690,46)">
+      <rect x="0" y="0" width="78" height="36" rx="10" fill="#93c5fd" opacity="0.9"/>
+      <text x="26" y="24" class="mono" style="fill:#0b1220; font-weight:700;">ALL</text>
+
+      <rect x="90" y="0" width="120" height="36" rx="10" fill="#111827" opacity="0.9" stroke="#263244"/>
+      <text x="102" y="24" class="mono">EMBEDDING</text>
+
+      <rect x="224" y="0" width="92" height="36" rx="10" fill="#111827" opacity="0.9" stroke="#263244"/>
+      <text x="242" y="24" class="mono">VISION</text>
+
+      <rect x="330" y="0" width="84" height="36" rx="10" fill="#111827" opacity="0.9" stroke="#263244"/>
+      <text x="350" y="24" class="mono">TOOLS</text>
+    </g>
+
+    <!-- Model cards grid -->
+    <g transform="translate(0,130)">
+      <!-- helper: card template as rectangles with text -->
+      <!-- Row 1 -->
+      <g filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">nemotron-3-nano</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="44" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">30b</text>
+      </g>
+
+      <g transform="translate(355,0)" filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">functiongemma</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="58" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">270m</text>
+      </g>
+
+      <g transform="translate(710,0)" filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">olmo-3</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="36" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">7b</text>
+        <rect x="62" y="84" width="44" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="74" y="102" class="mono">32b</text>
+      </g>
+    </g>
+
+    <!-- Row 2 -->
+    <g transform="translate(0,340)">
+      <g filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">gemini-3-flash-preview</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="44" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">24b</text>
+      </g>
+
+      <g transform="translate(355,0)" filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">devstral-small-2</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="44" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">24b</text>
+      </g>
+
+      <g transform="translate(710,0)" filter="url(#shadow)">
+        <rect x="0" y="0" width="320" height="190" rx="16" fill="#0b1220" opacity="0.65" stroke="#263244"/>
+        <text x="18" y="36" class="h2">devstral-2</text>
+        <rect x="216" y="18" width="86" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="236" y="36" class="mono">Available</text>
+        <text x="18" y="70" class="muted">Available sizes:</text>
+        <rect x="18" y="84" width="52" height="26" rx="13" fill="#111827" opacity="0.9" stroke="#263244"/>
+        <text x="30" y="102" class="mono">123b</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Caption -->
+  <text x="290" y="625" class="muted">
+    Illustration of the Models page (dark theme). Replace with a real screenshot if desired.
+  </text>
+</svg>
+

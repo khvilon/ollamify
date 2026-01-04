@@ -30,6 +30,22 @@ Authorization: Bearer <JWT или API_KEY>
 
 ---
 
+## Выбор моделей (Ollama vs OpenRouter)
+
+Провайдер выбирается **в каждом запросе** через поле `model`.
+
+### Локально (Ollama)
+
+- Обычное имя модели, например `llama3.1:8b`
+- Модель должна быть доступна в Ollama (установите через UI → **Models**)
+
+### Прокси (OpenRouter)
+
+- Префикс `openrouter/`, например `openrouter/anthropic/claude-3.5-sonnet`
+- Требуется `OPENROUTER_API_KEY` в `.env`
+
+---
+
 ## Documents
 
 ### GET `/documents`

@@ -14,6 +14,10 @@ Manage AI models:
 - track download progress live
 - delete installed models
 
+## Screenshot
+
+![Models page (illustration)](../assets/ui-models.svg)
+
 ## Lists and filters
 
 - **Search**: by name/description

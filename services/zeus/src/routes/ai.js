@@ -508,10 +508,22 @@ Question: ${question}`
 }
 
 // Отправка запроса к OpenRouter API или Ollama
-async function getCompletion(messages, model = process.env.OPENROUTER_MODEL, think = true) {
+async function getCompletion(messages, model, think = true) {
   const maxTokens = 8192;
-  const isOpenRouter = model.startsWith('openrouter/');
-  const actualModel = isOpenRouter ? model.substring(10).replace(/^\/+/, '') : model;
+
+  // Model is selected per-request:
+  // - local Ollama: "llama3.1:8b"
+  // - OpenRouter proxy: "openrouter/<provider>/<model>"
+  //
+  // `OPENROUTER_MODEL` is treated as an optional legacy fallback.
+  const resolvedModel = model || process.env.OPENROUTER_MODEL;
+
+  if (!resolvedModel) {
+    throw new Error('Missing model. Provide "model" (Ollama) or "openrouter/..." in the request body.');
+  }
+
+  const isOpenRouter = resolvedModel.startsWith('openrouter/');
+  const actualModel = isOpenRouter ? resolvedModel.substring(10).replace(/^\/+/, '') : resolvedModel;
 
   // Проверяем, не является ли модель моделью для эмбеддингов
   const embeddingModels = ['all-minilm', 'nomic-embed-text', 'all-MiniLM-L6-v2', 'frida', 'bge-m3'];
@@ -1000,7 +1012,7 @@ router.post('/embed', async (req, res) => {
  */
 router.post('/complete', async (req, res) => {
   const { 
-    model = process.env.OPENROUTER_MODEL,
+    model,
     messages,
     temperature = 0.7,
     max_tokens = 1024,
@@ -1009,6 +1021,10 @@ router.post('/complete', async (req, res) => {
   } = req.body;
   
   try {
+    if (!model || !messages) {
+      return res.status(400).json({ error: 'Missing required parameters: model, messages' });
+    }
+
     if (stream) {
       // Устанавливаем заголовки для SSE
       res.setHeader('Content-Type', 'text/event-stream');
@@ -1559,6 +1575,14 @@ async function rerankDocuments(question, relevantDocs) {
 // Функция для извлечения смысловой части запроса
 async function extractQueryIntent(originalQuery, model) {
   try {
+    // If no model provided, do not block retrieval: fallback to original query.
+    if (!model) {
+      return {
+        originalQuery,
+        intentQuery: originalQuery
+      };
+    }
+
     logger.info('Extracting semantic intent from query:', {
       query: originalQuery,
       model: model
@@ -1616,6 +1640,12 @@ async function extractQueryIntent(originalQuery, model) {
 async function extractKeywords(originalQuery, model, maxKeywords = 8) {
   try {
     const targetModel = model || process.env.OPENROUTER_MODEL;
+
+    // If no model is available, fall back to a simple heuristic extraction.
+    if (!targetModel) {
+      const regexMatches = originalQuery.match(/[A-Za-zА-Яа-я0-9]+(?:[\s\-][A-Za-zА-Яа-я0-9]+){0,3}/g);
+      return normalizeKeywordCandidates(regexMatches || [], maxKeywords);
+    }
 
     logger.info('Extracting keywords from query:', {
       query: originalQuery,
@@ -2323,7 +2353,7 @@ Question: ${question}`
  *               $ref: '#/components/schemas/Error'
  */
 router.post('/rag/chunks', async (req, res) => {
-  const { question, project, limit = 100, useHybridSearch } = req.body;
+  const { question, project, model, limit = 100, useHybridSearch } = req.body;
 
   if (!question) {
     return res.status(400).json({ error: 'Missing required parameters: question' });
@@ -2345,8 +2375,9 @@ router.post('/rag/chunks', async (req, res) => {
     });
     
     // Извлекаем смысловую часть запроса для поиска
-    const intentPromise = extractQueryIntent(question, process.env.OPENROUTER_MODEL);
-    const keywordPromise = hybridEnabled ? extractKeywords(question, process.env.OPENROUTER_MODEL) : Promise.resolve([]);
+    // Модель можно передать опционально; если не передана — используем fallback (без LLM).
+    const intentPromise = extractQueryIntent(question, model);
+    const keywordPromise = hybridEnabled ? extractKeywords(question, model) : Promise.resolve([]);
     const [intentResult, keywords] = await Promise.all([intentPromise, keywordPromise]);
 
     const { originalQuery, intentQuery } = intentResult;
