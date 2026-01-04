@@ -109,17 +109,17 @@ function Layout({ children }) {
                 display: 'flex', 
                 alignItems: 'center',
                 justifyContent: 'flex-start',
-                py: 2,
+                py: 1,
                 px: 2,
                 minHeight: '64px !important'
             }}>
                 <Box sx={{ 
                     display: 'flex', 
                     alignItems: 'center',
-                    gap: 2,
+                    gap: 1.5,
                     ml: 1
                 }}>
-                    <LogoMark size={26} />
+                    <LogoMark size={52} />
                     <Typography 
                         variant="h6"
                         sx={{
@@ -238,7 +238,7 @@ function Layout({ children }) {
                         }}
                         aria-label="Go to Documents"
                     >
-                        <LogoMark size={22} />
+                        <LogoMark size={44} />
                         <Typography
                             variant="subtitle1"
                             sx={{
