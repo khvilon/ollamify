@@ -71,6 +71,14 @@ function Documents() {
 
     const theme = useTheme();
 
+    const resetFileInput = () => {
+        if (fileInputRef.current) {
+            // Важно: без этого повторный выбор того же файла может не вызвать onChange (в разных браузерах),
+            // из-за чего второй аплоад "ломается" до перезагрузки.
+            fileInputRef.current.value = '';
+        }
+    };
+
     // Функция для подключения к WebSocket
     const connectWebSocket = useCallback(() => {
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -323,6 +331,7 @@ function Documents() {
             
             // Очищаем форму
             setSelectedFile(null);
+            resetFileInput();
             setTextContent('');
             
             // Обновляем список документов
@@ -523,7 +532,11 @@ function Documents() {
                                                         bgcolor: 'action.hover'
                                                     }
                                                 }}
-                                                onClick={() => fileInputRef.current?.click()}
+                                                onClick={() => {
+                                                    // Сбрасываем value, чтобы onChange сработал даже при выборе того же файла подряд
+                                                    resetFileInput();
+                                                    fileInputRef.current?.click();
+                                                }}
                                             >
                                                 <input
                                                     type="file"
@@ -538,6 +551,8 @@ function Documents() {
                                                             
                                                             if (!allowedTypes.includes(fileType)) {
                                                                 setError(`Unsupported file type. Allowed types: ${allowedTypes.join(', ')}`);
+                                                                setSelectedFile(null);
+                                                                resetFileInput();
                                                                 return;
                                                             }
                                                             
