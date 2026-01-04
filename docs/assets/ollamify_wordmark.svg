@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="240" viewBox="0 0 1100 240" role="img" aria-label="Ollamify">
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="240" viewBox="0 0 860 240" role="img" aria-label="Ollamify">
   <defs>
     <linearGradient id="ollamifyGradient" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0%" stop-color="#2196F3"/>
@@ -7,11 +7,11 @@
     </linearGradient>
   </defs>
 
-  <!-- Icon -->
-  <!-- Baseline alignment: icon bottom aligns with text baseline (y=190) -->
-  <g transform="translate(129,16) scale(0.17)">
-    <g transform="translate(0.000000,1024.000000) scale(0.100000,-0.100000)" fill="url(#ollamifyGradient)" stroke="none">
-      <path d="M4825 9214 c-585 -59 -983 -163 -1470 -387 -653 -299 -1236 -799
+  <!-- Icon as "O": cropped base icon (viewBox 831x825), scaled to 170px height. -->
+  <!-- Bottom of the icon is aligned with the text baseline (y=190). -->
+  <g transform="translate(10,20) scale(0.206060606)">
+    <g transform="translate(0.000000,825.000000) scale(0.100000,-0.100000)" fill="url(#ollamifyGradient)" stroke="none">
+      <path d="M3865 8204 c-585 -59 -983 -163 -1470 -387 -653 -299 -1236 -799
 -1654 -1417 -208 -307 -355 -604 -476 -961 -347 -1022 -284 -2091 180 -3055
 416 -864 1113 -1564 1955 -1962 484 -229 1054 -379 1515 -399 122 -5 151 -3
 222 15 225 57 390 241 423 471 10 69 -1 162 -25 224 -6 14 -2 17 26 17 61 0
@@ -85,9 +85,8 @@ c-83 -2 -153 -1 -155 1 -2 2 -4 241 -4 530 l0 526 291 293 291 292 213 0 c124
     </g>
   </g>
 
-  <!-- Wordmark -->
   <text
-    x="311"
+    x="189"
     y="190"
     fill="url(#ollamifyGradient)"
     font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
