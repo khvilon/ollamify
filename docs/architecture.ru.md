@@ -6,29 +6,32 @@
 
 ```mermaid
 flowchart LR
-  user[Пользователь / Браузер] -->|HTTP :80| nginx[www3 / Nginx (UI + /api gateway)]
+  user["Пользователь (Браузер)"] -->|HTTP 80| nginx["www3 (Nginx) - UI + API gateway"]
 
-  nginx -->|POST /auth/login| auth[auth service]
-  nginx -->|/api/* (защищено)| zeus[zeus API]
-  nginx -->|/api/tts/* (защищено)| tts[tts service]
-  nginx -->|/api/stt/* (защищено)| stt[stt service]
-  nginx -->|/ws/* (WebSocket)| zeus
+  nginx -->|POST auth login| auth["auth service"]
+  nginx -->|api защищено| zeus["zeus API"]
+  nginx -->|api tts защищено| tts["tts service"]
+  nginx -->|api stt защищено| stt["stt service"]
+  nginx -->|ws WebSocket| zeus
 
-  auth -->|SQL| pg[(PostgreSQL)]
-  zeus -->|SQL| pg[(PostgreSQL)]
-  zeus -->|REST :6333| qdrant[(Qdrant)]
-  zeus -->|HTTP :11434| ollama[Ollama]
-  zeus -->|HTTP :8001| reranker[Reranker]
-  zeus -->|HTTP :8002| frida[Frida]
-  zeus -->|HTTPS| openrouter[(OpenRouter)]
+  auth -->|SQL| pg["PostgreSQL"]
+  zeus -->|SQL| pg
+  zeus -->|REST 6333| qdrant["Qdrant"]
+  zeus -->|HTTP 11434| ollama["Ollama"]
+  zeus -->|HTTP 8001| reranker["Reranker"]
+  zeus -->|HTTP 8002| frida["Frida"]
+  zeus -->|HTTPS| openrouter["OpenRouter (optional)"]
 
-  tts -->|кеш моделей| tts_models[(tts_models volume)]
-  stt -->|кеш моделей| stt_models[(stt_models volume)]
+  ollama -->|кеш моделей| ollama_models["ollama_data (volume)"]
+  tts -->|кеш моделей| tts_models["tts_models (volume)"]
+  stt -->|кеш моделей| stt_models["stt_models (volume)"]
+  reranker -->|кеш моделей| reranker_models["reranker_models (volume)"]
+  frida -->|кеш моделей| frida_models["frida_models (volume)"]
 
-  tts -->|скачивание при первом запуске| model_hub[[Model hubs<br/>(Silero, Whisper, HF)]]
-  stt -->|скачивание при первом запуске| model_hub
-  reranker -->|скачивание при первом запуске| model_hub
-  frida -->|скачивание при первом запуске| model_hub
+  tts -.->|скачивание при первом запуске| model_hub["Model hubs (Silero, Whisper, HF)"]
+  stt -.->|скачивание при первом запуске| model_hub
+  reranker -.->|скачивание при первом запуске| model_hub
+  frida -.->|скачивание при первом запуске| model_hub
 ```
 
 ## Общая картина
