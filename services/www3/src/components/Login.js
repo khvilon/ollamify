@@ -148,7 +148,9 @@ function Login({ onLogin }) {
                     sx={{ 
                         mb: 1,
                         fontWeight: 700,
-                        background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                        background: theme.palette.mode === 'light'
+                            ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+                            : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)',
                         WebkitBackgroundClip: 'text',
                         WebkitTextFillColor: 'transparent'
                     }}
@@ -213,9 +215,13 @@ function Login({ onLogin }) {
                         disabled={loading}
                         sx={{
                             p: 1.5,
-                            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                            background: theme.palette.mode === 'light'
+                                ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+                                : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)',
                             '&:hover': {
-                                background: 'linear-gradient(45deg, #1976D2 30%, #1CA7D2 90%)'
+                                background: theme.palette.mode === 'light'
+                                    ? 'linear-gradient(45deg, #1976D2 30%, #1CA7D2 90%)'
+                                    : 'linear-gradient(45deg, #3b82f6 30%, #06b6d4 90%)'
                             }
                         }}
                     >

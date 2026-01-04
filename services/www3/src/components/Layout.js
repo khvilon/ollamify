@@ -125,7 +125,9 @@ function Layout({ children }) {
                         sx={{
                             fontSize: '1.25rem',
                             fontWeight: 600,
-                            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
+                            background: theme.palette.mode === 'light'
+                                ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+                                : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
                             letterSpacing: '0.5px'

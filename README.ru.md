@@ -34,7 +34,7 @@ Ollamify — это self‑hosted **AI‑gateway** для разработчик
 - `POST /api/ai/rag`
 - `POST /api/v1/chat/completions` (OpenAI‑совместимый)
 
-См.: [`docs/api/reference.ru.md`](docs/api/reference.ru.md)
+См.: [`docs/api/README.ru.md`](docs/api/README.ru.md)
 
 ## Быстрый старт
 

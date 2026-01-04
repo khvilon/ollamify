@@ -34,7 +34,7 @@ This works for:
 - `POST /api/ai/rag`
 - `POST /api/v1/chat/completions` (OpenAI-compatible)
 
-See: [`docs/api/reference.md`](docs/api/reference.md)
+See: [`docs/api/README.md`](docs/api/README.md)
 
 ## Quickstart
 
