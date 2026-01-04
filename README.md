@@ -6,6 +6,26 @@ Ollamify is a self-hosted **RAG (Retrieval-Augmented Generation)** stack: upload
 
 It ships as a Docker-first, multi-service setup with a web UI and an external API (including an OpenAI-compatible endpoint).
 
+## High-level architecture
+
+```mermaid
+flowchart LR
+  user[User / Browser] -->|HTTP :80| nginx[www3 / Nginx]
+
+  nginx -->|/auth/login| auth[auth]
+  nginx -->|/api/*| zeus[zeus]
+  nginx -->|/api/tts/*| tts[tts]
+  nginx -->|/api/stt/*| stt[stt]
+
+  zeus --> pg[(PostgreSQL)]
+  zeus --> qdrant[(Qdrant)]
+  zeus --> ollama[Ollama]
+  zeus --> reranker[Reranker]
+  zeus --> frida[Frida]
+```
+
+For details: [`docs/architecture.md`](docs/architecture.md)
+
 ## What’s included
 
 - **Web UI** (served by `www3` / Nginx): documents, chat, projects, models, users/API keys, request logs, voice.
@@ -36,7 +56,7 @@ Optional:
 
 ### 2) Start (CPU or GPU)
 
-**Linux/macOS/WSL/Git Bash** (recommended):
+**Linux/macOS/WSL/Git Bash** (recommended, auto GPU detection):
 
 ```bash
 ./start.sh
@@ -57,10 +77,21 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 - **Web UI**: `http://localhost`
 - **Default credentials (dev)**: `admin@example.com` / `admin`
 
+## How to use (first steps)
+
+- **Create a project**: UI → Projects → New Project
+  - Choose an **embedding model** (the model must be available in Ollama)
+- **Upload documents**: UI → Documents → Upload (or paste text)
+  - Watch `loaded_chunks / total_chunks` to see indexing progress
+- **Chat with your docs**: UI → Chat
+  - Select a project, model, and toggle hybrid search / reranker if needed
+
 ## Documentation
 
 - **Docs index**: [`docs/README.md`](docs/README.md)
-- **OpenAPI / Swagger**: [`docs/openapi.md`](docs/openapi.md)
+- **API docs (pre-install friendly)**: [`docs/api/README.md`](docs/api/README.md)
+- **OpenAPI / Swagger (entry)**: [`docs/openapi.md`](docs/openapi.md)
+- **UI guide**: [`docs/ui/README.md`](docs/ui/README.md)
 - **Configuration**: [`docs/configuration.md`](docs/configuration.md)
 - **Architecture**: [`docs/architecture.md`](docs/architecture.md)
 - **Troubleshooting**: [`docs/troubleshooting.md`](docs/troubleshooting.md)

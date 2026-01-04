@@ -145,7 +145,7 @@ function API() {
             title: 'OpenAI Compatible',
             path: '/api/v1/chat/completions',
             method: 'POST',
-            description: 'OpenAI compatible endpoint for chat completions',
+            description: 'OpenAI-compatible endpoint for chat completions',
             badge: 'Compatible',
             color: 'primary'
         },
@@ -153,31 +153,31 @@ function API() {
             title: 'AI & RAG',
             path: '/api/ai/*',
             method: 'POST',
-            description: 'AI generation and document search',
+            description: 'RAG: retrieval + generation (and embeddings)',
             badge: 'RAG',
             color: 'secondary'
         },
         {
             title: 'Documents',
-            path: '/api/documents/*',
-            method: 'GET/POST/PUT/DELETE',
-            description: 'Document management for RAG system',
-            badge: 'CRUD',
+            path: '/api/documents',
+            method: 'GET/POST/DELETE',
+            description: 'Document ingestion and management for RAG',
+            badge: 'Docs',
             color: 'info'
         },
         {
             title: 'Text-to-Speech',
             path: '/api/tts/*',
-            method: 'POST',
-            description: 'Text-to-speech synthesis',
+            method: 'GET/POST',
+            description: 'Silero TTS: voices + synthesis',
             badge: 'TTS',
             color: 'success'
         },
         {
             title: 'Speech-to-Text',
             path: '/api/stt/*',
-            method: 'POST',
-            description: 'Speech-to-text recognition',
+            method: 'GET/POST',
+            description: 'Whisper STT: models + transcription',
             badge: 'STT',
             color: 'warning'
         }
@@ -216,8 +216,9 @@ curl -X POST "http://localhost/api/tts/synthesize" \\
   -H "Content-Type: application/json" \\
   -d '{
     "text": "Привет, как дела?",
-    "voice": "female_1",
-    "language": "ru"
+    "voice": "aidar",
+    "language": "ru",
+    "sample_rate": 24000
   }'`,
         python: `import requests
 import json
@@ -260,14 +261,15 @@ def chat_completion(messages):
     return response.json()
 
 # TTS запрос (синтез речи)
-def text_to_speech(text, voice="female_1"):
+def text_to_speech(text, voice="aidar"):
     response = requests.post(
         'http://localhost/api/tts/synthesize',
         headers=headers,
         json={
             'text': text,
             'voice': voice,
-            'language': 'ru'
+            'language': 'ru',
+            'sample_rate': 24000
         }
     )
     
@@ -323,14 +325,15 @@ async function chatCompletion(messages) {
 }
 
 // TTS запрос (синтез речи)
-async function textToSpeech(text, voice = "female_1") {
+async function textToSpeech(text, voice = "aidar") {
     const response = await fetch('http://localhost/api/tts/synthesize', {
         method: 'POST',
         headers,
         body: JSON.stringify({
             text,
             voice,
-            language: 'ru'
+            language: 'ru',
+            sample_rate: 24000
         })
     });
     
@@ -402,8 +405,8 @@ async function textToSpeech(text, voice = "female_1") {
                 {/* Вкладка: Обзор API */}
                 <TabPanel value={tabValue} index={0}>
                     <Alert severity="info" sx={{ mb: 3 }}>
-                        <strong>Note:</strong> All external API endpoints require authentication via API key.
-                        Pass the key in header: <code>Authorization: Bearer YOUR_API_KEY</code>
+                        <strong>Note:</strong> External API endpoints require a Bearer token (JWT from UI login or an API key).
+                        Pass it as: <code>Authorization: Bearer YOUR_TOKEN</code>
                     </Alert>
 
                     <Typography variant="h5" gutterBottom sx={{ mb: 3 }}>
@@ -475,7 +478,7 @@ async function textToSpeech(text, voice = "female_1") {
                                         ? '0 8px 32px 0 rgba(31, 38, 135, 0.07)'
                                         : '0 6px 20px 0 rgba(8, 8, 15, 0.35)'
                                 }}>
-                                    <Typography variant="h4" color="primary">50MB</Typography>
+                                    <Typography variant="h4" color="primary">100MB</Typography>
                                     <Typography variant="body2">Max file size</Typography>
                                 </Paper>
                             </Grid>

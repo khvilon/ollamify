@@ -1,0 +1,623 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Ollamify External API (static snapshot)",
+    "version": "1.0.0",
+    "description": "Static snapshot of Ollamify external API. For the live docs (when the stack is running) use: http://localhost/api/docs"
+  },
+  "servers": [
+    {
+      "url": "http://localhost/api",
+      "description": "Local gateway (default)"
+    },
+    {
+      "url": "/api",
+      "description": "Gateway (relative)"
+    }
+  ],
+  "tags": [
+    { "name": "Documents", "description": "Document management for RAG" },
+    { "name": "AI & RAG", "description": "RAG endpoints (search + answer)" },
+    { "name": "AI & Embeddings", "description": "OpenAI-style embeddings endpoint" },
+    { "name": "OpenAI Compatible", "description": "OpenAI-compatible chat completions" },
+    { "name": "TTS", "description": "Text-to-Speech (Silero TTS)" },
+    { "name": "STT", "description": "Speech-to-Text (Whisper)" }
+  ],
+  "components": {
+    "securitySchemes": {
+      "ApiKeyAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Use JWT (web login) or API key in the format: Bearer <token>"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": { "type": "string", "description": "Error message" },
+          "code": { "type": "string", "description": "Error code" },
+          "details": { "type": "string", "description": "Detailed error information" }
+        }
+      },
+      "Document": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer", "example": 1 },
+          "name": { "type": "string", "example": "my-document.pdf" },
+          "content_hash": { "type": "string" },
+          "total_chunks": { "type": "integer", "example": 50 },
+          "loaded_chunks": { "type": "integer", "example": 50 },
+          "metadata": { "type": "object" },
+          "created_at": { "type": "string", "format": "date-time" },
+          "external_id": { "type": "string" },
+          "project": { "type": "string", "example": "my-documents" },
+          "status": { "type": "string", "description": "May be returned for create/update flows", "example": "created" },
+          "message": { "type": "string", "description": "May be returned for create/update flows" }
+        }
+      },
+      "DocumentList": {
+        "type": "object",
+        "properties": {
+          "documents": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/Document" }
+          },
+          "total": { "type": "integer", "example": 100 },
+          "page": { "type": "integer", "example": 1 },
+          "limit": { "type": "integer", "example": 10 },
+          "total_pages": { "type": "integer", "example": 10 }
+        }
+      },
+      "ProjectInfo": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "example": "my-docs" },
+          "embedding_model": { "type": "string", "example": "nomic-embed-text" }
+        }
+      },
+      "ChatMessage": {
+        "type": "object",
+        "required": ["role", "content"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["system", "user", "assistant"],
+            "example": "user"
+          },
+          "content": { "type": "string", "example": "Hello!" }
+        }
+      },
+      "ChatCompletion": {
+        "type": "object",
+        "required": ["model", "messages"],
+        "properties": {
+          "model": {
+            "type": "string",
+            "description": "Use an Ollama model (e.g. llama3.1:8b) or prefix openrouter/ for OpenRouter models.",
+            "example": "llama3.1:8b"
+          },
+          "messages": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/components/schemas/ChatMessage" }
+          },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "example": 0.7 },
+          "max_tokens": { "type": "integer", "minimum": 1, "example": 1000 },
+          "stream": { "type": "boolean", "example": false },
+          "top_p": { "type": "number", "minimum": 0, "maximum": 1, "example": 0.9 },
+          "frequency_penalty": { "type": "number", "minimum": -2, "maximum": 2, "example": 0 },
+          "presence_penalty": { "type": "number", "minimum": -2, "maximum": 2, "example": 0 },
+          "think": { "type": "boolean", "description": "If supported by the underlying model/provider", "example": true }
+        }
+      },
+      "ChatCompletionResponse": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "example": "chatcmpl-123" },
+          "object": { "type": "string", "example": "chat.completion" },
+          "created": { "type": "integer", "description": "Unix timestamp" },
+          "model": { "type": "string", "example": "llama3.1:8b" },
+          "choices": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "index": { "type": "integer", "example": 0 },
+                "message": { "$ref": "#/components/schemas/ChatMessage" },
+                "finish_reason": { "type": "string", "enum": ["stop", "length"], "nullable": true }
+              }
+            }
+          },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "prompt_tokens": { "type": "integer" },
+              "completion_tokens": { "type": "integer" },
+              "total_tokens": { "type": "integer" }
+            }
+          }
+        }
+      },
+      "EmbeddingsRequest": {
+        "type": "object",
+        "required": ["model", "input"],
+        "properties": {
+          "model": { "type": "string", "example": "nomic-embed-text" },
+          "input": {
+            "oneOf": [
+              { "type": "string" },
+              { "type": "array", "items": { "type": "string" } }
+            ],
+            "example": "Пример текста для векторизации"
+          },
+          "encoding_format": {
+            "type": "string",
+            "description": "Currently only float is supported",
+            "default": "float",
+            "example": "float"
+          }
+        }
+      },
+      "EmbeddingsResponse": {
+        "type": "object",
+        "properties": {
+          "object": { "type": "string", "example": "list" },
+          "data": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "object": { "type": "string", "example": "embedding" },
+                "embedding": { "type": "array", "items": { "type": "number" } },
+                "index": { "type": "integer", "example": 0 }
+              }
+            }
+          },
+          "model": { "type": "string", "example": "nomic-embed-text" },
+          "usage": {
+            "type": "object",
+            "properties": {
+              "prompt_tokens": { "type": "integer", "example": -1 },
+              "total_tokens": { "type": "integer", "example": -1 }
+            }
+          }
+        }
+      },
+      "RagRequest": {
+        "type": "object",
+        "required": ["question", "project", "model"],
+        "properties": {
+          "question": { "type": "string", "example": "Что такое машинное обучение?" },
+          "project": { "type": "string", "example": "ml-documents" },
+          "model": { "type": "string", "example": "llama3.1:8b" },
+          "useReranker": { "type": "boolean", "default": true, "example": true },
+          "limit": { "type": "integer", "default": 30, "minimum": 1, "maximum": 100, "example": 20 },
+          "think": { "type": "boolean", "default": true, "example": true },
+          "useHybridSearch": { "type": "boolean", "default": true, "example": true },
+          "temperature": { "type": "number", "minimum": 0, "maximum": 2, "example": 0.7 },
+          "max_tokens": { "type": "integer", "minimum": 1, "example": 1024 }
+        }
+      },
+      "RagChunk": {
+        "type": "object",
+        "properties": {
+          "filename": { "type": "string" },
+          "content": { "type": "string" },
+          "similarity": { "type": "number" },
+          "project": { "type": "string" },
+          "metadata": { "type": "object" }
+        }
+      },
+      "RagResponse": {
+        "type": "object",
+        "properties": {
+          "answer": { "type": "string" },
+          "thinking": { "type": "string", "nullable": true },
+          "relevantDocuments": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RagChunk" }
+          },
+          "originalDocuments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "filename": { "type": "string" },
+                "similarity": { "type": "number" },
+                "project": { "type": "string" },
+                "metadata": { "type": "object" }
+              }
+            }
+          },
+          "intentQuery": { "type": "string" },
+          "limitApplied": { "type": "integer" }
+        }
+      },
+      "RagChunksRequest": {
+        "type": "object",
+        "required": ["question"],
+        "properties": {
+          "question": { "type": "string", "example": "Что такое нейронные сети?" },
+          "project": { "type": "string", "example": "ml-documents" },
+          "limit": { "type": "integer", "default": 100, "minimum": 1, "maximum": 100, "example": 10 },
+          "useHybridSearch": { "type": "boolean", "default": true, "example": true }
+        }
+      },
+      "RagChunksResponse": {
+        "type": "object",
+        "properties": {
+          "relevantDocuments": {
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/RagChunk" }
+          },
+          "intentQuery": { "type": "string" },
+          "limitApplied": { "type": "integer" }
+        }
+      },
+      "VoiceInfo": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string", "example": "aidar" },
+          "gender": { "type": "string", "example": "male" },
+          "language": { "type": "string", "example": "ru" },
+          "description": { "type": "string" }
+        }
+      },
+      "TTSRequest": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string", "maxLength": 1000, "example": "Привет!" },
+          "voice": { "type": "string", "enum": ["aidar", "baya", "kseniya", "xenia"], "default": "aidar" },
+          "speed": { "type": "number", "minimum": 0.5, "maximum": 2.0, "default": 1.0, "example": 1.0 },
+          "sample_rate": { "type": "integer", "enum": [8000, 24000, 48000], "default": 24000, "example": 24000 },
+          "format": { "type": "string", "enum": ["wav"], "default": "wav" },
+          "language": { "type": "string", "enum": ["ru"], "default": "ru" }
+        }
+      },
+      "TTSResponse": {
+        "type": "object",
+        "properties": {
+          "audio_base64": { "type": "string", "description": "Base64-encoded WAV" },
+          "format": { "type": "string", "example": "wav" },
+          "sample_rate": { "type": "integer", "example": 24000 },
+          "duration_ms": { "type": "integer", "example": 1200 }
+        }
+      },
+      "TTSHealth": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "healthy" },
+          "model_loaded": { "type": "boolean" },
+          "model_loading": { "type": "boolean" },
+          "model_error": { "type": "string", "nullable": true },
+          "device": { "type": "string", "example": "cuda" },
+          "cuda_available": { "type": "boolean" },
+          "torch_version": { "type": "string" }
+        }
+      },
+      "STTModelsResponse": {
+        "type": "object",
+        "properties": {
+          "models": { "type": "object", "additionalProperties": { "type": "object" } },
+          "current_model": { "type": "string", "example": "base" },
+          "languages": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      },
+      "STTTranscription": {
+        "type": "object",
+        "properties": {
+          "text": { "type": "string" },
+          "language": { "type": "string", "example": "ru" },
+          "task": { "type": "string", "example": "transcribe" },
+          "model": { "type": "string", "example": "base" },
+          "segments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "start": { "type": "number" },
+                "end": { "type": "number" },
+                "text": { "type": "string" }
+              }
+            }
+          }
+        }
+      },
+      "STTModelLoadRequest": {
+        "type": "object",
+        "properties": {
+          "model_name": { "type": "string", "example": "base" }
+        }
+      },
+      "STTModelLoadResponse": {
+        "type": "object",
+        "properties": {
+          "status": { "type": "string", "example": "success" },
+          "model_name": { "type": "string", "example": "base" },
+          "device": { "type": "string", "example": "cuda" }
+        }
+      }
+    }
+  },
+  "security": [
+    { "ApiKeyAuth": [] }
+  ],
+  "paths": {
+    "/documents": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "Get list of documents",
+        "description": "Paginated list of documents. If `project` is not provided, returns documents across all projects.",
+        "parameters": [
+          { "in": "query", "name": "project", "schema": { "type": "string" }, "description": "Project name" },
+          { "in": "query", "name": "page", "schema": { "type": "integer", "default": 1 } },
+          { "in": "query", "name": "limit", "schema": { "type": "integer", "default": 10 } },
+          { "in": "query", "name": "order_by", "schema": { "type": "string", "enum": ["created_at", "name", "total_chunks", "loaded_chunks"], "default": "created_at" } },
+          { "in": "query", "name": "order", "schema": { "type": "string", "enum": ["ASC", "DESC"], "default": "DESC" } },
+          { "in": "query", "name": "search", "schema": { "type": "string" }, "description": "Search query for document names" }
+        ],
+        "responses": {
+          "200": { "description": "List of documents", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/DocumentList" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "post": {
+        "tags": ["Documents"],
+        "summary": "Upload a document",
+        "description": "Upload a new document file or text content. Indexing happens asynchronously; use document list to track loaded_chunks/total_chunks.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string", "format": "binary" },
+                  "project": { "type": "string" },
+                  "name": { "type": "string" },
+                  "metadata": { "type": "object" },
+                  "external_id": { "type": "string" },
+                  "single_chunk": { "type": "boolean", "description": "If true, do not split into chunks" }
+                }
+              }
+            },
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["content", "project"],
+                "properties": {
+                  "content": { "type": "string" },
+                  "project": { "type": "string" },
+                  "name": { "type": "string" },
+                  "metadata": { "type": "object" },
+                  "external_id": { "type": "string" },
+                  "single_chunk": { "type": "boolean" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Document uploaded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/documents/projects": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "List projects",
+        "description": "Returns project name + embedding model.",
+        "responses": {
+          "200": {
+            "description": "List of projects",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "$ref": "#/components/schemas/ProjectInfo" } }
+              }
+            }
+          },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/documents/{id}": {
+      "get": {
+        "tags": ["Documents"],
+        "summary": "Get document by ID",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "project", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": { "description": "Document", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Document" } } } },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      },
+      "delete": {
+        "tags": ["Documents"],
+        "summary": "Delete a document",
+        "parameters": [
+          { "in": "path", "name": "id", "required": true, "schema": { "type": "integer" } },
+          { "in": "query", "name": "project", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "404": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/ai/embed": {
+      "post": {
+        "tags": ["AI & Embeddings"],
+        "summary": "Create embeddings (OpenAI-style)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmbeddingsRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Embeddings", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/EmbeddingsResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/ai/rag": {
+      "post": {
+        "tags": ["AI & RAG"],
+        "summary": "RAG answer (search + generate)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RagRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "RAG response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RagResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "No relevant documents", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/ai/rag/chunks": {
+      "post": {
+        "tags": ["AI & RAG"],
+        "summary": "RAG chunks only (no answer generation)",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RagChunksRequest" } } }
+        },
+        "responses": {
+          "200": { "description": "Chunks response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/RagChunksResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "404": { "description": "No relevant documents", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/v1/chat/completions": {
+      "post": {
+        "tags": ["OpenAI Compatible"],
+        "summary": "OpenAI-compatible chat completions",
+        "description": "Call as /api/v1/chat/completions. Streaming is supported for Ollama models; not supported for OpenRouter models.",
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatCompletion" } } }
+        },
+        "responses": {
+          "200": { "description": "Completion response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ChatCompletionResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "401": { "description": "Unauthorized", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "500": { "description": "Server error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/tts/voices": {
+      "get": {
+        "tags": ["TTS"],
+        "summary": "List available voices",
+        "responses": {
+          "200": { "description": "Voices", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/VoiceInfo" } } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/tts/synthesize": {
+      "post": {
+        "tags": ["TTS"],
+        "summary": "Synthesize speech (base64 WAV)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TTSRequest" } } } },
+        "responses": {
+          "200": { "description": "TTS response", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TTSResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/tts/synthesize/stream": {
+      "post": {
+        "tags": ["TTS"],
+        "summary": "Synthesize speech (binary WAV)",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TTSRequest" } } } },
+        "responses": {
+          "200": { "description": "WAV audio", "content": { "audio/wav": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/tts/health": {
+      "get": {
+        "tags": ["TTS"],
+        "summary": "TTS health",
+        "responses": {
+          "200": { "description": "Health", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TTSHealth" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/stt/models": {
+      "get": {
+        "tags": ["STT"],
+        "summary": "List STT (Whisper) models",
+        "responses": {
+          "200": { "description": "Models", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/STTModelsResponse" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/stt/transcribe": {
+      "post": {
+        "tags": ["STT"],
+        "summary": "Transcribe audio",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "audio": { "type": "string", "format": "binary" },
+                  "language": { "type": "string", "description": "Language code or auto-detect", "example": "ru" },
+                  "task": { "type": "string", "enum": ["transcribe", "translate"], "example": "transcribe" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Transcription", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/STTTranscription" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/stt/model/load": {
+      "post": {
+        "tags": ["STT"],
+        "summary": "Load Whisper model",
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/STTModelLoadRequest" } } } },
+        "responses": {
+          "200": { "description": "Loaded", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/STTModelLoadResponse" } } } },
+          "400": { "description": "Bad request", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/stt/health": {
+      "get": {
+        "tags": ["STT"],
+        "summary": "STT health",
+        "responses": {
+          "200": { "description": "Health", "content": { "application/json": { "schema": { "type": "object" } } } },
+          "503": { "description": "Service unavailable", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    }
+  }
+}
+

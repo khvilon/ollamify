@@ -1,0 +1,31 @@
+@startuml
+title Ollamify - Architecture (high level)
+
+actor User as user
+
+node "www3 / Nginx\n(UI + /api gateway)" as nginx
+node "auth" as auth
+node "zeus" as zeus
+node "ollama" as ollama
+node "vector-db\n(Qdrant)" as qdrant
+database "db\n(PostgreSQL)" as pg
+node "tts" as tts
+node "stt" as stt
+node "reranker" as reranker
+node "frida" as frida
+
+user --> nginx : HTTP :80
+
+nginx --> auth : /auth/login\n/auth/verify (internal)
+nginx --> zeus : /api/*, /ws/*
+nginx --> tts : /api/tts/*
+nginx --> stt : /api/stt/*
+
+zeus --> pg : SQL
+zeus --> qdrant : REST :6333
+zeus --> ollama : HTTP :11434
+zeus --> reranker : HTTP :8001
+zeus --> frida : HTTP :8002
+
+@enduml
+

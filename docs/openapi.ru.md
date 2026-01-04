@@ -2,10 +2,18 @@
 
 [English](openapi.md) | **Русский**
 
+Если нужен pre-install гайд «для людей» — начните отсюда:
+- [`docs/api/README.ru.md`](api/README.ru.md)
+
 ## Где смотреть документацию
 
 - **Внешняя Swagger UI** (рекомендуется): `http://localhost/api/docs`
 - **Внешний OpenAPI JSON**: `http://localhost/api/docs/swagger.json`
+
+## Статический снимок (в репозитории)
+
+- OpenAPI JSON: `docs/api/swagger/swagger.json`
+- Swagger UI (offline): `docs/api/static-swagger.ru.md`
 
 External OpenAPI генерируется сервисом `zeus` (Swagger JSDoc) и предназначен для:
 - внешних интеграций (API‑ключи)

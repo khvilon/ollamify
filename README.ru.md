@@ -6,6 +6,26 @@ Ollamify — это self-hosted стек для **RAG (Retrieval‑Augmented Gen
 
 Проект поставляется как Docker‑ориентированная мультисервисная система с веб‑интерфейсом и внешним API (включая OpenAI‑совместимый эндпоинт).
 
+## Архитектура (высокий уровень)
+
+```mermaid
+flowchart LR
+  user[Пользователь / Браузер] -->|HTTP :80| nginx[www3 / Nginx]
+
+  nginx -->|/auth/login| auth[auth]
+  nginx -->|/api/*| zeus[zeus]
+  nginx -->|/api/tts/*| tts[tts]
+  nginx -->|/api/stt/*| stt[stt]
+
+  zeus --> pg[(PostgreSQL)]
+  zeus --> qdrant[(Qdrant)]
+  zeus --> ollama[Ollama]
+  zeus --> reranker[Reranker]
+  zeus --> frida[Frida]
+```
+
+Подробнее: [`docs/architecture.ru.md`](docs/architecture.ru.md)
+
 ## Что внутри
 
 - **Web UI** (через `www3` / Nginx): документы, чат, проекты, модели, пользователи/API‑ключи, логи запросов, голос.
@@ -36,7 +56,7 @@ cp .env_example .env
 
 ### 2) Запуск (CPU или GPU)
 
-**Linux/macOS/WSL/Git Bash** (рекомендуется):
+**Linux/macOS/WSL/Git Bash** (рекомендуется, авто‑детект GPU):
 
 ```bash
 ./start.sh
@@ -57,10 +77,21 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 - **Web UI**: `http://localhost`
 - **Дефолтные учётные данные (dev)**: `admin@example.com` / `admin`
 
+## Как пользоваться (первые шаги)
+
+- **Создайте проект**: UI → Projects → New Project
+  - Выберите **embedding‑модель** (модель должна быть доступна в Ollama)
+- **Загрузите документы**: UI → Documents → Upload (или вставьте текст)
+  - Прогресс индексации видно по `loaded_chunks / total_chunks`
+- **Чат с документами**: UI → Chat
+  - Выберите проект, модель и при необходимости включите гибридный поиск / реранкер
+
 ## Документация
 
 - **Оглавление**: [`docs/README.ru.md`](docs/README.ru.md)
-- **OpenAPI / Swagger**: [`docs/openapi.ru.md`](docs/openapi.ru.md)
+- **Документация API (удобно до установки)**: [`docs/api/README.ru.md`](docs/api/README.ru.md)
+- **OpenAPI / Swagger (вход)**: [`docs/openapi.ru.md`](docs/openapi.ru.md)
+- **UI гайд**: [`docs/ui/README.ru.md`](docs/ui/README.ru.md)
 - **Конфигурация**: [`docs/configuration.ru.md`](docs/configuration.ru.md)
 - **Архитектура**: [`docs/architecture.ru.md`](docs/architecture.ru.md)
 - **Troubleshooting**: [`docs/troubleshooting.ru.md`](docs/troubleshooting.ru.md)

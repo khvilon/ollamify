@@ -326,6 +326,41 @@ router.get('/', async (req, res) => {
 });
 
 // Получение списка проектов (схем)
+/**
+ * @swagger
+ * /documents/projects:
+ *   get:
+ *     tags: [Documents]
+ *     summary: List projects
+ *     description: |
+ *       Returns projects available in the system (project name + embedding model).
+ *     security:
+ *       - ApiKeyAuth: []
+ *     responses:
+ *       200:
+ *         description: List of projects
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                     description: Project name
+ *                     example: "my-docs"
+ *                   embedding_model:
+ *                     type: string
+ *                     description: Embedding model configured for this project
+ *                     example: "nomic-embed-text"
+ *       500:
+ *         description: Server error
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ */
 router.get('/projects', async (req, res) => {
     try {
         const result = await pool.query(`
