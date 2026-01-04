@@ -123,14 +123,14 @@ function Layout({ children }) {
                     <Typography 
                         variant="h6"
                         sx={{
-                            fontSize: '1.25rem',
-                            fontWeight: 600,
+                            fontSize: '1.5rem',
+                            fontWeight: 700,
                             background: theme.palette.mode === 'light'
                                 ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
                                 : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)',
                             WebkitBackgroundClip: 'text',
                             WebkitTextFillColor: 'transparent',
-                            letterSpacing: '0.5px'
+                            letterSpacing: '0.35px'
                         }}
                     >
                         Ollamify
@@ -243,6 +243,7 @@ function Layout({ children }) {
                             variant="subtitle1"
                             sx={{
                                 display: { xs: 'none', sm: 'block' },
+                                fontSize: '1.35rem',
                                 fontWeight: 700,
                                 background: theme.palette.mode === 'light'
                                     ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'

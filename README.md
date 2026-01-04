@@ -1,6 +1,5 @@
 <h1 align="center">
-  <img src="services/www3/ollamify_icon.svg#gh-light-mode-only" width="96" alt="Ollamify logo" />
-  <img src="services/www3/ollamify_icon_dark.svg#gh-dark-mode-only" width="96" alt="Ollamify logo" />
+  <img src="docs/assets/ollamify_logo.svg" width="96" alt="Ollamify logo" />
   Ollamify
 </h1>
 
