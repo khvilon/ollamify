@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="services/www3/ollamify_icon.svg#gh-light-mode-only" width="120" alt="Ollamify logo" />
+  <img src="services/www3/ollamify_icon_dark.svg#gh-dark-mode-only" width="120" alt="Ollamify logo" />
+</p>
+
 # Ollamify
 
 **Language:** **English** | [Русский](README.ru.md)

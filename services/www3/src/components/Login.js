@@ -97,6 +97,32 @@ function Login({ onLogin }) {
         return null;
     }
 
+    const LogoMark = ({ size = 48 }) => {
+        const gradient = theme.palette.mode === 'light'
+            ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+            : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)';
+
+        const glow = theme.palette.mode === 'light'
+            ? 'drop-shadow(0 8px 24px rgba(33, 150, 243, 0.25))'
+            : 'drop-shadow(0 10px 28px rgba(34, 211, 238, 0.22))';
+
+        return (
+            <Box
+                aria-hidden="true"
+                sx={{
+                    width: size,
+                    height: size,
+                    mx: 'auto',
+                    mb: 2,
+                    background: gradient,
+                    WebkitMask: 'url(/ollamify_icon.svg) center / contain no-repeat',
+                    mask: 'url(/ollamify_icon.svg) center / contain no-repeat',
+                    filter: glow,
+                }}
+            />
+        );
+    };
+
     return (
         <Box sx={{
             minHeight: '100vh',
@@ -114,6 +140,7 @@ function Login({ onLogin }) {
                 p: 4,
                 borderRadius: 2,
             }}>
+                <LogoMark size={56} />
                 <Typography 
                     variant="h4" 
                     component="h1" 

@@ -78,6 +78,31 @@ function Layout({ children }) {
         { text: 'Profile', icon: 'person', path: '/profile' }
     ];
 
+    const LogoMark = ({ size = 24 }) => {
+        const gradient = theme.palette.mode === 'light'
+            ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+            : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)';
+
+        const glow = theme.palette.mode === 'light'
+            ? 'drop-shadow(0 6px 18px rgba(33, 150, 243, 0.25))'
+            : 'drop-shadow(0 6px 18px rgba(34, 211, 238, 0.22))';
+
+        return (
+            <Box
+                aria-hidden="true"
+                sx={{
+                    width: size,
+                    height: size,
+                    flexShrink: 0,
+                    background: gradient,
+                    WebkitMask: 'url(/ollamify_icon.svg) center / contain no-repeat',
+                    mask: 'url(/ollamify_icon.svg) center / contain no-repeat',
+                    filter: glow,
+                }}
+            />
+        );
+    };
+
     const drawer = (
         <Box sx={{ height: '100%' }}>
             <Toolbar sx={{ 
@@ -94,51 +119,7 @@ function Layout({ children }) {
                     gap: 2,
                     ml: 1
                 }}>
-                    <Box
-                        component="span"
-                        sx={{
-                            width: 24,
-                            height: 24,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)',
-                            borderRadius: '8px',
-                            color: 'white',
-                            position: 'relative',
-                            flexShrink: 0,
-                            '&::before': {
-                                content: '""',
-                                position: 'absolute',
-                                width: '6px',
-                                height: '6px',
-                                background: 'white',
-                                borderRadius: '50%',
-                                top: '6px',
-                                left: '6px'
-                            },
-                            '&::after': {
-                                content: '""',
-                                position: 'absolute',
-                                width: '9px',
-                                height: '9px',
-                                border: '1.5px solid white',
-                                borderRadius: '50%',
-                                bottom: '4px',
-                                right: '4px'
-                            }
-                        }}
-                    >
-                        <Box
-                            sx={{
-                                width: '10px',
-                                height: '1.5px',
-                                background: 'white',
-                                transform: 'rotate(45deg)',
-                                position: 'absolute'
-                            }}
-                        />
-                    </Box>
+                    <LogoMark size={26} />
                     <Typography 
                         variant="h6"
                         sx={{
