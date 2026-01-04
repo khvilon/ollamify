@@ -86,15 +86,15 @@ c-83 -2 -153 -1 -155 1 -2 2 -4 241 -4 530 l0 526 291 293 291 292 213 0 c124
 
   <!-- Wordmark -->
   <text
-    x="260"
+    x="245"
     y="122"
     fill="url(#ollamifyGradient)"
     font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
     font-size="170"
-    font-weight="800"
+    font-weight="500"
     dominant-baseline="middle"
   >
-    Ollamify
+    llamify
   </text>
 </svg>
 
