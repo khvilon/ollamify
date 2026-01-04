@@ -217,8 +217,13 @@ function Voice() {
         handleLoadSttModel(newModel);
     };
 
-    // Доступные языки
-    const languages = [
+    // Языки для TTS (в текущей реализации поддерживается только русский)
+    const ttsLanguages = [
+        { code: 'ru', name: 'Russian' }
+    ];
+
+    // Языки для STT (Whisper поддерживает много языков)
+    const sttLanguages = [
         { code: 'ru', name: 'Russian' },
         { code: 'en', name: 'English' },
         { code: 'es', name: 'Spanish' },
@@ -384,12 +389,9 @@ function Voice() {
     // Быстрые фразы для тестирования
     const quickPhrases = [
         'Привет! Как дела?',
-        'Это тест системы синтеза речи.',
-        'Коммерческая лицензия Apache 2.0.',
-        'Hello! How are you doing today?',
-        'This is a text-to-speech test.',
-        'Bonjour! Comment allez-vous?',
-        'Hola! ¿Cómo estás?'
+        'Это тест системы синтеза речи (Silero TTS).',
+        'Проверяем скорость и качество озвучки.',
+        'Съешь ещё этих мягких французских булок, да выпей чаю.'
     ];
 
     return (
@@ -405,7 +407,7 @@ function Voice() {
                     Voice
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    Text-to-Speech (Silero TTS) and Speech Recognition (Whisper) • GPL 3.0 + Apache 2.0
+                    Text-to-Speech (Silero TTS) • Speech Recognition (Whisper)
                 </Typography>
             </Box>
 
@@ -484,8 +486,9 @@ function Voice() {
                                         value={ttsLanguage}
                                         label="Language"
                                         onChange={(e) => setTtsLanguage(e.target.value)}
+                                        disabled
                                     >
-                                        {languages.map((lang) => (
+                                        {ttsLanguages.map((lang) => (
                                             <MenuItem key={lang.code} value={lang.code}>
                                                 {lang.name}
                                             </MenuItem>
@@ -514,8 +517,9 @@ function Voice() {
                                         label="Quality"
                                         onChange={(e) => setTtsSampleRate(e.target.value)}
                                     >
-                                        <MenuItem value={22050}>22 kHz (standard)</MenuItem>
-                                        <MenuItem value={24000}>24 kHz (high)</MenuItem>
+                                        <MenuItem value={8000}>8 kHz (low)</MenuItem>
+                                        <MenuItem value={24000}>24 kHz (standard)</MenuItem>
+                                        <MenuItem value={48000}>48 kHz (high)</MenuItem>
                                     </Select>
                                 </FormControl>
 
@@ -724,7 +728,7 @@ function Voice() {
                                         label="Language"
                                         onChange={(e) => setSttLanguage(e.target.value)}
                                     >
-                                        {languages.map((lang) => (
+                                        {sttLanguages.map((lang) => (
                                             <MenuItem key={lang.code} value={lang.code}>
                                                 {lang.name}
                                             </MenuItem>

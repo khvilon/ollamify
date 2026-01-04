@@ -85,7 +85,7 @@ const upload = multer({
 
 /**
  * @swagger
- * /api/stt/models:
+ * /stt/models:
  *   get:
  *     summary: Получить список доступных STT моделей
  *     tags: [STT]
@@ -122,7 +122,7 @@ router.get('/models', async (req, res) => {
 
 /**
  * @swagger
- * /api/stt/transcribe:
+ * /stt/transcribe:
  *   post:
  *     summary: Распознавание речи из аудио файла
  *     tags: [STT]
@@ -207,7 +207,7 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
 
 /**
  * @swagger
- * /api/stt/model/load:
+ * /stt/model/load:
  *   post:
  *     summary: Загрузка указанной модели Whisper
  *     tags: [STT]
@@ -279,7 +279,7 @@ router.post('/model/load', async (req, res) => {
 
 /**
  * @swagger
- * /api/stt/health:
+ * /stt/health:
  *   get:
  *     summary: Проверка состояния STT сервиса
  *     tags: [STT]

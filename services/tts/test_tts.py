@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Тестовый скрипт для TTS API на базе Coqui XTTS v2
+Тестовый скрипт для TTS API на базе Silero TTS
 Использование: python test_tts.py
 
-Модель: Coqui XTTS v2 (Apache 2.0 - коммерческое использование разрешено)
+Модель: Silero TTS (см. /health для информации о лицензии, как она задана в сервисе)
 """
 
 import requests
@@ -17,7 +17,7 @@ TTS_URL = "http://localhost:8003"
 
 def test_health():
     """Тест работоспособности сервиса"""
-    print("🔍 Проверка состояния TTS сервиса (Coqui XTTS v2)...")
+    print("🔍 Проверка состояния TTS сервиса (Silero TTS)...")
     try:
         response = requests.get(f"{TTS_URL}/health", timeout=10)
         if response.status_code == 200:
@@ -38,7 +38,7 @@ def test_health():
 
 def test_voices():
     """Тест получения списка голосов"""
-    print("\n🎤 Получение списка голосов XTTS v2...")
+    print("\n🎤 Получение списка голосов Silero TTS...")
     try:
         response = requests.get(f"{TTS_URL}/voices", timeout=10)
         if response.status_code == 200:
@@ -54,7 +54,7 @@ def test_voices():
         print(f"❌ Ошибка: {e}")
         return []
 
-def test_synthesis(voice="female_1", text="Привет! Это тест синтеза речи с помощью Коки ИКСТИТИЭС версии два.", language="ru"):
+def test_synthesis(voice="aidar", text="Привет! Это тест синтеза речи с помощью Silero TTS.", language="ru"):
     """Тест синтеза речи"""
     print(f"\n🗣️ Тест синтеза речи голосом '{voice}' на языке '{language}'...")
     print(f"   Текст: '{text}'")
@@ -81,7 +81,7 @@ def test_synthesis(voice="female_1", text="Привет! Это тест син�
             output_dir = Path("test_output")
             output_dir.mkdir(exist_ok=True)
             
-            filename = f"test_xtts_{voice}_{language}_{int(time.time())}.wav"
+            filename = f"test_silero_{voice}_{language}_{int(time.time())}.wav"
             filepath = output_dir / filename
             
             with open(filepath, 'wb') as f:
@@ -132,7 +132,7 @@ def test_stream_synthesis(voice="male_1", text="Это тест потоково
             output_dir = Path("test_output")
             output_dir.mkdir(exist_ok=True)
             
-            filename = f"stream_xtts_{voice}_{int(time.time())}.wav"
+            filename = f"stream_silero_{voice}_{int(time.time())}.wav"
             filepath = output_dir / filename
             
             with open(filepath, 'wb') as f:
@@ -153,47 +153,32 @@ def test_stream_synthesis(voice="male_1", text="Это тест потоково
         return False
 
 def test_different_voices():
-    """Тест разных голосов XTTS v2"""
-    print("\n🎭 Тест всех доступных голосов XTTS v2...")
+    """Тест разных голосов Silero TTS"""
+    print("\n🎭 Тест всех доступных голосов Silero TTS...")
     
-    voices_to_test = ["female_1", "female_2", "male_1", "male_2"]
+    voices_to_test = ["aidar", "baya", "kseniya", "xenia"]
     
     for voice in voices_to_test:
-        if "female" in voice:
-            text = f"Привет! Меня зовут {voice.replace('_', ' ')}, и я женский голос в системе ИКСТТС версии два."
-        else:
-            text = f"Привет! Меня зовут {voice.replace('_', ' ')}, и я мужской голос в системе ИКСТТС версии два."
+        text = f"Привет! Меня зовут {voice}, это тест голоса Silero TTS."
         
         test_synthesis(voice, text)
         time.sleep(2)  # Пауза между тестами
 
-def test_multilingual():
-    """Тест многоязычности"""
-    print("\n🌍 Тест многоязычных возможностей...")
-    
-    test_cases = [
-        ("ru", "female_1", "Это тест русского языка с женским голосом."),
-        ("en", "male_1", "This is a test of English language with male voice."),
-        ("es", "female_2", "Esta es una prueba del idioma español con voz femenina."),
-        ("fr", "male_2", "Ceci est un test de la langue française avec une voix masculine.")
-    ]
-    
-    for language, voice, text in test_cases:
-        print(f"\n   Тест языка: {language}")
-        test_synthesis(voice, text, language)
-        time.sleep(1)
+def test_language_note():
+    """Пояснение по языкам"""
+    print("\n🌍 Языки: текущая реализация TTS в проекте ориентирована на RU (Silero).")
 
 def test_speed_variations():
     """Тест разных скоростей"""
-    print("\n⚡ Тест различных скоростей XTTS v2...")
+    print("\n⚡ Тест различных скоростей (Silero TTS)...")
     
     speeds = [0.5, 0.8, 1.0, 1.5, 2.0]
     
     for speed in speeds:
         print(f"\n   Тест скорости {speed}x...")
         payload = {
-            "text": f"Тест скорости речи {speed} раза от нормальной с помощью ИКСТТС.",
-            "voice": "female_1",
+            "text": f"Тест скорости речи {speed} раза от нормальной (Silero TTS).",
+            "voice": "aidar",
             "speed": speed,
             "sample_rate": 24000,
             "language": "ru"
@@ -208,9 +193,9 @@ def test_speed_variations():
         except Exception as e:
             print(f"   ❌ Ошибка: {e}")
 
-def test_commercial_license():
-    """Проверка информации о коммерческой лицензии"""
-    print("\n💼 Проверка коммерческой лицензии...")
+def test_service_info():
+    """Проверка общей информации о сервисе"""
+    print("\nℹ️ Информация о сервисе...")
     
     try:
         response = requests.get(f"{TTS_URL}/", timeout=10)
@@ -219,7 +204,6 @@ def test_commercial_license():
             print(f"✅ Модель: {data.get('model', 'неизвестно')}")
             print(f"✅ Лицензия: {data.get('license', 'неизвестно')}")
             print(f"✅ Возможности: {', '.join(data.get('features', []))}")
-            print(f"✅ Поддерживаемые языки: {len(data.get('supported_languages', []))} языков")
             return True
         else:
             print(f"❌ Не удалось получить информацию: {response.status_code}")
@@ -230,8 +214,7 @@ def test_commercial_license():
 
 def main():
     """Основная функция тестирования"""
-    print("🚀 Запуск тестов Coqui XTTS v2 TTS API")
-    print("📜 Лицензия: Apache 2.0 (коммерческое использование разрешено)")
+    print("🚀 Запуск тестов Silero TTS API")
     print("=" * 60)
     
     # Проверяем доступность сервиса
@@ -239,8 +222,8 @@ def main():
         print("\n❌ Сервис недоступен, тесты прерваны")
         return
     
-    # Проверяем лицензию
-    test_commercial_license()
+    # Проверяем общую информацию о сервисе
+    test_service_info()
     
     # Получаем список голосов
     voices = test_voices()
@@ -251,15 +234,15 @@ def main():
     
     # Основные тесты
     test_synthesis()
-    test_stream_synthesis()
+    test_stream_synthesis(voice="baya", text="Это тест потокового синтеза речи (Silero TTS).")
     test_different_voices()
-    test_multilingual()
+    test_language_note()
     test_speed_variations()
     
     print("\n" + "=" * 60)
     print("✅ Все тесты завершены!")
     print("📁 Аудио файлы сохранены в папке 'test_output'")
-    print("💼 Модель готова к коммерческому использованию!")
+    print("ℹ️ См. /health для информации о лицензии (как она задана в сервисе).")
 
 if __name__ == "__main__":
     main() 

@@ -1,36 +1,31 @@
-# TTS Service для Ollamify
+# Ollamify TTS service (Silero TTS)
 
-Сервис Text-to-Speech на базе **Coqui XTTS v2** для коммерческого использования.
+This service provides **Text-to-Speech** using **Silero TTS** (current implementation: Russian voices).
 
-## ✅ Коммерческая лицензия
+In the full stack it is exposed via the gateway as:
+- `/api/tts/*` → this service
 
-- **Apache 2.0** - полностью разрешает коммерческое использование
-- **Никаких ограничений** на продажу продуктов с этой технологией
-- **Открытый исходный код** с полной свободой модификации
+## Endpoints (service-level)
 
-## Возможности
+- `GET /health` — service + model status
+- `GET /voices` — available voices
+- `POST /synthesize` — synthesize speech (base64 WAV)
+- `POST /synthesize/stream` — synthesize speech (binary WAV)
 
-- **Высокое качество**: Coqui XTTS v2 - лучшая открытая многоязычная TTS модель
-- **Клонирование голоса**: Создание уникальных голосов из коротких образцов
-- **Многоязычность**: Поддержка 16+ языков включая русский
-- **GPU ускорение**: Оптимизирован для RTX 4060 и аналогичных карт
-- **Эмоциональная речь**: Передача интонаций и эмоций
+## Voices
 
-## API Endpoints
+Currently available RU voices:
+- `aidar` (male)
+- `baya` (female)
+- `kseniya` (female)
+- `xenia` (female)
 
-### `GET /health`
-Проверка состояния сервиса и модели
-
-### `GET /voices` 
-Получение списка доступных голосов
-
-### `POST /synthesize`
-Синтез речи из текста с возвратом base64
+## Request example
 
 ```json
 {
   "text": "Привет! Как дела?",
-  "voice": "female_1",
+  "voice": "aidar",
   "speed": 1.0,
   "sample_rate": 24000,
   "format": "wav",
@@ -38,76 +33,8 @@
 }
 ```
 
-### `POST /synthesize/stream`
-Синтез речи с возвратом аудио потока
+## Notes
 
-## Доступные голоса
-
-- **female_1** - Женский голос высокого качества
-- **female_2** - Женский эмоциональный голос  
-- **male_1** - Четкий мужской голос
-- **male_2** - Низкий мужской голос
-
-## Параметры
-
-- **Скорость**: 0.5 - 2.0 (1.0 = нормальная)
-- **Частота**: 22050, 24000 Hz  
-- **Максимальный текст**: 1000 символов
-- **Формат**: WAV
-- **Языки**: ru, en, es, fr, de, it, pt, pl, tr, nl, cs, ar, zh, ja, hu, ko
-
-## Использование ресурсов
-
-- **VRAM**: ~2-3GB (XTTS v2 модель)
-- **CPU**: Минимальная нагрузка при GPU использовании
-- **Скорость**: 2-4x real-time на RTX 4060
-- **Качество**: Близко к человеческой речи
-
-## Клонирование голоса
-
-XTTS v2 может клонировать любой голос из 3-15 секундного образца:
-
-```python
-# Добавление нового голоса (через API в будущем)
-model.tts_to_file(
-    text="Ваш текст",
-    speaker_wav="path/to/voice_sample.wav",  # 3-15 сек образец
-    language="ru",
-    file_path="output.wav"
-)
-```
-
-## Интеграция с Ollamify
-
-TTS сервис автоматически интегрируется через Zeus API:
-
-- `GET /api/tts/voices` - Список голосов
-- `POST /api/tts/synthesize` - Синтез речи
-- `POST /api/tts/synthesize/stream` - Потоковый синтез
-- `GET /api/tts/health` - Состояние сервиса
-
-## Запуск
-
-```bash
-# Автоматически с основной системой
-./start.sh
-
-# Или отдельно
-docker-compose -f docker-compose.tts.yml up -d
-```
-
-## Мониторинг
-
-- Логи: `docker logs tts`
-- Метрики: `curl http://localhost:8003/health`
-- Документация: `http://localhost:8003/docs`
-
-## Коммерческое применение
-
-✅ **Полностью разрешено:**
-- Продажа продуктов с TTS
-- Коммерческие API сервисы
-- Встраивание в платные приложения
-- Модификация и распространение
-
-❌ **Нет ограничений** на коммерческое использование 
+- Local docs (FastAPI): `http://localhost:8003/docs`
+- Gateway docs: `http://localhost/api/docs`
+- The `/health` response contains the license string used by the service.

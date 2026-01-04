@@ -22,9 +22,9 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  *           maxLength: 1000
  *         voice:
  *           type: string
- *           enum: [female_1, female_2, male_1, male_2]
- *           default: female_1
- *           description: Голос для озвучивания
+ *           enum: [aidar, baya, kseniya, xenia]
+ *           default: aidar
+ *           description: Голос Silero TTS (Russian)
  *         speed:
  *           type: number
  *           minimum: 0.5
@@ -33,7 +33,7 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  *           description: Скорость речи
  *         sample_rate:
  *           type: integer
- *           enum: [22050, 24000]
+ *           enum: [8000, 24000, 48000]
  *           default: 24000
  *           description: Частота дискретизации
  *         format:
@@ -43,9 +43,9 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  *           description: Формат аудио
  *         language:
  *           type: string
- *           enum: [ru, en, es, fr, de, it, pt, pl, tr, nl, cs, ar, zh, ja, hu, ko]
+ *           enum: [ru]
  *           default: ru
- *           description: Язык синтеза
+ *           description: Язык синтеза (в текущей реализации поддерживается только русский)
  *     
  *     TTSResponse:
  *       type: object
@@ -82,7 +82,7 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
 
 /**
  * @swagger
- * /api/tts/voices:
+ * /tts/voices:
  *   get:
  *     summary: Получить список доступных голосов
  *     tags: [TTS]
@@ -100,7 +100,7 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  */
 router.get('/voices', async (req, res) => {
   try {
-    logger.info('Getting available TTS voices (XTTS v2)');
+    logger.info('Getting available TTS voices (Silero TTS)');
     
     const response = await fetch(`${TTS_SERVICE_URL}/voices`, {
       method: 'GET',
@@ -125,9 +125,9 @@ router.get('/voices', async (req, res) => {
 
 /**
  * @swagger
- * /api/tts/synthesize:
+ * /tts/synthesize:
  *   post:
- *     summary: Синтез речи из текста (Coqui XTTS v2)
+ *     summary: Синтез речи из текста (Silero TTS)
  *     tags: [TTS]
  *     requestBody:
  *       required: true
@@ -149,7 +149,7 @@ router.get('/voices', async (req, res) => {
  */
 router.post('/synthesize', async (req, res) => {
   try {
-    const { text, voice = 'female_1', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
+    const { text, voice = 'aidar', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -160,7 +160,7 @@ router.post('/synthesize', async (req, res) => {
       return res.status(400).json({ error: 'Текст слишком длинный (максимум 1000 символов)' });
     }
     
-    logger.info(`TTS XTTS synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
+    logger.info(`TTS Silero synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
     
     // Отправляем запрос в TTS сервис
     const response = await fetch(`${TTS_SERVICE_URL}/synthesize`, {
@@ -176,7 +176,7 @@ router.post('/synthesize', async (req, res) => {
         format,
         language
       }),
-      timeout: 60000 // 60 секунд на синтез для XTTS
+      timeout: 60000 // 60 секунд на синтез
     });
     
     if (!response.ok) {
@@ -186,11 +186,11 @@ router.post('/synthesize', async (req, res) => {
     
     const result = await response.json();
     
-    logger.info(`TTS XTTS synthesis completed, duration: ${result.duration_ms}ms`);
+    logger.info(`TTS Silero synthesis completed, duration: ${result.duration_ms}ms`);
     res.json(result);
     
   } catch (error) {
-    logger.error('Error in TTS XTTS synthesis:', error);
+    logger.error('Error in TTS synthesis:', error);
     
     if (error.message.includes('timeout')) {
       res.status(504).json({ error: 'Тайм-аут синтеза речи' });
@@ -205,9 +205,9 @@ router.post('/synthesize', async (req, res) => {
 
 /**
  * @swagger
- * /api/tts/synthesize/stream:
+ * /tts/synthesize/stream:
  *   post:
- *     summary: Синтез речи с возвратом аудио потока (XTTS v2)
+ *     summary: Синтез речи с возвратом аудио потока (Silero TTS)
  *     tags: [TTS]
  *     requestBody:
  *       required: true
@@ -230,14 +230,14 @@ router.post('/synthesize', async (req, res) => {
  */
 router.post('/synthesize/stream', async (req, res) => {
   try {
-    const { text, voice = 'female_1', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
+    const { text, voice = 'aidar', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
       return res.status(400).json({ error: 'Текст обязателен для заполнения' });
     }
     
-    logger.info(`TTS XTTS stream synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
+    logger.info(`TTS Silero stream synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
     
     // Отправляем запрос в TTS сервис
     const response = await fetch(`${TTS_SERVICE_URL}/synthesize/stream`, {
@@ -269,7 +269,7 @@ router.post('/synthesize/stream', async (req, res) => {
     response.body.pipe(res);
     
   } catch (error) {
-    logger.error('Error in TTS XTTS stream synthesis:', error);
+    logger.error('Error in TTS stream synthesis:', error);
     res.status(503).json({ 
       error: 'Ошибка потокового синтеза речи',
       details: error.message 
@@ -279,7 +279,7 @@ router.post('/synthesize/stream', async (req, res) => {
 
 /**
  * @swagger
- * /api/tts/health:
+ * /tts/health:
  *   get:
  *     summary: Проверка состояния TTS сервиса
  *     tags: [TTS]

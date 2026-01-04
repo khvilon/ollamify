@@ -46,8 +46,8 @@ Detailed code examples in various programming languages are available on the "Co
     },
     servers: [
       {
-        url: '/',
-        description: 'Ollamify API Server'
+        url: '/api',
+        description: 'Ollamify API (public gateway)'
       }
     ],
     components: {
@@ -364,15 +364,34 @@ Detailed code examples in various programming languages are available on the "Co
             },
             voice: {
               type: 'string',
-              description: 'Voice for synthesis',
-              example: 'ru_speaker'
+              description: 'Silero TTS voice (Russian)',
+              enum: ['aidar', 'baya', 'kseniya', 'xenia'],
+              example: 'aidar'
             },
             speed: {
               type: 'number',
-              minimum: 0.1,
-              maximum: 3.0,
+              minimum: 0.5,
+              maximum: 2.0,
               description: 'Speech speed',
               example: 1.0
+            },
+            sample_rate: {
+              type: 'integer',
+              enum: [8000, 24000, 48000],
+              description: 'Sample rate (Hz)',
+              example: 24000
+            },
+            format: {
+              type: 'string',
+              enum: ['wav'],
+              description: 'Audio format',
+              example: 'wav'
+            },
+            language: {
+              type: 'string',
+              enum: ['ru'],
+              description: 'Language (currently only ru is supported)',
+              example: 'ru'
             }
           }
         },

@@ -1,308 +1,97 @@
-# Ollamify - Локальная RAG платформа с Voice Assistant
+# Ollamify
 
-Ollamify - это полнофункциональная локальная платформа для работы с документами, использующая технологии RAG (Retrieval-Augmented Generation) и интегрированный голосовой помощник.
+**Language:** **English** | [Русский](README.ru.md)
 
-## 🚀 Быстрый старт
+Ollamify is a self-hosted **RAG (Retrieval-Augmented Generation)** stack: upload documents, search (hybrid vectors + keywords), and chat with LLMs — with optional **voice** (TTS/STT).
 
-### CPU режим (по умолчанию)
-```bash
-docker-compose up -d
-```
+It ships as a Docker-first, multi-service setup with a web UI and an external API (including an OpenAI-compatible endpoint).
 
-### GPU режим (для NVIDIA GPU)
-```bash
-docker-compose -f docker-compose.gpu.yml up -d
-```
+## What’s included
 
-**Различия режимов:**
-- **CPU**: Базовый режим, все модели работают на CPU
-- **GPU**: Ускоренный режим с поддержкой NVIDIA GPU для TTS, Ollama, Frida и Reranker
+- **Web UI** (served by `www3` / Nginx): documents, chat, projects, models, users/API keys, request logs, voice.
+- **RAG backend** (`zeus`): projects, ingestion, embeddings via Ollama, Qdrant vector search, hybrid search, optional reranking.
+- **Auth gateway** (`auth` + Nginx `auth_request`): JWT for UI + API keys for external usage.
+- **LLM runtime**: local **Ollama** (optionally OpenRouter).
+- **Vector DB**: **Qdrant**.
+- **Speech**:
+  - **TTS**: Silero TTS (RU voices)
+  - **STT**: OpenAI Whisper
 
-## 📊 Архитектура системы
+## Quickstart
 
-```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Web Interface │    │   Voice Assistant│    │   API Gateway   │
-│   (www3:80)     │    │   (TTS/STT)     │    │   (zeus:80)     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Auth Service  │    │   Vector DB     │    │   PostgreSQL    │
-│   (auth:80)     │    │   (qdrant:6333) │    │   (db:5432)     │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-                                 │
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   Ollama LLM    │    │   Reranker      │    │   TTS Service   │
-│   (ollama:11434)│    │   (reranker:8001│    │   (tts:8003)    │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
-         │                       │                       │
-         └───────────────────────┼───────────────────────┘
-                                 │
-                    ┌─────────────────┐
-                    │   Frida Service │
-                    │   (frida:8002)  │
-                    └─────────────────┘
-```
+### 1) Configure environment
 
-## 🎙️ Voice Assistant
-
-Система включает полнофункциональный голосовой помощник с поддержкой:
-
-### TTS (Text-to-Speech) - Silero TTS
-- **Модель**: Silero TTS v3.1 
-- **Лицензия**: GPL 3.0 (некоммерческое использование)
-- **Язык**: Русский
-- **Голоса**: 4 высококачественных русских голоса
-  - `aidar` - мужской голос Айдар
-  - `baya` - женский голос Бая  
-  - `kseniya` - женский голос Ксения
-  - `xenia` - женский голос Ксения 2
-
-### Функции Voice Assistant
-- ✅ **Синтез речи (TTS)** - готов к использованию
-- 🔄 **Распознавание речи (STT)** - в разработке
-- 🔄 **Клонирование голоса** - планируется
-
-### Доступ к Voice Assistant
-1. Откройте http://localhost в браузере
-2. Войдите в систему (admin@example.com / admin123)
-3. Перейдите в раздел "Voice Assistant"
-
-## 🛠 Технологический стек
-
-### Основные сервисы
-- **Frontend**: Vanilla JS + Material Design Icons
-- **Backend API**: Node.js + Express
-- **Аутентификация**: FastAPI + JWT
-- **База данных**: PostgreSQL + pgvector
-- **Векторная БД**: Qdrant
-- **Языковая модель**: Ollama (локально)
-- **Веб-сервер**: Nginx
-
-### AI/ML компоненты
-- **TTS**: Silero TTS v3.1 (русские голоса)
-- **Reranker**: Модели для улучшения поиска
-- **Frida**: Дополнительные AI функции
-- **Embedding**: Локальные векторные представления
-
-## 📋 Системные требования
-
-### Минимальные требования (CPU режим)
-- **RAM**: 8 GB
-- **Диск**: 20 GB свободного места
-- **CPU**: 4 ядра
-- **Docker**: 20.10+ и Docker Compose v2
-
-### Рекомендуемые требования (GPU режим)  
-- **RAM**: 16 GB
-- **Диск**: 50 GB свободного места
-- **GPU**: NVIDIA с 8 GB+ VRAM
-- **CUDA**: 11.8+
-- **Docker**: с поддержкой NVIDIA Container Toolkit
-
-## 🔧 Настройка
-
-### Переменные окружения
-Скопируйте `.env_example` в `.env` и настройте:
+Copy the example file and edit it:
 
 ```bash
 cp .env_example .env
 ```
 
-Основные настройки:
-```env
-# Database
-POSTGRES_DB=ollamify
-POSTGRES_USER=ollamify_user
-POSTGRES_PASSWORD=your_secure_password
+Minimum required for local run:
+- `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`
+- `JWT_SECRET`
 
-# JWT
-JWT_SECRET=your_jwt_secret_key
+Optional:
+- `OPENROUTER_API_KEY`, `OPENROUTER_MODEL`, `OPENROUTER_URL` (only if you want OpenRouter models)
 
-# Models
-# Embedding model is now configured per project in the web interface
-RERANKER_MODEL=ms-marco-MiniLM-L-12-v2
-OPENROUTER_MODEL=anthropic/claude-3.5-sonnet
-```
+### 2) Start (CPU or GPU)
 
-## 📖 Использование
-
-### Базовые функции
-1. **Загрузка документов**: Поддержка PDF, TXT, DOCX
-2. **Поиск**: Векторный и гибридный поиск (эмбеддинги + ключевые слова, гибко переключаемый)
-3. **Чат с документами**: RAG с локальными LLM
-4. **Голосовой интерфейс**: TTS синтез речи
-
-### API Endpoints
-
-#### TTS API
-```bash
-# Список голосов
-GET /api/tts/voices
-
-# Синтез речи
-POST /api/tts/synthesize
-{
-  "text": "Привет! Это тест системы синтеза речи.",
-  "voice": "aidar",
-  "speed": 1.0,
-  "sample_rate": 24000
-}
-```
-
-#### Документы API
-```bash
-# Загрузка документа
-POST /api/documents/upload
-
-# Поиск в документах
-POST /api/documents/search
-{
-  "query": "ваш поисковый запрос",
-  "limit": 10
-}
-```
-
-#### RAG API
-```bash
-# Получение ответа на основе документов
-POST /api/ai/rag
-{
-  "question": "Что такое машинное обучение?",
-  "project": "ml-documents",
-  "model": "llama3.1:8b",
-  "useReranker": true,
-  "think": true,
-  "useHybridSearch": true   # false переключит поиск в режим "только по эмбеддингам"
-}
-
-# Получение только релевантных фрагментов
-POST /api/ai/rag/chunks
-{
-  "question": "Какие метрики оценки качества используются?",
-  "project": "ml-documents",
-  "limit": 20,
-  "useHybridSearch": true
-}
-```
-
-> 💡 В веб-интерфейсе (страница "Chat") параметр `useHybridSearch` управляется отдельным переключателем "Гибридный поиск". По умолчанию гибридный режим активен.
-
-## 🔍 Мониторинг и отладка
-
-### Проверка статуса сервисов
-```bash
-# Статус всех контейнеров
-docker-compose ps
-
-# Логи конкретного сервиса
-docker-compose logs tts
-docker-compose logs zeus
-docker-compose logs auth
-```
-
-### Health проверки
-- **TTS**: http://localhost:8003/health
-- **Reranker**: http://localhost:8001/health
-- **Frida**: http://localhost:8002/health
-- **Vector DB**: http://localhost:6333/health
-
-### Веб-интерфейсы
-- **Основное приложение**: http://localhost
-- **Qdrant UI**: http://localhost:6333/dashboard
-- **API документация**: http://localhost/api-docs
-
-## 🚨 Устранение неполадок
-
-### Частые проблемы
-
-#### TTS не работает
-   ```bash
-# Проверка статуса
-docker logs tts
-
-# Перезапуск TTS
-docker-compose restart tts
-   ```
-
-#### 404 ошибки API
-   ```bash
-# Проверка Zeus сервиса
-docker logs zeus
-
-# Перезапуск backend
-docker-compose restart zeus
-```
-
-#### Проблемы с GPU
-```bash
-# Проверка NVIDIA Docker
-docker run --rm --gpus all nvidia/cuda:11.8-base-ubuntu22.04 nvidia-smi
-
-# GPU режим
-docker-compose -f docker-compose.gpu.yml up -d
-```
-
-#### Ошибки сборки PyTorch (таймауты/блокировки `pypi.nvidia.com`)
-Иногда в корпоративных/закрытых сетях домен `pypi.nvidia.com` недоступен, из-за чего сборка GPU-образов падает на установке PyTorch CUDA-зависимостей.
-
-Что делать:
-- Пересоберите образы без кеша (важно после изменений Dockerfile):
+**Linux/macOS/WSL/Git Bash** (recommended):
 
 ```bash
-docker-compose -f docker-compose.gpu.yml build --no-cache tts stt reranker frida
+./start.sh
+# force CPU mode
+./start.sh --cpu
 ```
 
-- Если у вас свой PyPI-репозиторий/зеркало — можно переопределить индекс для `pip` через build-args:
+**Windows (PowerShell)**:
 
-```bash
-docker-compose -f docker-compose.gpu.yml build --build-arg PIP_EXTRA_INDEX_URL=https://pypi.org/simple --build-arg PIP_TIMEOUT=300 --build-arg PIP_RETRIES=20 tts
+```powershell
+docker compose up -d
+# GPU mode
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 ```
 
+### 3) Open the UI
 
-### Полная переустановка
-```bash
-# Остановка и удаление
-docker-compose down -v
+- **Web UI**: `http://localhost`
+- **Default credentials (dev)**: `admin@example.com` / `admin`
 
-# Удаление образов
-docker-compose down --rmi all
+## Documentation
 
-# Чистый запуск
-docker-compose up -d
-```
+- **Docs index**: [`docs/README.md`](docs/README.md)
+- **OpenAPI / Swagger**: [`docs/openapi.md`](docs/openapi.md)
+- **Configuration**: [`docs/configuration.md`](docs/configuration.md)
+- **Architecture**: [`docs/architecture.md`](docs/architecture.md)
+- **Troubleshooting**: [`docs/troubleshooting.md`](docs/troubleshooting.md)
 
-## 📚 Дополнительная документация
+## Local endpoints (by default)
 
-- [TTS Testing Guide](TTS_TESTING_GUIDE.md) - Подробное тестирование голосового интерфейса
-- [TTS Implementation Report](TTS_IMPLEMENTATION_REPORT.md) - Технические детали TTS интеграции
+| Service | URL | Notes |
+|---|---|---|
+| Web UI (Nginx) | `http://localhost` | Main entrypoint |
+| External API docs (Swagger UI) | `http://localhost/api/docs` | External/public OpenAPI |
+| Qdrant | `http://localhost:6333` | Also has dashboard at `/dashboard` |
+| TTS (direct) | `http://localhost:8003` | FastAPI docs at `/docs` |
+| STT (direct) | `http://localhost:8004` | Flasgger UI typically at `/apidocs/` |
+| Reranker | `http://localhost:8001/health` | Used by Zeus for reranking |
+| Frida | `http://localhost:8002/health` | Embeddings-related service |
 
-## 🤝 Вклад в проект
+> Most API calls are designed to go through the gateway prefix **`/api`** (see OpenAPI docs).
 
-1. Fork проекта
-2. Создайте feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit изменения (`git commit -m 'Add amazing feature'`)
-4. Push в branch (`git push origin feature/amazing-feature`)
-5. Откройте Pull Request
+## Notes on authentication
 
-## 📄 Лицензия
+- **Web UI login**: `POST /auth/login` returns a JWT (`{ token }`)
+- **External API**: send `Authorization: Bearer <JWT or API_KEY>`
+- API keys are managed from the UI (Users → API keys).
 
-Проект использует различные лицензии для разных компонентов:
-- **Основной код**: MIT License
-- **Silero TTS**: GPL 3.0 (некоммерческое использование)
-- **Другие модели**: См. соответствующие репозитории
+## Repository layout
 
-## 🔮 Планы развития
+- `docker-compose.yml` / `docker-compose.gpu.yml`: stack definition
+- `services/www3`: Nginx + UI
+- `services/zeus`: main API backend + OpenAPI generator
+- `services/auth`: auth service (JWT + API keys)
+- `services/tts`, `services/stt`: voice services
+- `services/vector-db`: Qdrant image/config
+- `services/ollama`: Ollama bootstrap
 
-- [ ] Интеграция STT (Speech-to-Text)
-- [ ] Клонирование голосов
-- [ ] Поддержка больше языков для TTS
-- [ ] Мобильное приложение
-- [ ] Интеграция с внешними LLM API
-- [ ] Расширенная аналитика
-
----
-
-**Ollamify** - локальная, приватная и мощная платформа для работы с документами и голосовым интерфейсом. 
