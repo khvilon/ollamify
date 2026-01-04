@@ -84,29 +84,8 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
 
 - **Оглавление**: [`docs/README.ru.md`](docs/README.ru.md)
 - **Документация API (удобно до установки)**: [`docs/api/README.ru.md`](docs/api/README.ru.md)
-- **OpenAPI / Swagger (вход)**: [`docs/openapi.ru.md`](docs/openapi.ru.md)
 - **UI гайд**: [`docs/ui/README.ru.md`](docs/ui/README.ru.md)
 - **Конфигурация**: [`docs/configuration.ru.md`](docs/configuration.ru.md)
 - **Архитектура**: [`docs/architecture.ru.md`](docs/architecture.ru.md)
 - **Troubleshooting**: [`docs/troubleshooting.ru.md`](docs/troubleshooting.ru.md)
-
-## Локальные эндпоинты (по умолчанию)
-
-| Сервис | URL | Примечания |
-|---|---|---|
-| Web UI (Nginx) | `http://localhost` | Основной вход |
-| Внешняя Swagger UI | `http://localhost/api/docs` | External/public OpenAPI |
-| Qdrant | `http://localhost:6333` | Dashboard: `/dashboard` |
-| TTS (напрямую) | `http://localhost:8003` | FastAPI docs: `/docs` |
-| STT (напрямую) | `http://localhost:8004` | Flasgger UI обычно `/apidocs/` |
-| Reranker | `http://localhost:8001/health` | Используется Zeus |
-| Frida | `http://localhost:8002/health` | Сервис эмбеддингов |
-
-> Большинство API запросов предполагают gateway‑префикс **`/api`** (см. OpenAPI).
-
-## Про аутентификацию
-
-- **Логин в UI**: `POST /auth/login` возвращает JWT (`{ token }`)
-- **Внешний API**: `Authorization: Bearer <JWT или API_KEY>`
-- API‑ключи управляются в UI (Users → API keys).
 
