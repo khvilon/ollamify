@@ -245,6 +245,23 @@ docker run --rm --gpus all nvidia/cuda:11.8-base-ubuntu22.04 nvidia-smi
 docker-compose -f docker-compose.gpu.yml up -d
 ```
 
+#### Ошибки сборки PyTorch (таймауты/блокировки `pypi.nvidia.com`)
+Иногда в корпоративных/закрытых сетях домен `pypi.nvidia.com` недоступен, из-за чего сборка GPU-образов падает на установке PyTorch CUDA-зависимостей.
+
+Что делать:
+- Пересоберите образы без кеша (важно после изменений Dockerfile):
+
+```bash
+docker-compose -f docker-compose.gpu.yml build --no-cache tts stt reranker frida
+```
+
+- Если у вас свой PyPI-репозиторий/зеркало — можно переопределить индекс для `pip` через build-args:
+
+```bash
+docker-compose -f docker-compose.gpu.yml build --build-arg PIP_EXTRA_INDEX_URL=https://pypi.org/simple --build-arg PIP_TIMEOUT=300 --build-arg PIP_RETRIES=20 tts
+```
+
+
 ### Полная переустановка
 ```bash
 # Остановка и удаление

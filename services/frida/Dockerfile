@@ -10,11 +10,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Установка зависимостей с поддержкой CUDA 12.8 для RTX 5070 Ti
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir torch==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
-RUN pip install --no-cache-dir torchvision==0.22.1+cu128 --index-url https://download.pytorch.org/whl/cu128  
-RUN pip install --no-cache-dir torchaudio==2.7.1+cu128 --index-url https://download.pytorch.org/whl/cu128
-RUN pip install --no-cache-dir sentence-transformers flask gunicorn
+# Важно: `--isolated` игнорирует pip-конфиги/ENV, которые могут добавлять `pypi.nvidia.com` и ломать сборку в некоторых сетях.
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+ARG PIP_TIMEOUT=120
+ARG PIP_RETRIES=10
+RUN python -m pip install --no-cache-dir --isolated --upgrade pip \
+        --index-url ${PIP_EXTRA_INDEX_URL} \
+        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
+    python -m pip install --no-cache-dir --isolated \
+        torch==2.7.1+cu128 torchvision==0.22.1+cu128 torchaudio==2.7.1+cu128 \
+        --index-url ${PYTORCH_INDEX_URL} \
+        --extra-index-url ${PIP_EXTRA_INDEX_URL} \
+        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
+    python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn \
+        --index-url ${PIP_EXTRA_INDEX_URL} \
+        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
 
 # Копирование кода приложения
 COPY app.py /app/

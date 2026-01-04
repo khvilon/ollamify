@@ -12,11 +12,21 @@ RUN apt-get update && apt-get install -y \
 # Копируем файлы зависимостей
 COPY requirements.txt .
 
-# Обновляем PyTorch до версии с поддержкой RTX 5070 Ti
-RUN pip install --no-cache-dir --upgrade torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu128
+# Обновляем PyTorch (CUDA 12.8).
+# Важно: `--isolated` игнорирует pip-конфиги/ENV, которые могут добавлять `pypi.nvidia.com` и ломать сборку в некоторых сетях.
+ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
+ARG PIP_TIMEOUT=120
+ARG PIP_RETRIES=10
+RUN python -m pip install --no-cache-dir --isolated --upgrade torch torchvision torchaudio \
+    --index-url ${PYTORCH_INDEX_URL} \
+    --extra-index-url ${PIP_EXTRA_INDEX_URL} \
+    --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
 
 # Устанавливаем Python зависимости
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --isolated -r requirements.txt \
+    --index-url ${PIP_EXTRA_INDEX_URL} \
+    --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
 
 # Создаем директорию для кеша моделей
 RUN mkdir -p /app/models
