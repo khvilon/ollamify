@@ -123,7 +123,7 @@ function Layout({ children }) {
                     <Typography 
                         variant="h6"
                         sx={{
-                            fontSize: '1.5rem',
+                            fontSize: '1.85rem',
                             fontWeight: 700,
                             background: theme.palette.mode === 'light'
                                 ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
@@ -243,7 +243,7 @@ function Layout({ children }) {
                             variant="subtitle1"
                             sx={{
                                 display: { xs: 'none', sm: 'block' },
-                                fontSize: '1.35rem',
+                                fontSize: '1.6rem',
                                 fontWeight: 700,
                                 background: theme.palette.mode === 'light'
                                     ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'

@@ -1,6 +1,5 @@
 <h1 align="center">
-  <img src="docs/assets/ollamify_logo.svg" width="96" alt="Ollamify logo" />
-  Ollamify
+  <img src="docs/assets/ollamify_wordmark.svg" width="720" alt="Ollamify" />
 </h1>
 
 <p align="center">
