@@ -211,6 +211,48 @@ function Layout({ children }) {
                     >
                         <span className="material-icons">menu</span>
                     </IconButton>
+                    <Box
+                        onClick={() => navigate('/documents')}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                navigate('/documents');
+                            }
+                        }}
+                        sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 1.25,
+                            cursor: 'pointer',
+                            userSelect: 'none',
+                            '&:hover': { opacity: 0.9 },
+                            '&:focus-visible': {
+                                outline: `2px solid ${theme.palette.primary.main}`,
+                                outlineOffset: 4,
+                                borderRadius: 1
+                            }
+                        }}
+                        aria-label="Go to Documents"
+                    >
+                        <LogoMark size={22} />
+                        <Typography
+                            variant="subtitle1"
+                            sx={{
+                                display: { xs: 'none', sm: 'block' },
+                                fontWeight: 700,
+                                background: theme.palette.mode === 'light'
+                                    ? 'linear-gradient(45deg, #2196F3 30%, #21CBF3 90%)'
+                                    : 'linear-gradient(45deg, #60a5fa 30%, #22d3ee 90%)',
+                                WebkitBackgroundClip: 'text',
+                                WebkitTextFillColor: 'transparent',
+                                letterSpacing: '0.3px',
+                            }}
+                        >
+                            Ollamify
+                        </Typography>
+                    </Box>
                     <Box sx={{ flexGrow: 1 }} />
                     <IconButton
                         onClick={handleProfileClick}
