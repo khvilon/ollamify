@@ -48,7 +48,7 @@ It provides production‑ready building blocks out of the box:
 
 ## Screenshot
 
-![Models page (illustration)](docs/assets/ui-models.svg)
+![Ollamify UI screenshot](docs/screenshot.png)
 
 For architecture details: [`docs/architecture.md`](docs/architecture.md)
 

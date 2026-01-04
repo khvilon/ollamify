@@ -48,7 +48,7 @@ Ollamify — это self‑hosted **AI‑gateway** для разработчик
 
 ## Скриншот
 
-![Models (иллюстрация)](docs/assets/ui-models.svg)
+![Скриншот интерфейса Ollamify](docs/screenshot.png)
 
 Детали архитектуры: [`docs/architecture.ru.md`](docs/architecture.ru.md)
 
