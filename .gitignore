@@ -1,1 +1,7 @@
 .env
+
+# TLS / Let's Encrypt artifacts (generated locally / on server)
+nginx/ssl/*.pem
+nginx/letsencrypt/
+nginx/acme/*
+!nginx/acme/.gitkeep

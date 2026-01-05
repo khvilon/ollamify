@@ -82,6 +82,9 @@ Minimum required for local run:
 
 Optional:
 - `OPENROUTER_API_KEY`, `OPENROUTER_URL` (only if you want OpenRouter models)
+- `DOMAIN` (used for self-signed cert generation + LetsEncrypt)
+- `WWW_PORT_HTTP`, `WWW_PORT_HTTPS` (host ports for the UI gateway)
+- `LETSENCRYPT_EMAIL` (recommended for LetsEncrypt initial issuance)
 
 ### 2) Start (CPU or GPU)
 
@@ -105,8 +108,13 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose
 
 ### 3) Open the UI
 
-- **Web UI**: `http://localhost`
+- **Web UI (HTTPS)**: `https://localhost` (self-signed by default)
 - **Default credentials (dev)**: `admin@example.com` / `admin`
+
+## HTTPS certificates (Nginx)
+
+- **Self-signed (default)**: generated automatically into `nginx/ssl/` on first start.
+- **LetsEncrypt**: run `sudo ./renew-cert.sh` (requires `certbot` on the host).
 
 ## How to use (first steps)
 

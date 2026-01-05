@@ -82,6 +82,9 @@ cp .env_example .env
 
 Опционально:
 - `OPENROUTER_API_KEY`, `OPENROUTER_URL` (если хотите OpenRouter)
+- `DOMAIN` (для генерации self-signed сертификата + LetsEncrypt)
+- `WWW_PORT_HTTP`, `WWW_PORT_HTTPS` (хост-порты для UI gateway)
+- `LETSENCRYPT_EMAIL` (рекомендуется для первичного выпуска LetsEncrypt)
 
 ### 2) Запуск (CPU или GPU)
 
@@ -105,8 +108,13 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose
 
 ### 3) Откройте UI
 
-- **Web UI**: `http://localhost`
+- **Web UI (HTTPS)**: `https://localhost` (по умолчанию self-signed)
 - **Дефолтные учётные данные (dev)**: `admin@example.com` / `admin`
+
+## HTTPS сертификаты (Nginx)
+
+- **Self-signed (по умолчанию)**: генерируется автоматически в `nginx/ssl/` при первом запуске.
+- **LetsEncrypt**: запустите `sudo ./renew-cert.sh` (нужен `certbot` на хосте).
 
 ## Как пользоваться (первые шаги)
 
