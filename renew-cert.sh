@@ -44,10 +44,39 @@ if [ -z "$DOMAIN" ]; then
   exit 1
 fi
 
-if ! command -v certbot >/dev/null 2>&1; then
-  echo "certbot not found. Install it first (e.g. apt install certbot)." >&2
-  exit 1
-fi
+install_certbot() {
+  if command -v certbot >/dev/null 2>&1; then
+    return 0
+  fi
+
+  echo "[renew-cert] certbot not found; attempting to install automatically..."
+
+  # Debian / Ubuntu / Proxmox
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+    apt-get install -y certbot
+  # Alpine
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache certbot
+  # Fedora / RHEL / CentOS
+  elif command -v dnf >/dev/null 2>&1; then
+    dnf install -y certbot
+  elif command -v yum >/dev/null 2>&1; then
+    yum install -y certbot
+  else
+    echo "certbot not found and no supported package manager detected." >&2
+    echo "Install certbot manually, then rerun: sudo ./renew-cert.sh" >&2
+    exit 1
+  fi
+
+  if ! command -v certbot >/dev/null 2>&1; then
+    echo "Failed to install certbot automatically. Install it manually and rerun." >&2
+    exit 1
+  fi
+}
+
+install_certbot
 
 LE_DIR="/etc/letsencrypt/live/$DOMAIN"
 SSL_DIR="$APP_DIR/nginx/ssl"
