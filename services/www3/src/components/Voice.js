@@ -45,7 +45,7 @@ const {
 function Voice() {
     // TTS состояние
     const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи Silero TTS.');
-    const [ttsVoice, setTtsVoice] = useState('aidar');
+    const [ttsVoice, setTtsVoice] = useState('');
     const [ttsLanguage, setTtsLanguage] = useState('ru');
     const [ttsSpeed, setTtsSpeed] = useState(1.0);
     const [ttsSampleRate, setTtsSampleRate] = useState(24000);
@@ -61,8 +61,8 @@ function Voice() {
     const [sttError, setSttError] = useState(null);
     const [mediaRecorder, setMediaRecorder] = useState(null);
     const [sttModels, setSttModels] = useState({});
-    const [selectedSttModel, setSelectedSttModel] = useState('base');
-    const [currentSttModel, setCurrentSttModel] = useState('base'); // Текущая загруженная модель
+    const [selectedSttModel, setSelectedSttModel] = useState('');
+    const [currentSttModel, setCurrentSttModel] = useState(''); // Текущая загруженная модель
     const [sttLanguage, setSttLanguage] = useState('ru');
     const [isLoadingSttModels, setIsLoadingSttModels] = useState(true);
     const [isTranscribing, setIsTranscribing] = useState(false);
@@ -76,6 +76,18 @@ function Voice() {
     
     const audioRef = useRef(null);
     const theme = useTheme();
+
+    const isSecureContext = useMemo(() => {
+        try {
+            return !!window.isSecureContext;
+        } catch {
+            return false;
+        }
+    }, []);
+
+    const isMicrophoneSupported = useMemo(() => {
+        return !!(navigator?.mediaDevices?.getUserMedia && typeof MediaRecorder !== 'undefined');
+    }, []);
 
     // Функция для перевода gender на английский
     const translateGender = (gender) => {
@@ -113,10 +125,15 @@ function Voice() {
 
     // Автоматическое обновление голоса при смене языка
     useEffect(() => {
-        if (filteredVoices.length > 0 && !filteredVoices.find(v => v.name === ttsVoice)) {
+        if (isLoadingVoices) return;
+        if (filteredVoices.length === 0) {
+            if (ttsVoice !== '') setTtsVoice('');
+            return;
+        }
+        if (!filteredVoices.find(v => v.name === ttsVoice)) {
             setTtsVoice(filteredVoices[0].name);
         }
-    }, [filteredVoices, ttsVoice]);
+    }, [filteredVoices, ttsVoice, isLoadingVoices]);
 
     // Загрузка списка голосов при монтировании
     useEffect(() => {
@@ -128,6 +145,13 @@ function Voice() {
                 }
                 const voicesData = await response.json();
                 setVoices(voicesData);
+
+                // Prefer "aidar" when available, otherwise pick the first voice.
+                const voiceNames = Array.isArray(voicesData) ? voicesData.map(v => v?.name).filter(Boolean) : [];
+                if (!voiceNames.includes(ttsVoice)) {
+                    const preferred = voiceNames.includes('aidar') ? 'aidar' : (voiceNames[0] || '');
+                    setTtsVoice(preferred);
+                }
             } catch (err) {
                 console.error('Error fetching voices:', err);
                 setTtsError('Failed to load voice list');
@@ -148,9 +172,13 @@ function Voice() {
                     throw new Error('Failed to fetch STT models');
                 }
                 const modelsData = await response.json();
-                setSttModels(modelsData.models);
-                setCurrentSttModel(modelsData.current_model); // Устанавливаем текущую модель
-                setSelectedSttModel(modelsData.current_model); // Синхронизируем выбор
+                const models = modelsData?.models || {};
+                setSttModels(models);
+
+                const available = Object.keys(models);
+                const current = modelsData?.current_model || available[0] || '';
+                setCurrentSttModel(current);
+                setSelectedSttModel(current);
             } catch (err) {
                 console.error('Error fetching STT models:', err);
                 setSttError('Failed to load STT models');
@@ -213,6 +241,7 @@ function Voice() {
     // Обработчик смены модели STT
     const handleSttModelChange = (e) => {
         const newModel = e.target.value;
+        if (!newModel) return;
         setSelectedSttModel(newModel);
         handleLoadSttModel(newModel);
     };
@@ -311,6 +340,20 @@ function Voice() {
         try {
             setSttError(null);
             setSttResult('');
+
+            // Browser support / secure context checks
+            if (!navigator?.mediaDevices?.getUserMedia) {
+                if (!isSecureContext) {
+                    setSttError('Микрофон недоступен в HTTP. Откройте страницу через HTTPS (или localhost).');
+                } else {
+                    setSttError('Ваш браузер не поддерживает доступ к микрофону (navigator.mediaDevices.getUserMedia недоступен).');
+                }
+                return;
+            }
+            if (typeof MediaRecorder === 'undefined') {
+                setSttError('Ваш браузер не поддерживает запись аудио (MediaRecorder недоступен).');
+                return;
+            }
             
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             const recorder = new MediaRecorder(stream);
@@ -336,7 +379,14 @@ function Voice() {
             
         } catch (err) {
             console.error('Error starting recording:', err);
-            setSttError('Failed to access microphone');
+            const name = err?.name || '';
+            if (name === 'NotAllowedError' || name === 'SecurityError') {
+                setSttError('Доступ к микрофону запрещён. Разрешите микрофон в настройках браузера и обновите страницу.');
+            } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+                setSttError('Микрофон не найден. Проверьте, что устройство подключено и доступно системе.');
+            } else {
+                setSttError('Не удалось получить доступ к микрофону.');
+            }
         }
     };
 
@@ -450,7 +500,11 @@ function Voice() {
                                         label="Voice"
                                         onChange={(e) => setTtsVoice(e.target.value)}
                                         disabled={isLoadingVoices || filteredVoices.length === 0}
+                                        displayEmpty
                                     >
+                                        <MenuItem value="">
+                                            <em>{isLoadingVoices ? 'Loading...' : 'Select voice'}</em>
+                                        </MenuItem>
                                         {filteredVoices.map((voice) => (
                                             <MenuItem key={voice.name} value={voice.name}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -667,28 +721,33 @@ function Voice() {
                                         value={selectedSttModel}
                                         label="Whisper Model"
                                         onChange={handleSttModelChange}
-                                        disabled={isLoadingSttModels || isLoadingModel}
+                                        disabled={isLoadingSttModels || isLoadingModel || Object.keys(sttModels).length === 0}
+                                        displayEmpty
                                         endAdornment={isLoadingModel && (
                                             <InputAdornment position="end">
                                                 <CircularProgress size={20} />
                                             </InputAdornment>
                                         )}
                                     >
+                                        <MenuItem value="">
+                                            <em>{isLoadingSttModels ? 'Loading...' : 'Select model'}</em>
+                                        </MenuItem>
                                         {Object.entries(sttModels).map(([model, info]) => (
                                             <MenuItem key={model} value={model}>
                                                 <Box sx={{ display: 'flex', alignItems: 'center', width: '100%' }}>
                                                     <Box sx={{ flexGrow: 1 }}>
-                                                        <Typography variant="body2">
-                                                            {model} ({info.size})
+                                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                                                            <Typography variant="body2" component="span">
+                                                                {model} ({info.size})
+                                                            </Typography>
                                                             {model === currentSttModel && (
-                                                                <Chip 
-                                                                    label="Loaded" 
-                                                                    size="small" 
-                                                                    color="success" 
-                                                                    sx={{ ml: 1 }} 
+                                                                <Chip
+                                                                    label="Loaded"
+                                                                    size="small"
+                                                                    color="success"
                                                                 />
                                                             )}
-                                                        </Typography>
+                                                        </Box>
                                                         <Typography variant="caption" color="text.secondary">
                                                             {translateModelInfo(info.speed)} • {translateModelInfo(info.quality)}
                                                         </Typography>
@@ -765,7 +824,7 @@ function Voice() {
                                 <Box sx={{ textAlign: 'center', mb: 3 }}>
                                     <IconButton
                                         onClick={isRecording ? handleStopRecording : handleStartRecording}
-                                        disabled={isTranscribing}
+                                        disabled={isTranscribing || !isMicrophoneSupported}
                                         sx={{
                                             width: 80,
                                             height: 80,
@@ -788,6 +847,11 @@ function Voice() {
                                     <Typography variant="body2" sx={{ mt: 1 }}>
                                         {isTranscribing ? 'Processing...' : isRecording ? 'Click to stop' : 'Click to record'}
                                     </Typography>
+                                    {!isMicrophoneSupported && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                            Mic is available only in a secure context (HTTPS / localhost) and supported browsers.
+                                        </Typography>
+                                    )}
                                 </Box>
 
                                 {/* Прогресс */}
