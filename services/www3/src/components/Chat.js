@@ -355,16 +355,25 @@ function Chat() {
                 }
 
                 // Загружаем embedding модели (для исключения)
+                let excludedEmbeddingModels = [];
                 const embeddingResponse = await window.api.fetch('/api/models');
                 if (embeddingResponse.ok) {
                     const embeddingData = await embeddingResponse.json();
-                    const embeddingModelsList = embeddingData.models.filter(model => 
-                        model.downloadStatus?.status === 'ready' && 
-                        model.capabilities?.includes('embedding')
-                    );
-                    // Добавляем FRIDA как embedding модель
-                    embeddingModelsList.push({ name: 'frida' });
-                    setEmbeddingModels(embeddingModelsList.map(m => m.name));
+                    // Важно: многие "chat" модели могут уметь embeddings.
+                    // Для чата исключаем только embedding-only модели (embedding && !chat).
+                    const embeddingOnlyModelsList = (embeddingData.models || []).filter(model => {
+                        const caps = Array.isArray(model.capabilities) ? model.capabilities : [];
+                        const isReady = model.downloadStatus?.status === 'ready';
+                        const isEmbedding = caps.includes('embedding');
+                        const isChat = caps.includes('chat');
+                        return isReady && isEmbedding && !isChat;
+                    });
+
+                    const excludeSet = new Set(embeddingOnlyModelsList.map(m => m.name).filter(Boolean));
+                    // Добавляем FRIDA как embedding-only модель
+                    excludeSet.add('frida');
+                    excludedEmbeddingModels = Array.from(excludeSet);
+                    setEmbeddingModels(excludedEmbeddingModels);
                 }
 
                 // Загружаем модели
@@ -383,7 +392,7 @@ function Chat() {
                 if (savedModel) {
                     // Проверяем в установленных моделях (исключая embedding)
                     const isInstalledModel = modelsData.models.installed.some(m => 
-                        m.name === savedModel && !embeddingModels.includes(m.name)
+                        m.name === savedModel && !excludedEmbeddingModels.includes(m.name)
                     );
                     // Проверяем в OpenRouter моделях
                     const isOpenRouterModel = modelsData.models.available.openrouter.some(m => `openrouter/${m.id}` === savedModel);
@@ -396,7 +405,7 @@ function Chat() {
                 // Если сохраненной модели нет, выбираем первую доступную
                 if (!modelToSelect) {
                     // Ищем первую не-embedding модель
-                    const availableInstalled = modelsData.models.installed.filter(m => !embeddingModels.includes(m.name));
+                    const availableInstalled = modelsData.models.installed.filter(m => !excludedEmbeddingModels.includes(m.name));
                     if (availableInstalled.length > 0) {
                         modelToSelect = availableInstalled[0].name;
                     } else if (modelsData.models.available.openrouter.length > 0) {
@@ -433,6 +442,8 @@ function Chat() {
                     id: model.name,
                     name: model.name,
                     type: 'installed',
+                    gpu: model.gpu,
+                    gpu_label: model.gpu_label,
                     capabilities: model.capabilities || []
                 })),
             // Модели OpenRouter
@@ -744,7 +755,19 @@ function Chat() {
                                         }}>
                                             {model.type === 'installed' ? 'download_done' : 'cloud'}
                                         </Icon>
-                                        {model.name}
+                                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: 1 }}>
+                                            <Box sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                {model.name}
+                                            </Box>
+                                            {model.type === 'installed' && (
+                                                <Chip
+                                                    size="small"
+                                                    variant="outlined"
+                                                    label={model.gpu_label || (Number.isFinite(model.gpu) ? `GPU ${model.gpu}` : 'GPU')}
+                                                    sx={{ ml: 1, flexShrink: 0 }}
+                                                />
+                                            )}
+                                        </Box>
                                     </MenuItem>
                                 ))}
                             </Select>
