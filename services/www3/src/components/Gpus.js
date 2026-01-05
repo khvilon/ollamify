@@ -22,12 +22,16 @@ function Gpus() {
     const [instances, setInstances] = useState([]);
     const [gpus, setGpus] = useState([]);
     const [metricsAvailable, setMetricsAvailable] = useState(false);
+    const [metricsStale, setMetricsStale] = useState(false);
 
     useEffect(() => {
-        let timerId;
         let cancelled = false;
+        let timerId;
+        let inFlight = false;
 
         const load = async () => {
+            if (inFlight) return;
+            inFlight = true;
             try {
                 const response = await window.api.fetch('/api/gpus');
                 if (!response) return;
@@ -38,11 +42,13 @@ function Gpus() {
                 setInstances(data.instances || []);
                 setGpus(data.gpus || []);
                 setMetricsAvailable(!!data.metricsAvailable);
+                setMetricsStale(!!data.metricsStale);
                 setError('');
             } catch (e) {
                 if (cancelled) return;
                 setError(e.message || 'Failed to fetch GPU info');
             } finally {
+                inFlight = false;
                 if (!cancelled) setLoading(false);
             }
         };
@@ -96,8 +102,12 @@ function Gpus() {
                         />
                         <Chip
                             icon={<Icon>bolt</Icon>}
-                            label={metricsAvailable ? 'GPU metrics: live' : 'GPU metrics: not available'}
-                            color={metricsAvailable ? 'success' : 'default'}
+                            label={
+                                metricsAvailable
+                                    ? (metricsStale ? 'GPU metrics: stale' : 'GPU metrics: live')
+                                    : 'GPU metrics: not available'
+                            }
+                            color={metricsAvailable ? (metricsStale ? 'warning' : 'success') : 'default'}
                             variant="outlined"
                         />
                     </Box>

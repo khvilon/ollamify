@@ -157,6 +157,7 @@ services:
     expose:
       - "8005"
     container_name: gpu-info
+    restart: unless-stopped
     networks:
       - app-network
     deploy:
