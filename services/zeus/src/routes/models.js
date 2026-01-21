@@ -45,77 +45,128 @@ async function fetchOllamaModels() {
       return modelsCache;
     }
 
-    logger.info('Fetching models from ollama.com');
-    const response = await fetch('https://ollama.com/search');
-    
-    if (!response.ok) {
-      throw new Error(`Failed to fetch models: ${response.statusText}`);
-    }
-    
-    const html = await response.text();
-    
-    const dom = new JSDOM(html);
-    const document = dom.window.document;
-    
-    const modelElements = document.querySelectorAll('[x-test-model]');
-    logger.info(`Found ${modelElements.length} model elements`);
+    logger.info('Fetching models from ollama.com (paginated search)');
 
-    if (!modelElements || modelElements.length === 0) {
-      logger.warn('No model elements found on the page');
-      // Если не удалось получить новые данные, возвращаем кэш, если он есть
-      if (modelsCache) {
-        return modelsCache;
+    const baseUrl = 'https://ollama.com/search';
+    const headers = {
+      'User-Agent': 'Ollamify/1.0 (+https://github.com/ollama/ollama)',
+      'Accept': 'text/html,application/xhtml+xml',
+      'Accept-Language': 'en-US,en;q=0.9',
+    };
+
+    const modelsByName = new Map();
+    const seenPages = new Set();
+    let pageUrl = baseUrl;
+    let pagesFetched = 0;
+    const MAX_PAGES = 200;
+
+    while (pageUrl && !seenPages.has(pageUrl) && pagesFetched < MAX_PAGES) {
+      pagesFetched += 1;
+      seenPages.add(pageUrl);
+
+      const response = await fetchWithTimeout(pageUrl, { method: 'GET', headers }, 15000);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch models page (${pageUrl}): ${response.status} ${response.statusText}`);
       }
-      return []; // Возвращаем пустой массив, если нет ни данных, ни кэша
-    }
 
-    const models = [];
-    modelElements.forEach(modelEl => {
-      try {
-        const title = modelEl.querySelector('[x-test-search-response-title]')?.textContent;
-        if (!title) {
-          logger.warn('Skipping model element without title');
-          return;
+      const html = await response.text();
+      const dom = new JSDOM(html);
+      const document = dom.window.document;
+
+      const modelElements = document.querySelectorAll('[x-test-model]');
+      logger.info(`Found ${modelElements.length} model elements on page ${pagesFetched}`);
+
+      // Если на первой странице ничего не нашли — это ошибка парсинга/доступа
+      if ((!modelElements || modelElements.length === 0) && pagesFetched === 1) {
+        logger.warn('No model elements found on the first page');
+        if (modelsCache) return modelsCache;
+        return [];
+      }
+
+      // На последующих страницах отсутствие моделей означает конец списка
+      if (!modelElements || modelElements.length === 0) {
+        break;
+      }
+
+      modelElements.forEach(modelEl => {
+        try {
+          const title = modelEl.querySelector('[x-test-search-response-title]')?.textContent?.trim();
+          if (!title) {
+            logger.warn('Skipping model element without title');
+            return;
+          }
+
+          const description = modelEl.querySelector('p.max-w-lg')?.textContent?.trim() || '';
+          const pullCount = modelEl.querySelector('[x-test-pull-count]')?.textContent?.trim() || '0';
+          const tagCount = modelEl.querySelector('[x-test-tag-count]')?.textContent?.trim() || '0';
+          const updated = modelEl.querySelector('[x-test-updated]')?.textContent?.trim() || '';
+
+          const capabilities = Array.from(modelEl.querySelectorAll('[x-test-capability]'))
+            .map(el => el.textContent?.trim())
+            .filter(Boolean);
+
+          const sizes = Array.from(modelEl.querySelectorAll('[x-test-size]'))
+            .map(el => el.textContent?.trim())
+            .filter(Boolean);
+
+          // Конвертируем pullCount в число
+          const pulls = pullCount.replace(/[KMB]/g, x => ({
+            'K': '000',
+            'M': '000000',
+            'B': '000000000'
+          }[x])).replace('.', '');
+
+          // Конвертируем updated в дни
+          const daysAgo = parseRelativeTime(updated);
+
+          const prev = modelsByName.get(title);
+          if (prev) {
+            // Мержим размеры/возможности (на случай если модель встречается на разных страницах)
+            const mergedCapabilities = Array.from(new Set([...(prev.capabilities || []), ...capabilities]));
+            const mergedSizes = Array.from(new Set([...(prev.sizes || []), ...sizes]));
+
+            modelsByName.set(title, {
+              ...prev,
+              description: prev.description || description,
+              pulls: Number.isFinite(prev.pulls) ? prev.pulls : parseInt(pulls || '0'),
+              tags: Number.isFinite(prev.tags) ? prev.tags : parseInt(tagCount || '0'),
+              updated_days_ago: Number.isFinite(prev.updated_days_ago) ? prev.updated_days_ago : daysAgo,
+              capabilities: mergedCapabilities,
+              sizes: mergedSizes,
+            });
+          } else {
+            modelsByName.set(title, {
+              name: title,
+              description,
+              pulls: parseInt(pulls || '0'),
+              tags: parseInt(tagCount || '0'),
+              updated_days_ago: daysAgo,
+              capabilities,
+              sizes,
+            });
+          }
+        } catch (error) {
+          logger.error('Error parsing model element:', error);
         }
+      });
 
-        const description = modelEl.querySelector('p.max-w-lg')?.textContent || '';
-        const pullCount = modelEl.querySelector('[x-test-pull-count]')?.textContent || '0';
-        const tagCount = modelEl.querySelector('[x-test-tag-count]')?.textContent || '0';
-        const updated = modelEl.querySelector('[x-test-updated]')?.textContent || '';
-        
-        const capabilities = Array.from(modelEl.querySelectorAll('[x-test-capability]'))
-          .map(el => el.textContent)
-          .filter(Boolean);
-
-        const sizes = Array.from(modelEl.querySelectorAll('[x-test-size]'))
-          .map(el => el.textContent?.trim())
-          .filter(Boolean);
-        
-        // Конвертируем pullCount в число
-        const pulls = pullCount.replace(/[KMB]/g, x => ({
-          'K': '000',
-          'M': '000000',
-          'B': '000000000'
-        }[x])).replace('.', '');
-        
-        // Конвертируем updated в дни
-        const daysAgo = parseRelativeTime(updated);
-
-        models.push({
-          name: title,
-          description,
-          pulls: parseInt(pulls || '0'),
-          tags: parseInt(tagCount || '0'),
-          updated_days_ago: daysAgo,
-          capabilities,
-          sizes
-        });
-      } catch (error) {
-        logger.error('Error parsing model element:', error);
+      // Пагинация: на странице присутствует sentinel-элемент для бесконечной прокрутки.
+      // Он содержит hx-get="/search?page=N" и hx-trigger="revealed".
+      const nextEl = document.querySelector('li[hx-trigger="revealed"][hx-get]');
+      const nextPath = nextEl?.getAttribute('hx-get')?.trim();
+      if (nextPath) {
+        try {
+          pageUrl = new URL(nextPath, baseUrl).toString();
+        } catch {
+          pageUrl = null;
+        }
+      } else {
+        pageUrl = null;
       }
-    });
+    }
 
-    logger.info(`Successfully parsed ${models.length} models`);
+    const models = Array.from(modelsByName.values());
+    logger.info(`Successfully parsed ${models.length} models from ${pagesFetched} pages`);
 
     // Обновляем кэш только если получили какие-то данные
     if (models.length > 0) {
