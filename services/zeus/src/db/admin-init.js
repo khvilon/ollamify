@@ -42,6 +42,25 @@ async function initializeAdminSchema() {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Friendly Ollamify servers (cluster peers)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin.friendly_servers (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        base_url TEXT UNIQUE NOT NULL,
+        username TEXT,
+        api_key TEXT NOT NULL,
+        enabled BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_friendly_servers_enabled
+      ON admin.friendly_servers (enabled)
+    `);
     
     // Создаем дефолтного админа, если его нет
     await client.query(`

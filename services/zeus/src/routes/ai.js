@@ -4,8 +4,10 @@ import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import logger from '../utils/logger.js';
-import { resolveOllamaBaseUrlForModel } from '../utils/ollama.js';
+import { resolveOllamaBaseUrlForModel, resolveOllamaInstanceForModel } from '../utils/ollama.js';
 import qdrantClient from '../db/qdrant.js';
+import { beginInFlight } from '../utils/inflight.js';
+import { forwardToFriendly, pickExecutionTarget } from '../utils/friendlyRouting.js';
 
 const router = express.Router();
 
@@ -766,45 +768,67 @@ router.post('/embed', async (req, res) => {
   }
   
   try {
+    // Friendly routing (only for local Ollama embedding models)
+    const target = await pickExecutionTarget({ model, req });
+    if (target.type === 'friendly') {
+      logger.info('Forwarding embedding request to friendly server', {
+        model,
+        target: target.server?.name || target.server?.base_url,
+        debug: target.debug,
+      });
+      await forwardToFriendly({ req, res, server: target.server, path: '/api/ai/embed', timeoutMs: 180_000 });
+      return;
+    }
+
+    res.setHeader('X-Ollamify-Executed-On', 'local');
+
+    const inst = await resolveOllamaInstanceForModel(model);
+    const endInFlight = beginInFlight({ instanceId: inst?.id ?? null, model, label: 'embed' });
+
     // Убедимся, что input всегда массив
     const inputs = Array.isArray(input) ? input : [input];
+
+    const ollamaBaseUrl = inst?.baseUrl || await resolveOllamaBaseUrlForModel(model);
     
-    // Получаем эмбеддинги для каждого текста
-    const embeddings = await Promise.all(inputs.map(async (text) => {
-      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(model);
-      const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ model, prompt: text })
-      });
-      
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Ollama API error: ${error}`);
-      }
+    try {
+      // Получаем эмбеддинги для каждого текста
+      const embeddings = await Promise.all(inputs.map(async (text) => {
+        const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ model, prompt: text })
+        });
+        
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Ollama API error: ${error}`);
+        }
+  
+        const data = await response.json();
+        return data.embedding;
+      }));
 
-      const data = await response.json();
-      return data.embedding;
-    }));
+      // Форматируем ответ в стиле OpenAI API
+      const response = {
+        object: 'list',
+        data: embeddings.map((embedding, index) => ({
+          object: 'embedding',
+          embedding,
+          index
+        })),
+        model,
+        usage: {
+          prompt_tokens: -1,  // Не поддерживается
+          total_tokens: -1    // Не поддерживается
+        }
+      };
 
-    // Форматируем ответ в стиле OpenAI API
-    const response = {
-      object: 'list',
-      data: embeddings.map((embedding, index) => ({
-        object: 'embedding',
-        embedding,
-        index
-      })),
-      model,
-      usage: {
-        prompt_tokens: -1,  // Не поддерживается
-        total_tokens: -1    // Не поддерживается
-      }
-    };
-
-    res.json(response);
+      res.json(response);
+    } finally {
+      endInFlight();
+    }
   } catch (error) {
     logger.error('Error getting embedding:', error);
     res.status(500).json({ 
@@ -1028,6 +1052,21 @@ router.post('/complete', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters: model, messages' });
     }
 
+    // Friendly routing (only for local Ollama models; OpenRouter stays local)
+    const target = await pickExecutionTarget({ model, req });
+    if (target.type === 'friendly') {
+      logger.info('Forwarding completion request to friendly server', {
+        model,
+        stream,
+        target: target.server?.name || target.server?.base_url,
+        debug: target.debug,
+      });
+      await forwardToFriendly({ req, res, server: target.server, path: '/api/ai/complete', timeoutMs: 600_000 });
+      return;
+    }
+
+    res.setHeader('X-Ollamify-Executed-On', 'local');
+
     if (stream) {
       // Устанавливаем заголовки для SSE
       res.setHeader('Content-Type', 'text/event-stream');
@@ -1039,84 +1078,169 @@ router.post('/complete', async (req, res) => {
         throw new Error('Streaming is not supported for OpenRouter models');
       }
 
-      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(actualModel);
-      const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: model,
-          messages: messages,
-          stream: true
-        })
-      });
+      const inst = await resolveOllamaInstanceForModel(model);
+      const endInFlight = beginInFlight({ instanceId: inst?.id ?? null, model, label: 'complete_stream' });
 
-      // Читаем ответ построчно через современный асинхронный итератор
-      for await (const chunk of response.body) {
-        const decoder = new TextDecoder();
-        const decodedChunk = decoder.decode(chunk);
-        
-        try {
-          const data = JSON.parse(decodedChunk);
-          
-          // Проверяем, нужно ли завершить поток
-          if (data.done) {
-            res.write('data: [DONE]\n\n');
-            res.end();
-            break;
-          }
-          
-          // Форматируем ответ в стиле OpenAI
-          const openAIChunk = {
-            id: 'cmpl-' + Math.random().toString(36).substr(2, 9),
-            object: 'chat.completion.chunk',
-            created: Date.now(),
-            model: model,
-            choices: [{
-              index: 0,
-              delta: {
-                content: data.response
-              },
-              finish_reason: data.done ? 'stop' : null
-            }]
-          };
-          
-          res.write(`data: ${JSON.stringify(openAIChunk)}\n\n`);
-        } catch (e) {
-          logger.error('Error parsing streaming response:', e);
-          continue; // Пропускаем ошибки парсинга - некоторые строки могут не быть валидным JSON
-        }
-      }
-      
-      // Если мы здесь, значит поток завершился без явного "done"
-      res.write('data: [DONE]\n\n');
-      res.end();
-    } else {
-      const content = await getCompletion(messages, model, think);
-      
-      // Форматируем ответ в стиле OpenAI
-      const response = {
-        id: 'cmpl-' + Math.random().toString(36).substr(2, 9),
-        object: 'chat.completion',
-        created: Date.now(),
-        model: model,
-        choices: [{
-          index: 0,
-          message: {
-            role: 'assistant',
-            content: content
+      try {
+        const ollamaBaseUrl = inst?.baseUrl || await resolveOllamaBaseUrlForModel(model);
+        const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          finish_reason: 'stop'
-        }],
-        usage: {
-          prompt_tokens: -1,  // Не поддерживается
-          completion_tokens: -1,  // Не поддерживается
-          total_tokens: -1  // Не поддерживается
-        }
-      };
+          body: JSON.stringify({
+            model: model,
+            messages: messages,
+            stream: true
+          })
+        });
 
-      res.json(response);
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Ollama API error: ${error}`);
+        }
+
+        // Стриминг Ollama: JSON lines. Собираем буфер и парсим построчно.
+        const decoder = new TextDecoder();
+        let buffer = '';
+        const streamId = 'chatcmpl-' + Math.random().toString(36).slice(2, 11);
+        const created = Math.floor(Date.now() / 1000);
+        let sentRole = false;
+
+        for await (const chunk of response.body) {
+          buffer += decoder.decode(chunk, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed) continue;
+
+            let data;
+            try {
+              data = JSON.parse(trimmed);
+            } catch (e) {
+              logger.error('Error parsing Ollama streaming line:', e);
+              continue;
+            }
+
+            if (!sentRole) {
+              sentRole = true;
+              const roleChunk = {
+                id: streamId,
+                object: 'chat.completion.chunk',
+                created,
+                model,
+                choices: [{
+                  index: 0,
+                  delta: { role: 'assistant' },
+                  finish_reason: null
+                }]
+              };
+              res.write(`data: ${JSON.stringify(roleChunk)}\n\n`);
+            }
+
+            if (data?.response) {
+              const openAIChunk = {
+                id: streamId,
+                object: 'chat.completion.chunk',
+                created,
+                model: model,
+                choices: [{
+                  index: 0,
+                  delta: {
+                    content: data.response
+                  },
+                  finish_reason: null
+                }]
+              };
+              res.write(`data: ${JSON.stringify(openAIChunk)}\n\n`);
+            }
+
+            if (data?.done) {
+              // Завершаем поток в стиле OpenAI
+              const finalChunk = {
+                id: streamId,
+                object: 'chat.completion.chunk',
+                created,
+                model: model,
+                choices: [{
+                  index: 0,
+                  delta: {},
+                  finish_reason: 'stop'
+                }]
+              };
+              res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+              res.write('data: [DONE]\n\n');
+              res.end();
+              return;
+            }
+          }
+        }
+
+        // Flush last buffered line if any
+        const tail = buffer.trim();
+        if (tail) {
+          try {
+            const data = JSON.parse(tail);
+            if (data?.response) {
+              const openAIChunk = {
+                id: streamId,
+                object: 'chat.completion.chunk',
+                created,
+                model: model,
+                choices: [{
+                  index: 0,
+                  delta: { content: data.response },
+                  finish_reason: null
+                }]
+              };
+              res.write(`data: ${JSON.stringify(openAIChunk)}\n\n`);
+            }
+          } catch {
+            // ignore
+          }
+        }
+
+        res.write('data: [DONE]\n\n');
+        res.end();
+      } finally {
+        endInFlight();
+      }
+    } else {
+      const localIsOpenRouter = model.startsWith('openrouter/');
+      const endInFlight = !localIsOpenRouter
+        ? beginInFlight({ instanceId: (await resolveOllamaInstanceForModel(model))?.id ?? null, model, label: 'complete' })
+        : null;
+
+      try {
+        const content = await getCompletion(messages, model, think);
+      
+        // Форматируем ответ в стиле OpenAI
+        const response = {
+          id: 'cmpl-' + Math.random().toString(36).substr(2, 9),
+          object: 'chat.completion',
+          created: Date.now(),
+          model: model,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: content
+            },
+            finish_reason: 'stop'
+          }],
+          usage: {
+            prompt_tokens: -1,  // Не поддерживается
+            completion_tokens: -1,  // Не поддерживается
+            total_tokens: -1  // Не поддерживается
+          }
+        };
+
+        res.json(response);
+      } finally {
+        if (endInFlight) endInFlight();
+      }
     }
   } catch (error) {
     logger.error('Error in completion:', error);

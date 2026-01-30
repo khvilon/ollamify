@@ -2,6 +2,8 @@ import express from 'express';
 import { migrateChunksToQdrant, migrateAllProjectsToQdrant } from '../db/migrate-to-qdrant.js';
 import pool from '../db/conf.js';
 import logger from '../utils/logger.js';
+import FriendlyServerQueries from '../db/friendly-servers.js';
+import { fetchRemoteClusterStatus } from '../utils/clusterStatus.js';
 
 const router = express.Router();
 
@@ -291,6 +293,80 @@ router.get('/stats/users', async (req, res) => {
       error: 'Failed to fetch user statistics',
       details: error.message
     });
+  }
+});
+
+// ---- Friendly servers (cluster peers) CRUD (admin only) ----
+
+router.get('/friendly-servers', requireAdmin, async (req, res) => {
+  try {
+    const servers = await FriendlyServerQueries.list({ includeSecrets: false });
+    res.json({ servers });
+  } catch (error) {
+    logger.error('Error listing friendly servers:', error);
+    res.status(500).json({ error: error.message || 'Failed to list friendly servers' });
+  }
+});
+
+router.post('/friendly-servers', requireAdmin, async (req, res) => {
+  try {
+    const { name, base_url, username, api_key, enabled = true } = req.body || {};
+    const created = await FriendlyServerQueries.create({ name, base_url, username, api_key, enabled });
+    res.status(201).json({ server: created });
+  } catch (error) {
+    logger.error('Error creating friendly server:', error);
+    res.status(400).json({ error: error.message || 'Failed to create friendly server' });
+  }
+});
+
+router.put('/friendly-servers/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const payload = req.body || {};
+    const updated = await FriendlyServerQueries.update(id, {
+      name: payload.name,
+      base_url: payload.base_url,
+      username: payload.username,
+      api_key: payload.api_key,
+      enabled: payload.enabled,
+    });
+    if (!updated) {
+      return res.status(404).json({ error: 'Friendly server not found' });
+    }
+    res.json({ server: updated });
+  } catch (error) {
+    logger.error('Error updating friendly server:', error);
+    res.status(400).json({ error: error.message || 'Failed to update friendly server' });
+  }
+});
+
+router.delete('/friendly-servers/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const deleted = await FriendlyServerQueries.delete(id);
+    if (!deleted) {
+      return res.status(404).json({ error: 'Friendly server not found' });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('Error deleting friendly server:', error);
+    res.status(500).json({ error: error.message || 'Failed to delete friendly server' });
+  }
+});
+
+router.get('/friendly-servers/:id/status', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const server = await FriendlyServerQueries.findById(id, { includeSecrets: true });
+    if (!server) {
+      return res.status(404).json({ error: 'Friendly server not found' });
+    }
+
+    const status = await fetchRemoteClusterStatus(server, { force: true, timeoutMs: 5000 });
+    res.json({ status });
+  } catch (error) {
+    logger.error('Error fetching friendly server status:', error);
+    res.status(502).json({ error: error.message || 'Failed to fetch friendly server status' });
   }
 });
 

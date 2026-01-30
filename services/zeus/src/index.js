@@ -13,6 +13,7 @@ import adminRouter from './routes/admin.js';
 import ttsRouter from './routes/tts.js';
 import sttRouter from './routes/stt.js';
 import gpusRouter from './routes/gpus.js';
+import clusterRouter from './routes/cluster.js';
 import { errorHandler } from './errors.js';
 import logger from './utils/logger.js';
 import { requestLogger } from './middleware/requestLogger.js';
@@ -239,6 +240,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/tts', ttsRouter);
 app.use('/api/stt', sttRouter);
 app.use('/api/gpus', gpusRouter);
+app.use('/api/cluster', clusterRouter);
 
 // Маршрут для проверки health
 app.get('/health', (req, res) => {
