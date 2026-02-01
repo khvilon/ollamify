@@ -220,8 +220,25 @@ app.use((req, res, next) => {
   logger.info('Raw X-User header:', userHeader);
   if (userHeader) {
     try {
-      req.user = JSON.parse(userHeader);
-      logger.info('Parsed user:', req.user);
+      const parsed = JSON.parse(userHeader);
+
+      // Normalize user shape across services:
+      // - auth service sets: { id, email, username, role }
+      // - legacy/other shapes may use: { userId, isAdmin, is_admin }
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.id == null && parsed.userId != null) {
+          parsed.id = parsed.userId;
+        }
+
+        // Ensure boolean admin flag for zeus routes (admin.js checks req.user.is_admin)
+        if (typeof parsed.is_admin !== 'boolean') {
+          const role = (parsed.role ?? '').toString().toLowerCase();
+          parsed.is_admin = role === 'admin' || parsed.isAdmin === true || parsed.is_admin === true;
+        }
+      }
+
+      req.user = parsed;
+      logger.info('Parsed user (normalized):', req.user);
     } catch (error) {
       logger.error('Failed to parse X-User header:', error);
       logger.error('Header value:', userHeader);
