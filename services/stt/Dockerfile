@@ -17,10 +17,11 @@ RUN mkdir -p /app/models
 # Копируем файлы зависимостей
 COPY requirements.txt .
 
-# Оптимизированная установка Python зависимостей
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip cache purge
+# Оптимизированная установка Python зависимостей.
+# Пин toolchain для совместимости сборки openai-whisper (pkg_resources через setuptools).
+RUN python -m pip install --no-cache-dir "pip<26" "setuptools<81" wheel && \
+    python -m pip install --no-cache-dir --no-build-isolation -r requirements.txt && \
+    python -m pip cache purge
 
 # Копируем исходный код
 COPY app.py .

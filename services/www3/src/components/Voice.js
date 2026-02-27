@@ -44,7 +44,7 @@ const {
 
 function Voice() {
     // TTS состояние
-    const [ttsText, setTtsText] = useState('Привет! Это тест системы синтеза речи Silero TTS.');
+    const [ttsText, setTtsText] = useState('Привет! Это тест мультиязычного синтеза речи.');
     const [ttsVoice, setTtsVoice] = useState('');
     const [ttsLanguage, setTtsLanguage] = useState('ru');
     const [ttsSpeed, setTtsSpeed] = useState(1.0);
@@ -246,9 +246,11 @@ function Voice() {
         handleLoadSttModel(newModel);
     };
 
-    // Языки для TTS (в текущей реализации поддерживается только русский)
+    // Языки для TTS
     const ttsLanguages = [
-        { code: 'ru', name: 'Russian' }
+        { code: 'ru', name: 'Russian' },
+        { code: 'en', name: 'English' },
+        { code: 'he', name: 'Hebrew' }
     ];
 
     // Языки для STT (Whisper поддерживает много языков)
@@ -265,6 +267,7 @@ function Voice() {
         { code: 'nl', name: 'Dutch' },
         { code: 'cs', name: 'Czech' },
         { code: 'ar', name: 'Arabic' },
+        { code: 'he', name: 'Hebrew' },
         { code: 'zh', name: 'Chinese' },
         { code: 'ja', name: 'Japanese' },
         { code: 'ko', name: 'Korean' }
@@ -290,7 +293,7 @@ function Voice() {
                     language: ttsLanguage,
                     speed: ttsSpeed,
                     sample_rate: ttsSampleRate,
-                    format: 'wav'
+                    format: 'mp3'
                 })
             });
 
@@ -302,10 +305,15 @@ function Voice() {
             const audioBlob = await response.blob();
             const audioUrl = URL.createObjectURL(audioBlob);
             
+            const mimeType = audioBlob.type || response.headers.get('Content-Type') || 'audio/mpeg';
+            const fileExtension = mimeType.includes('wav') ? 'wav' : 'mp3';
+
             setTtsResult({
                 url: audioUrl,
                 blob: audioBlob,
-                size: audioBlob.size
+                size: audioBlob.size,
+                mimeType,
+                fileExtension
             });
 
             // Автоматически воспроизводим
@@ -330,7 +338,8 @@ function Voice() {
         if (ttsResult && ttsResult.blob) {
             const a = document.createElement('a');
             a.href = ttsResult.url;
-            a.download = `speech_${ttsVoice}_${Date.now()}.wav`;
+            const extension = ttsResult.fileExtension || 'mp3';
+            a.download = `speech_${ttsVoice || 'auto'}_${Date.now()}.${extension}`;
             a.click();
         }
     };
@@ -437,12 +446,27 @@ function Voice() {
     };
 
     // Быстрые фразы для тестирования
-    const quickPhrases = [
-        'Привет! Как дела?',
-        'Это тест системы синтеза речи (Silero TTS).',
-        'Проверяем скорость и качество озвучки.',
-        'Съешь ещё этих мягких французских булок, да выпей чаю.'
-    ];
+    const quickPhrasesByLanguage = {
+        ru: [
+            'Привет! Как дела?',
+            'Это тест системы синтеза речи в реальном времени.',
+            'Проверяем скорость и качество озвучки.',
+            'Съешь ещё этих мягких французских булок, да выпей чаю.'
+        ],
+        en: [
+            'Hello! How are you?',
+            'This is a real-time multilingual speech synthesis test.',
+            'Let us check quality and latency.',
+            'The quick brown fox jumps over the lazy dog.'
+        ],
+        he: [
+            'שלום, מה שלומך?',
+            'זה מבחן של סינתזת דיבור רב-לשונית.',
+            'בוא נבדוק את המהירות והאיכות.',
+            'אני רוצה לבדוק דיבור בעברית.'
+        ]
+    };
+    const quickPhrases = quickPhrasesByLanguage[ttsLanguage] || quickPhrasesByLanguage.ru;
 
     return (
         <Container maxWidth="lg" sx={{ py: 3 }}>
@@ -457,7 +481,7 @@ function Voice() {
                     Voice
                 </Typography>
                 <Typography variant="subtitle1" color="text.secondary">
-                    Text-to-Speech (Silero TTS) • Speech Recognition (Whisper)
+                    Text-to-Speech (Realtime TTS) • Speech Recognition (Whisper)
                 </Typography>
             </Box>
 
@@ -540,7 +564,6 @@ function Voice() {
                                         value={ttsLanguage}
                                         label="Language"
                                         onChange={(e) => setTtsLanguage(e.target.value)}
-                                        disabled
                                     >
                                         {ttsLanguages.map((lang) => (
                                             <MenuItem key={lang.code} value={lang.code}>
@@ -680,7 +703,7 @@ function Voice() {
                                                     Synthesis completed! Size: {Math.round(ttsResult.size / 1024)} KB
                                                 </Typography>
                                                 <audio ref={audioRef} controls style={{ width: '100%' }}>
-                                                    <source src={ttsResult.url} type="audio/wav" />
+                                                    <source src={ttsResult.url} type={ttsResult.mimeType || 'audio/mpeg'} />
                                                     Your browser does not support the audio element.
                                                 </audio>
                                             </Box>

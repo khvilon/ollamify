@@ -49,6 +49,8 @@ services:
         condition: service_started
       tts:
         condition: service_started
+      tts-realtime:
+        condition: service_started
       stt:
         condition: service_started
     environment:
@@ -62,6 +64,7 @@ services:
       - OPENROUTER_URL=${OPENROUTER_URL}
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
+      - TTS_SERVICE_URL=http://tts-realtime:8006
     expose:
       - "80"
     container_name: zeus
@@ -239,6 +242,26 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+  tts-realtime:
+    build:
+      context: ./services/tts-realtime
+      dockerfile: Dockerfile
+    ports:
+      - "8006:8006"
+    expose:
+      - "8006"
+    environment:
+      - PORT=8006
+    container_name: tts-realtime
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
   stt:
     build:

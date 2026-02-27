@@ -17,22 +17,19 @@ RUN mkdir -p /app/models
 # Копируем файлы зависимостей
 COPY requirements.txt .
 
-# Обновляем PyTorch (CUDA 12.8).
-# Важно: `--isolated` игнорирует pip-конфиги/ENV, которые могут добавлять `pypi.nvidia.com` и ломать сборку в некоторых сетях.
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
+# Используем PyTorch из базового образа.
+# Это значительно ускоряет и стабилизирует сборку в нестабильных сетях.
 ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG PIP_TIMEOUT=120
 ARG PIP_RETRIES=10
-RUN python -m pip install --no-cache-dir --isolated --upgrade torch torchvision torchaudio \
-    --index-url ${PYTORCH_INDEX_URL} \
-    --extra-index-url ${PIP_EXTRA_INDEX_URL} \
-    --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
+RUN python -c "import torch, torchaudio, torchvision; print(torch.__version__)"
 
-# Оптимизированная установка Python зависимостей
-RUN python -m pip install --no-cache-dir --isolated --upgrade pip \
+# Оптимизированная установка Python зависимостей.
+# Пин toolchain для совместимости сборки openai-whisper (pkg_resources через setuptools).
+RUN python -m pip install --no-cache-dir --isolated "pip<26" "setuptools<81" wheel \
         --index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
-    python -m pip install --no-cache-dir --isolated -r requirements.txt \
+    python -m pip install --no-cache-dir --isolated --no-build-isolation -r requirements.txt \
         --index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
     python -m pip cache purge

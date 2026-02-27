@@ -56,6 +56,7 @@ SUPPORTED_LANGUAGES = {
     'nl': 'Nederlands',
     'cs': 'Čeština',
     'ar': 'العربية',
+    'he': 'עברית',
     'zh': '中文',
     'ja': '日本語',
     'ko': '한국어',
@@ -69,7 +70,8 @@ WHISPER_MODELS = {
     'base': {'size': '74 MB', 'speed': 'быстро', 'quality': 'хорошее'},
     'small': {'size': '244 MB', 'speed': 'средне', 'quality': 'отличное'},
     'medium': {'size': '769 MB', 'speed': 'медленно', 'quality': 'очень хорошее'},
-    'large': {'size': '1550 MB', 'speed': 'очень медленно', 'quality': 'наилучшее'}
+    'large': {'size': '1550 MB', 'speed': 'очень медленно', 'quality': 'наилучшее'},
+    'turbo': {'size': '809 MB', 'speed': 'очень быстро', 'quality': 'очень хорошее'}
 }
 
 def load_whisper_model(model_name: str = "base"):

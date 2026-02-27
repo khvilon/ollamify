@@ -20,6 +20,8 @@ services:
         condition: service_started
       tts:
         condition: service_started
+      tts-realtime:
+        condition: service_started
       stt:
         condition: service_started
     environment:
@@ -33,6 +35,7 @@ services:
       - OPENROUTER_URL=${OPENROUTER_URL}
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
+      - TTS_SERVICE_URL=http://tts-realtime:8006
     expose:
       - "80"
     container_name: zeus

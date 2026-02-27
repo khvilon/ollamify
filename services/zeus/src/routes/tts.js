@@ -22,9 +22,8 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  *           maxLength: 1000
  *         voice:
  *           type: string
- *           enum: [aidar, baya, kseniya, xenia]
- *           default: aidar
- *           description: Голос Silero TTS (Russian)
+ *           default: ""
+ *           description: Голос TTS провайдера (опционально, по умолчанию выбирается автоматически по языку)
  *         speed:
  *           type: number
  *           minimum: 0.5
@@ -38,14 +37,14 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  *           description: Частота дискретизации
  *         format:
  *           type: string
- *           enum: [wav]
- *           default: wav
+ *           enum: [wav, mp3]
+ *           default: mp3
  *           description: Формат аудио
  *         language:
  *           type: string
- *           enum: [ru]
+ *           enum: [ru, en, he]
  *           default: ru
- *           description: Язык синтеза (в текущей реализации поддерживается только русский)
+ *           description: Язык синтеза
  *     
  *     TTSResponse:
  *       type: object
@@ -149,7 +148,7 @@ router.get('/voices', async (req, res) => {
  */
 router.post('/synthesize', async (req, res) => {
   try {
-    const { text, voice = 'aidar', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
+    const { text, voice = '', speed = 1.0, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -230,7 +229,7 @@ router.post('/synthesize', async (req, res) => {
  */
 router.post('/synthesize/stream', async (req, res) => {
   try {
-    const { text, voice = 'aidar', speed = 1.0, sample_rate = 24000, format = 'wav', language = 'ru' } = req.body;
+    const { text, voice = '', speed = 1.0, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -262,8 +261,10 @@ router.post('/synthesize/stream', async (req, res) => {
     }
     
     // Передаем аудио поток клиенту
-    res.setHeader('Content-Type', 'audio/wav');
-    res.setHeader('Content-Disposition', 'attachment; filename=speech.wav');
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
+    const extension = contentType.includes('wav') ? 'wav' : 'mp3';
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename=speech.${extension}`);
     
     // Передаем поток данных
     response.body.pipe(res);
