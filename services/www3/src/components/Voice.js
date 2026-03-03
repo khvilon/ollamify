@@ -246,12 +246,31 @@ function Voice() {
         handleLoadSttModel(newModel);
     };
 
-    // Языки для TTS
-    const ttsLanguages = [
-        { code: 'ru', name: 'Russian' },
-        { code: 'en', name: 'English' },
-        { code: 'he', name: 'Hebrew' }
-    ];
+    // Языки для TTS берём из доступных голосов сервиса, чтобы UI всегда совпадал с backend.
+    const ttsLanguages = useMemo(() => {
+        const languageLabels = {
+            ru: 'Russian',
+            en: 'English',
+            he: 'Hebrew'
+        };
+
+        const detected = Array.from(
+            new Set((voices || []).map(v => v?.language).filter(Boolean))
+        );
+
+        if (detected.length === 0) {
+            return [
+                { code: 'ru', name: 'Russian' },
+                { code: 'en', name: 'English' },
+                { code: 'he', name: 'Hebrew' }
+            ];
+        }
+
+        return detected.map(code => ({
+            code,
+            name: languageLabels[code] || code.toUpperCase()
+        }));
+    }, [voices]);
 
     // Языки для STT (Whisper поддерживает много языков)
     const sttLanguages = [
