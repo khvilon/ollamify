@@ -59,7 +59,7 @@ def load_jina_reranker(use_flash_attn=True):
         
         # Параметры загрузки
         model_kwargs = {
-            "torch_dtype": torch.float16 if torch.cuda.is_available() else torch.float32,
+            "torch_dtype": "float16" if torch.cuda.is_available() else "float32",
             "trust_remote_code": True
         }
         
@@ -304,4 +304,4 @@ async def rerank_raw(request: dict):
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8001))
-    uvicorn.run("app:app", host="0.0.0.0", port=port) 
+    uvicorn.run("app:app", host="0.0.0.0", port=port)

@@ -33,6 +33,32 @@ status = {
     "inner_url": INNER_BASE_URL,
 }
 
+REQUIRE_CPU_AVX = os.environ.get("VLLM_REQUIRE_CPU_AVX", "1").lower() not in {"0", "false", "no"}
+
+
+def get_cpu_flags():
+    try:
+        with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as cpuinfo:
+            for line in cpuinfo:
+                if line.lower().startswith("flags"):
+                    _, flags = line.split(":", 1)
+                    return set(flags.strip().split())
+    except Exception:
+        return set()
+    return set()
+
+
+def get_runtime_blocker():
+    flags = get_cpu_flags()
+    if REQUIRE_CPU_AVX and not ({"avx", "avx2", "avx512f"} & flags):
+        return (
+            "vLLM cannot start in this container because the CPU exposed by the host/VM "
+            "does not advertise AVX/AVX2/AVX512. The current vLLM image loads UCX code "
+            "compiled with AVX support. Expose host CPU flags to the VM or use a vLLM "
+            "image built for this CPU."
+        )
+    return None
+
 
 def normalize_model(value):
     if not isinstance(value, str):
@@ -165,6 +191,21 @@ def start_model(model, extra_args=None):
     if not normalized:
         return {"error": "model is required"}, 400
 
+    runtime_blocker = get_runtime_blocker()
+    if runtime_blocker:
+        with state_lock:
+            stop_current_locked()
+            status.update({
+                "state": "error",
+                "current_model": None,
+                "desired_model": normalized,
+                "served_models": [],
+                "pid": None,
+                "error": runtime_blocker,
+                "command": None,
+            })
+            return current_status_locked(), 503
+
     with state_lock:
         refresh_process_state()
         if (
@@ -202,8 +243,10 @@ def current_status_locked():
             status["served_models"] = get_models_from_vllm(timeout=1)
         except Exception:
             pass
+    runtime_blocker = get_runtime_blocker()
     return {
-        "available": True,
+        "available": runtime_blocker is None,
+        "runtime_blocker": runtime_blocker,
         **status,
     }
 
@@ -299,7 +342,9 @@ def proxy_v1(path):
 def autostart():
     initial_model = normalize_model(os.environ.get("VLLM_MODEL", ""))
     if initial_model:
-        start_model(initial_model, os.environ.get("VLLM_EXTRA_ARGS"))
+        result, status_code = start_model(initial_model, os.environ.get("VLLM_EXTRA_ARGS"))
+        if status_code >= 400:
+            print(f"[vllm-manager] autostart blocked: {result.get('error')}", flush=True)
 
 
 if __name__ == "__main__":

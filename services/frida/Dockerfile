@@ -23,7 +23,7 @@ RUN python -m pip install --no-cache-dir --isolated --upgrade pip \
         --index-url ${PYTORCH_INDEX_URL} \
         --extra-index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
-    python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn \
+    python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn requests \
         --index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
 
@@ -38,4 +38,4 @@ ENV TRANSFORMERS_CACHE="/app/models"
 EXPOSE 8002
 
 # Запуск приложения
-CMD ["gunicorn", "--bind", "0.0.0.0:8002", "app:app"] 
+CMD ["gunicorn", "--bind", "0.0.0.0:8002", "app:app"]
