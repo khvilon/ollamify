@@ -54,9 +54,7 @@ function Projects() {
 
     // Функция для подключения к WebSocket
     const connectWebSocket = useCallback(() => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const socket = new WebSocket(`${protocol}//${host}/ws/projects`);
+        const socket = new WebSocket(window.authenticatedWebSocketUrl('/ws/projects'));
         
         socket.addEventListener('open', () => {
             console.log('WebSocket connected for projects');

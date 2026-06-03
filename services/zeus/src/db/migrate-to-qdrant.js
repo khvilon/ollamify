@@ -1,11 +1,13 @@
 import pool from './conf.js';
 import qdrantClient from './qdrant.js';
 import logger from '../utils/logger.js';
-import { getEmbedding } from '../embeddings.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 // Функция для миграции чанков из PostgreSQL в Qdrant
 export async function migrateChunksToQdrant(projectName) {
-  logger.info(`Starting migration of chunks for project ${projectName} from PostgreSQL to Qdrant`);
+  const normalizedProjectName = assertValidProjectName(projectName);
+  const projectIdentifier = quoteIdentifier(normalizedProjectName);
+  logger.info(`Starting migration of chunks for project ${normalizedProjectName} from PostgreSQL to Qdrant`);
   
   try {
     // Проверяем существование схемы проекта в PostgreSQL
@@ -13,13 +15,13 @@ export async function migrateChunksToQdrant(projectName) {
       SELECT schema_name 
       FROM information_schema.schemata 
       WHERE schema_name = $1
-    `, [projectName]);
+    `, [normalizedProjectName]);
     
     if (schemaExists.rows.length === 0) {
-      logger.error(`Project schema ${projectName} does not exist in PostgreSQL`);
+      logger.error(`Project schema ${normalizedProjectName} does not exist in PostgreSQL`);
       return { 
         success: false, 
-        error: `Project schema ${projectName} does not exist in PostgreSQL`
+        error: `Project schema ${normalizedProjectName} does not exist in PostgreSQL`
       };
     }
     
@@ -30,42 +32,42 @@ export async function migrateChunksToQdrant(projectName) {
         WHERE table_schema = $1 
         AND table_name = 'chunks'
       )
-    `, [projectName]);
+    `, [normalizedProjectName]);
     
     if (!tableExists.rows[0].exists) {
-      logger.error(`Chunks table does not exist in project ${projectName}`);
+      logger.error(`Chunks table does not exist in project ${normalizedProjectName}`);
       return { 
         success: false, 
-        error: `Chunks table does not exist in project ${projectName}`
+        error: `Chunks table does not exist in project ${normalizedProjectName}`
       };
     }
     
     // Проверяем существование коллекции в Qdrant
-    const collectionExists = await qdrantClient.collectionExists(projectName);
+    const collectionExists = await qdrantClient.collectionExists(normalizedProjectName);
     if (!collectionExists) {
-      logger.error(`Qdrant collection for project ${projectName} does not exist`);
+      logger.error(`Qdrant collection for project ${normalizedProjectName} does not exist`);
       return { 
         success: false, 
-        error: `Qdrant collection for project ${projectName} does not exist`
+        error: `Qdrant collection for project ${normalizedProjectName} does not exist`
       };
     }
     
     // Получаем информацию о документах
     const documents = await pool.query(`
       SELECT id, name 
-      FROM "${projectName}".documents
+      FROM ${projectIdentifier}.documents
     `);
     
     if (documents.rows.length === 0) {
-      logger.info(`No documents found in project ${projectName}`);
+      logger.info(`No documents found in project ${normalizedProjectName}`);
       return { 
         success: true, 
-        message: `No documents found in project ${projectName}`,
+        message: `No documents found in project ${normalizedProjectName}`,
         migrated: 0
       };
     }
     
-    logger.info(`Found ${documents.rows.length} documents in project ${projectName}`);
+    logger.info(`Found ${documents.rows.length} documents in project ${normalizedProjectName}`);
     
     // Для каждого документа получаем все чанки и мигрируем их в Qdrant
     let totalMigratedChunks = 0;
@@ -77,13 +79,13 @@ export async function migrateChunksToQdrant(projectName) {
       // Получаем все чанки документа
       const chunks = await pool.query(`
         SELECT chunk_index, content, embedding
-        FROM "${projectName}".chunks
+        FROM ${projectIdentifier}.chunks
         WHERE document_id = $1
         ORDER BY chunk_index
       `, [documentId]);
       
       if (chunks.rows.length === 0) {
-        logger.info(`No chunks found for document ${documentId} in project ${projectName}`);
+        logger.info(`No chunks found for document ${documentId} in project ${normalizedProjectName}`);
         continue;
       }
       
@@ -109,23 +111,23 @@ export async function migrateChunksToQdrant(projectName) {
             chunk_index: chunk.chunk_index,
             content: chunk.content,
             filename: documentName,
-            project: projectName,
+            project: normalizedProjectName,
             created_at: new Date().toISOString()
           }
         });
       }
       
       // Вставляем точки в Qdrant
-      await qdrantClient.upsertPoints(projectName, points);
+      await qdrantClient.upsertPoints(normalizedProjectName, points);
       totalMigratedChunks += points.length;
     }
     
-    logger.info(`Successfully migrated ${totalMigratedChunks} chunks for project ${projectName}`);
+    logger.info(`Successfully migrated ${totalMigratedChunks} chunks for project ${normalizedProjectName}`);
     
     return {
       success: true,
       migrated: totalMigratedChunks,
-      project: projectName
+      project: normalizedProjectName
     };
   } catch (error) {
     logger.error(`Error migrating chunks for project ${projectName}:`, error);
@@ -190,4 +192,4 @@ export async function migrateAllProjectsToQdrant() {
 export default {
   migrateChunksToQdrant,
   migrateAllProjectsToQdrant
-}; 
+};

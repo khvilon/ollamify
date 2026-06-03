@@ -4,6 +4,7 @@ import { createProjectSchema } from '../db/init.js';
 import logger from '../utils/logger.js';
 import { broadcastProjectUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
 import ProjectQueries from '../db/projects.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 const router = express.Router();
 
@@ -94,15 +95,16 @@ router.post('/', async (req, res) => {
   }
   
   try {
+    const projectName = assertValidProjectName(name);
     const result = await pool.query(
       'INSERT INTO admin.projects (name, embedding_model) VALUES ($1, $2) RETURNING *',
-      [name, embeddingModel]
+      [projectName, embeddingModel]
     );
     
     const project = result.rows[0];
 
     // Создаем схему для проекта
-    await createProjectSchema(name, embeddingModel);
+    await createProjectSchema(projectName, embeddingModel);
     
     // Отправляем уведомление через WebSocket
     broadcastProjectUpdate(project);
@@ -113,6 +115,9 @@ router.post('/', async (req, res) => {
     res.status(201).json(project);
   } catch (error) {
     logger.error('Error creating project:', error);
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 });
@@ -230,6 +235,7 @@ router.get('/:id/stats', async (req, res) => {
     }
     
     const project = projectInfo.rows[0];
+    const projectIdentifier = quoteIdentifier(project.name);
     
     // Проверяем существование схемы
     const schemaExists = await pool.query(`
@@ -256,7 +262,7 @@ router.get('/:id/stats', async (req, res) => {
     
     // Получаем количество документов
     const documentCount = await pool.query(`
-      SELECT COUNT(*) as document_count FROM "${project.name}".documents
+      SELECT COUNT(*) as document_count FROM ${projectIdentifier}.documents
     `);
     
     const stats = {
@@ -269,6 +275,9 @@ router.get('/:id/stats', async (req, res) => {
   res.json(stats);
   } catch (error) {
     logger.error('Error getting project stats:', error);
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message });
   }
 });

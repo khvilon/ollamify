@@ -3,26 +3,29 @@ import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
 import qdrantClient from './qdrant.js';
 import { getEmbeddingDimension } from '../embeddings.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 dotenv.config();
 
 // Embedding модель теперь указывается для каждого проекта индивидуально
 
 async function createProjectSchema(project, embeddingModel) {
+  const projectName = assertValidProjectName(project);
+  const projectIdentifier = quoteIdentifier(projectName);
   const client = await pool.connect();
   try {
-    logger.info(`Creating schema for project ${project} with embedding model ${embeddingModel}`);
+    logger.info(`Creating schema for project ${projectName} with embedding model ${embeddingModel}`);
     
     // Create vector extension if not exists
     await client.query('CREATE EXTENSION IF NOT EXISTS vector');
 
     // Create schema if not exists
-    await client.query(`CREATE SCHEMA IF NOT EXISTS "${project}"`);
-    logger.info(`Created schema for project ${project}`);
+    await client.query(`CREATE SCHEMA IF NOT EXISTS ${projectIdentifier}`);
+    logger.info(`Created schema for project ${projectName}`);
 
     // Create documents table if not exists
     await client.query(`
-      CREATE TABLE IF NOT EXISTS "${project}".documents (
+      CREATE TABLE IF NOT EXISTS ${projectIdentifier}.documents (
         id SERIAL PRIMARY KEY,
         name TEXT NOT NULL,
         content_hash TEXT NOT NULL,
@@ -33,22 +36,22 @@ async function createProjectSchema(project, embeddingModel) {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
-    logger.info(`Created documents table for project ${project}`);
+    logger.info(`Created documents table for project ${projectName}`);
 
     // Создаем индекс для external_id
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_documents_external_id
-      ON "${project}".documents (external_id)
+      ON ${projectIdentifier}.documents (external_id)
       WHERE external_id IS NOT NULL
     `);
     logger.info(`Created index for external_id`);
 
     // Создаем коллекцию в Qdrant, если она не существует
     try {
-      const collectionExists = await qdrantClient.collectionExists(project);
+      const collectionExists = await qdrantClient.collectionExists(projectName);
       
       if (!collectionExists) {
-        logger.info(`Qdrant collection for ${project} doesn't exist, will create it`);
+        logger.info(`Qdrant collection for ${projectName} doesn't exist, will create it`);
         
         // Получаем размерность для модели эмбеддинга
         let dimension;
@@ -70,24 +73,24 @@ async function createProjectSchema(project, embeddingModel) {
         
         // Создаем коллекцию с полученной или дефолтной размерностью
         try {
-          logger.info(`Creating Qdrant collection for project ${project} with dimension ${dimension}`);
-          await qdrantClient.createCollection(project, dimension);
-          logger.info(`Successfully created Qdrant collection for project ${project}`);
+          logger.info(`Creating Qdrant collection for project ${projectName} with dimension ${dimension}`);
+          await qdrantClient.createCollection(projectName, dimension);
+          logger.info(`Successfully created Qdrant collection for project ${projectName}`);
         } catch (collectionError) {
-          logger.error(`Failed to create Qdrant collection for project ${project}:`, collectionError);
+          logger.error(`Failed to create Qdrant collection for project ${projectName}:`, collectionError);
           throw new Error(`Failed to create Qdrant collection: ${collectionError.message}`);
         }
       } else {
-        logger.info(`Qdrant collection for project ${project} already exists`);
+        logger.info(`Qdrant collection for project ${projectName} already exists`);
       }
     } catch (error) {
-      logger.error(`Error working with Qdrant for project ${project}:`, error);
+      logger.error(`Error working with Qdrant for project ${projectName}:`, error);
       throw new Error(`Qdrant error: ${error.message}`);
     }
 
-    logger.info(`Project schema "${project}" initialized successfully`);
+    logger.info(`Project schema "${projectName}" initialized successfully`);
   } catch (error) {
-    logger.error(`Error initializing project schema "${project}":`, error);
+    logger.error(`Error initializing project schema "${projectName}":`, error);
     throw error;
   } finally {
     client.release();

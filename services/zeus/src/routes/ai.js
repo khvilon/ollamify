@@ -4,10 +4,16 @@ import pool from '../db/conf.js';
 import { createProjectSchema } from '../db/init.js';
 import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import logger from '../utils/logger.js';
-import { resolveOllamaBaseUrlForModel, resolveOllamaInstanceForModel } from '../utils/ollama.js';
+import { fetchWithTimeout, resolveOllamaBaseUrlForModel, resolveOllamaInstanceForModel } from '../utils/ollama.js';
 import qdrantClient from '../db/qdrant.js';
 import { beginInFlight } from '../utils/inflight.js';
 import { forwardToFriendly, pickExecutionTarget } from '../utils/friendlyRouting.js';
+import { runOllamaLimited, runVllmLimited } from '../utils/providerLimits.js';
+import {
+  callVllmChatCompletions,
+  forwardToVllm,
+  getVllmTargetForModel,
+} from '../utils/vllm.js';
 
 const router = express.Router();
 
@@ -15,6 +21,55 @@ const MAX_KEYWORD_LENGTH = 60;
 const MAX_KEYWORD_WORDS = 4;
 const MAX_KEYWORDS_FOR_SEARCH = 10;
 const MAX_AGGREGATED_QUERY_LENGTH = 200;
+const RAG_PROJECT_SEARCH_CONCURRENCY = Math.max(1, Number(process.env.RAG_PROJECT_SEARCH_CONCURRENCY) || 3);
+
+const VLLM_CHAT_PAYLOAD_FIELDS = [
+  'model',
+  'messages',
+  'stream',
+  'temperature',
+  'top_p',
+  'max_tokens',
+  'presence_penalty',
+  'frequency_penalty',
+  'stop',
+  'n',
+  'seed',
+  'user',
+  'logprobs',
+  'top_logprobs',
+  'response_format',
+  'tools',
+  'tool_choice',
+  'parallel_tool_calls'
+];
+
+function buildVllmChatPayload(body, model) {
+  const payload = {};
+  for (const field of VLLM_CHAT_PAYLOAD_FIELDS) {
+    if (body && body[field] !== undefined) {
+      payload[field] = body[field];
+    }
+  }
+  payload.model = model;
+  return payload;
+}
+
+async function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await mapper(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.min(limit, items.length);
+  await Promise.all(Array.from({ length: workerCount }, worker));
+  return results;
+}
 const THINK_TAG_REGEX = /<(?:think|thinking|анализ|размышление)[^>]*>[\s\S]*?<\/(?:think|thinking|анализ|размышление)[^>]*>/gi;
 
 function normalizeKeywordCandidates(candidates, maxKeywords) {
@@ -601,29 +656,60 @@ async function getCompletion(messages, model, think = true) {
       
       return llmResponse;
     } else {
-      const ollamaBaseUrl = await resolveOllamaBaseUrlForModel(actualModel);
-      const response = await fetch(`${ollamaBaseUrl}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          model: actualModel,
-          messages: messages,
-          stream: false,
-          options: {
-            num_ctx: maxTokens
-          },
-          think: think
-        })
-      });
+      const vllmTarget = await getVllmTargetForModel(actualModel);
+      if (vllmTarget) {
+        const data = await runVllmLimited({ model: actualModel, label: 'complete' }, async () => {
+          const response = await callVllmChatCompletions({
+            model: vllmTarget.model,
+            messages,
+            stream: false,
+            temperature: 0.7,
+            max_tokens: maxTokens
+          });
+          return response.json();
+        });
 
-      if (!response.ok) {
-        const error = await response.text();
-        throw new Error(`Ollama API error: ${error}`);
+        if (!data.choices || !data.choices.length) {
+          throw new Error(`vLLM API returned invalid response format: missing choices array. Response: ${JSON.stringify(data)}`);
+        }
+
+        const llmResponse = data.choices[0].message.content;
+        logger.info('LLM Response from vLLM:', {
+          model: actualModel,
+          service: 'vLLM',
+          responseLength: llmResponse.length,
+          response: llmResponse
+        });
+
+        return llmResponse;
       }
 
-      const data = await response.json();
+      const inst = await resolveOllamaInstanceForModel(actualModel);
+      const ollamaBaseUrl = inst?.baseUrl || await resolveOllamaBaseUrlForModel(actualModel);
+      const data = await runOllamaLimited({ instanceId: inst?.id ?? null, model: actualModel, label: 'complete' }, async () => {
+        const response = await fetch(`${ollamaBaseUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: actualModel,
+            messages: messages,
+            stream: false,
+            options: {
+              num_ctx: maxTokens
+            },
+            think: think
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.text();
+          throw new Error(`Ollama API error: ${error}`);
+        }
+
+        return response.json();
+      });
       
       const llmResponse = data.choices[0].message.content;
       logger.info('LLM Response from Ollama:', {
@@ -792,23 +878,27 @@ router.post('/embed', async (req, res) => {
     
     try {
       // Получаем эмбеддинги для каждого текста
-      const embeddings = await Promise.all(inputs.map(async (text) => {
-        const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ model, prompt: text })
-        });
-        
-        if (!response.ok) {
-          const error = await response.text();
-          throw new Error(`Ollama API error: ${error}`);
+      const embeddings = await runOllamaLimited({ instanceId: inst?.id ?? null, model, label: 'embed' }, async () => {
+        const result = [];
+        for (const text of inputs) {
+          const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ model, prompt: text })
+          });
+
+          if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Ollama API error: ${error}`);
+          }
+
+          const data = await response.json();
+          result.push(data.embedding);
         }
-  
-        const data = await response.json();
-        return data.embedding;
-      }));
+        return result;
+      });
 
       // Форматируем ответ в стиле OpenAI API
       const response = {
@@ -831,11 +921,11 @@ router.post('/embed', async (req, res) => {
     }
   } catch (error) {
     logger.error('Error getting embedding:', error);
-    res.status(500).json({ 
+    res.status(error.statusCode || 500).json({
       error: {
         message: error.message,
         type: 'invalid_request_error',
-        code: null
+        code: error.code || null
       }
     });
   }
@@ -1052,6 +1142,26 @@ router.post('/complete', async (req, res) => {
       return res.status(400).json({ error: 'Missing required parameters: model, messages' });
     }
 
+    const localIsOpenRouter = model.startsWith('openrouter/');
+    const vllmTarget = localIsOpenRouter ? null : await getVllmTargetForModel(model);
+    if (vllmTarget) {
+      logger.info('Forwarding completion request to vLLM', {
+        model,
+        resolvedModel: vllmTarget.model,
+        stream
+      });
+
+      const vllmReq = {
+        ...req,
+        body: buildVllmChatPayload(req.body, vllmTarget.model)
+      };
+
+      await runVllmLimited({ model, label: stream ? 'complete_stream' : 'complete' }, async () => {
+        await forwardToVllm({ req: vllmReq, res, path: '/v1/chat/completions', timeoutMs: 600_000 });
+      });
+      return;
+    }
+
     // Friendly routing (only for local Ollama models; OpenRouter stays local)
     const target = await pickExecutionTarget({ model, req });
     if (target.type === 'friendly') {
@@ -1069,10 +1179,6 @@ router.post('/complete', async (req, res) => {
 
     if (stream) {
       // Устанавливаем заголовки для SSE
-      res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
       // Пока не поддерживаем стриминг для OpenRouter
       if (model.startsWith('openrouter/')) {
         throw new Error('Streaming is not supported for OpenRouter models');
@@ -1082,6 +1188,11 @@ router.post('/complete', async (req, res) => {
       const endInFlight = beginInFlight({ instanceId: inst?.id ?? null, model, label: 'complete_stream' });
 
       try {
+        await runOllamaLimited({ instanceId: inst?.id ?? null, model, label: 'complete_stream' }, async () => {
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache');
+        res.setHeader('Connection', 'keep-alive');
+
         const ollamaBaseUrl = inst?.baseUrl || await resolveOllamaBaseUrlForModel(model);
         const response = await fetch(`${ollamaBaseUrl}/api/chat`, {
           method: 'POST',
@@ -1204,6 +1315,7 @@ router.post('/complete', async (req, res) => {
 
         res.write('data: [DONE]\n\n');
         res.end();
+        });
       } finally {
         endInFlight();
       }
@@ -1244,11 +1356,17 @@ router.post('/complete', async (req, res) => {
     }
   } catch (error) {
     logger.error('Error in completion:', error);
-    res.status(500).json({ 
+    if (res.headersSent) {
+      if (!res.writableEnded) {
+        res.end();
+      }
+      return;
+    }
+    res.status(error.statusCode || 500).json({
       error: {
         message: error.message,
         type: 'invalid_request_error',
-        code: null
+        code: error.code || null
       }
     });
   }
@@ -1341,7 +1459,7 @@ async function getRelevantChunks(question, project, model, limit = 100, options 
 
     logger.info(`Searching in ${projects.length} projects: ${projects.map(p => p.name).join(', ')}`);
 
-    await Promise.all(projects.map(async proj => {
+    await mapWithConcurrency(projects, RAG_PROJECT_SEARCH_CONCURRENCY, async proj => {
       logger.info('Running embedding search for project:', proj.name);
       const questionEmbedding = await getEmbedding(question, proj.embedding_model);
 
@@ -1375,7 +1493,7 @@ async function getRelevantChunks(question, project, model, limit = 100, options 
 
         keywordDocs.push(...projectKeywordDocs);
       }
-    }));
+    });
   }
 
   const filteredEmbeddingDocs = embeddingDocs.filter(doc => doc && doc.content);
@@ -1418,10 +1536,9 @@ async function getRelevantChunks(question, project, model, limit = 100, options 
 // Функция для проверки состояния реранкера
 async function checkRerankerHealth() {
   try {
-    const response = await fetch('http://reranker:8001/health', {
-      method: 'GET',
-      timeout: 5000
-    });
+    const response = await fetchWithTimeout('http://reranker:8001/health', {
+      method: 'GET'
+    }, 5000);
     return response.ok;
   } catch (error) {
     logger.error('Reranker health check failed:', error);

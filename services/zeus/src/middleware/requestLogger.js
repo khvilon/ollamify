@@ -146,11 +146,8 @@ export const requestLogger = async (req, res, next) => {
     }
 
     const startTime = Date.now();
-    let client;
 
     try {
-        client = await pool.connect();
-
         // Store original response methods
         const originalJson = res.json;
         const originalSend = res.send;
@@ -169,11 +166,13 @@ export const requestLogger = async (req, res, next) => {
         };
 
         // Once the response is finished
-        res.on('finish', async () => {
+        res.once('finish', async () => {
             const endTime = Date.now();
             const responseTime = endTime - startTime;
+            let client;
 
             try {
+                client = await pool.connect();
                 // Extract user information from headers
                 const userHeader = req.headers['x-user'];
                 let userName = null;
@@ -262,14 +261,15 @@ export const requestLogger = async (req, res, next) => {
             } catch (error) {
                 logger.error('Error logging response:', error);
             } finally {
-                client.release();
+                if (client) {
+                    client.release();
+                }
             }
         });
 
         next();
     } catch (error) {
         logger.error('Error setting up response logging:', error);
-        if (client) client.release();
         next();
     }
 };

@@ -1,8 +1,8 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import multer from 'multer';
 import FormData from 'form-data';
 import logger from '../utils/logger.js';
+import { fetchWithTimeout } from '../utils/ollama.js';
 
 const router = express.Router();
 
@@ -99,10 +99,9 @@ router.get('/models', async (req, res) => {
     try {
         logger.info('Getting available STT models (Whisper)');
 
-        const response = await fetch(`${STT_SERVICE_URL}/models`, {
-            method: 'GET',
-            timeout: 10000
-        });
+        const response = await fetchWithTimeout(`${STT_SERVICE_URL}/models`, {
+            method: 'GET'
+        }, 10000);
 
         if (!response.ok) {
             throw new Error(`STT service responded with status: ${response.status}`);
@@ -171,12 +170,11 @@ router.post('/transcribe', upload.single('audio'), async (req, res) => {
         formData.append('task', task);
 
         // Отправляем запрос в STT сервис
-        const response = await fetch(`${STT_SERVICE_URL}/transcribe`, {
+        const response = await fetchWithTimeout(`${STT_SERVICE_URL}/transcribe`, {
             method: 'POST',
             body: formData,
-            headers: formData.getHeaders(),
-            timeout: 300000 // 5 минут на транскрибацию
-        });
+            headers: formData.getHeaders()
+        }, 300000);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -241,14 +239,13 @@ router.post('/model/load', async (req, res) => {
 
         logger.info(`Loading STT model: ${model_name}`);
 
-        const response = await fetch(`${STT_SERVICE_URL}/model/load`, {
+        const response = await fetchWithTimeout(`${STT_SERVICE_URL}/model/load`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ model_name }),
-            timeout: 120000 // 2 минуты на загрузку модели
-        });
+            body: JSON.stringify({ model_name })
+        }, 120000);
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
@@ -291,10 +288,9 @@ router.post('/model/load', async (req, res) => {
  */
 router.get('/health', async (req, res) => {
     try {
-        const response = await fetch(`${STT_SERVICE_URL}/health`, {
-            method: 'GET',
-            timeout: 5000
-        });
+        const response = await fetchWithTimeout(`${STT_SERVICE_URL}/health`, {
+            method: 'GET'
+        }, 5000);
 
         if (!response.ok) {
             throw new Error(`STT service health check failed: ${response.status}`);
@@ -312,4 +308,4 @@ router.get('/health', async (req, res) => {
     }
 });
 
-export default router; 
+export default router;

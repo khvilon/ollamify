@@ -1,8 +1,8 @@
 import pool from './conf.js';
 import { createProjectSchema } from './init.js';
-import { getEmbeddingDimension } from '../embeddings.js';
 import qdrantClient from './qdrant.js';
 import logger from '../utils/logger.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 class ProjectQueries {
   // Получение всех проектов с информацией о создателе
@@ -29,6 +29,7 @@ class ProjectQueries {
 
   // Создание нового проекта
   async create(name, embeddingModel, userId) {
+    const projectName = assertValidProjectName(name);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -38,11 +39,10 @@ class ProjectQueries {
         INSERT INTO admin.projects (name, embedding_model, created_by)
         VALUES ($1, $2, $3)
         RETURNING *
-      `, [name, embeddingModel, userId]);
+      `, [projectName, embeddingModel, userId]);
 
       // Получаем размерность эмбеддингов и создаем схему проекта
-      const dimension = await getEmbeddingDimension(embeddingModel);
-      await createProjectSchema(name, dimension);
+      await createProjectSchema(projectName, embeddingModel);
 
       await client.query('COMMIT');
       return rows[0];
@@ -56,12 +56,13 @@ class ProjectQueries {
 
   // Обновление проекта
   async update(id, name) {
+    const projectName = assertValidProjectName(name);
     const { rows } = await pool.query(`
       UPDATE admin.projects
       SET name = $1
       WHERE id = $2
       RETURNING *
-    `, [name, id]);
+    `, [projectName, id]);
     return rows[0];
   }
 
@@ -80,10 +81,11 @@ class ProjectQueries {
         throw new Error('Project not found');
       }
 
-      const projectName = rows[0].name;
+      const projectName = assertValidProjectName(rows[0].name);
+      const projectIdentifier = quoteIdentifier(projectName);
 
       // Удаляем схему проекта
-      await client.query(`DROP SCHEMA IF EXISTS "${projectName}" CASCADE`);
+      await client.query(`DROP SCHEMA IF EXISTS ${projectIdentifier} CASCADE`);
       
       // Удаляем коллекцию в Qdrant
       try {
@@ -117,13 +119,14 @@ class ProjectQueries {
 
   // Получение статистики проекта
   async getStats(projectName) {
+    const projectIdentifier = quoteIdentifier(projectName);
     const { rows } = await pool.query(`
       SELECT 
         COUNT(*) as document_count,
         SUM(total_chunks) as total_chunks,
         MIN(created_at) as first_document,
         MAX(created_at) as last_document
-      FROM "${projectName}".documents
+      FROM ${projectIdentifier}.documents
     `);
     
     // Добавляем информацию о векторной базе

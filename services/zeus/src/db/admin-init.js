@@ -43,6 +43,52 @@ async function initializeAdminSchema() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin.api_keys (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL,
+        key_value TEXT UNIQUE NOT NULL,
+        user_id INTEGER REFERENCES admin.users(id),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS api_keys_user_id_idx
+      ON admin.api_keys (user_id)
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin.user_logs (
+        id SERIAL PRIMARY KEY,
+        user_name TEXT,
+        user_key TEXT,
+        api_key_name TEXT,
+        request_method TEXT NOT NULL,
+        request_path TEXT NOT NULL,
+        request_body JSONB,
+        ip_address TEXT,
+        response_body JSONB,
+        response_time INTEGER,
+        model_name TEXT,
+        request_summary TEXT,
+        endpoint_category TEXT,
+        user_text TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS user_logs_created_at_idx
+      ON admin.user_logs (created_at)
+    `);
+
+    await client.query(`ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS api_key_name TEXT`);
+    await client.query(`ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS model_name TEXT`);
+    await client.query(`ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS request_summary TEXT`);
+    await client.query(`ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS endpoint_category TEXT`);
+    await client.query(`ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS user_text TEXT`);
+
     // Friendly Ollamify servers (cluster peers)
     await client.query(`
       CREATE TABLE IF NOT EXISTS admin.friendly_servers (
@@ -80,4 +126,4 @@ async function initializeAdminSchema() {
   }
 }
 
-export default initializeAdminSchema; 
+export default initializeAdminSchema;

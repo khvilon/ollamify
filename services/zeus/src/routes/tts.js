@@ -1,11 +1,11 @@
 import express from 'express';
-import fetch from 'node-fetch';
 import logger from '../utils/logger.js';
+import { fetchWithTimeout } from '../utils/ollama.js';
 
 const router = express.Router();
 
 // URL TTS сервиса
-const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
+const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts-realtime:8006';
 
 /**
  * @swagger
@@ -99,12 +99,11 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts:8003';
  */
 router.get('/voices', async (req, res) => {
   try {
-    logger.info('Getting available TTS voices (Silero TTS)');
+    logger.info('Getting available TTS voices (Realtime TTS)');
     
-    const response = await fetch(`${TTS_SERVICE_URL}/voices`, {
-      method: 'GET',
-      timeout: 5000
-    });
+    const response = await fetchWithTimeout(`${TTS_SERVICE_URL}/voices`, {
+      method: 'GET'
+    }, 5000);
     
     if (!response.ok) {
       throw new Error(`TTS service responded with status: ${response.status}`);
@@ -126,7 +125,7 @@ router.get('/voices', async (req, res) => {
  * @swagger
  * /tts/synthesize:
  *   post:
- *     summary: Синтез речи из текста (Silero TTS)
+ *     summary: Синтез речи из текста (Realtime TTS)
  *     tags: [TTS]
  *     requestBody:
  *       required: true
@@ -159,10 +158,10 @@ router.post('/synthesize', async (req, res) => {
       return res.status(400).json({ error: 'Текст слишком длинный (максимум 1000 символов)' });
     }
     
-    logger.info(`TTS Silero synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
+    logger.info(`TTS synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
     
     // Отправляем запрос в TTS сервис
-    const response = await fetch(`${TTS_SERVICE_URL}/synthesize`, {
+    const response = await fetchWithTimeout(`${TTS_SERVICE_URL}/synthesize`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -174,9 +173,8 @@ router.post('/synthesize', async (req, res) => {
         sample_rate,
         format,
         language
-      }),
-      timeout: 60000 // 60 секунд на синтез
-    });
+      })
+    }, 60000);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -185,7 +183,7 @@ router.post('/synthesize', async (req, res) => {
     
     const result = await response.json();
     
-    logger.info(`TTS Silero synthesis completed, duration: ${result.duration_ms}ms`);
+    logger.info(`TTS synthesis completed, duration: ${result.duration_ms}ms`);
     res.json(result);
     
   } catch (error) {
@@ -206,7 +204,7 @@ router.post('/synthesize', async (req, res) => {
  * @swagger
  * /tts/synthesize/stream:
  *   post:
- *     summary: Синтез речи с возвратом аудио потока (Silero TTS)
+ *     summary: Синтез речи с возвратом аудио потока (Realtime TTS)
  *     tags: [TTS]
  *     requestBody:
  *       required: true
@@ -236,10 +234,10 @@ router.post('/synthesize/stream', async (req, res) => {
       return res.status(400).json({ error: 'Текст обязателен для заполнения' });
     }
     
-    logger.info(`TTS Silero stream synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
+    logger.info(`TTS stream synthesis request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
     
     // Отправляем запрос в TTS сервис
-    const response = await fetch(`${TTS_SERVICE_URL}/synthesize/stream`, {
+    const response = await fetchWithTimeout(`${TTS_SERVICE_URL}/synthesize/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -251,9 +249,8 @@ router.post('/synthesize/stream', async (req, res) => {
         sample_rate,
         format,
         language
-      }),
-      timeout: 60000
-    });
+      })
+    }, 60000);
     
     if (!response.ok) {
       const errorData = await response.text();
@@ -307,10 +304,9 @@ router.post('/synthesize/stream', async (req, res) => {
  */
 router.get('/health', async (req, res) => {
   try {
-    const response = await fetch(`${TTS_SERVICE_URL}/health`, {
-      method: 'GET',
-      timeout: 5000
-    });
+    const response = await fetchWithTimeout(`${TTS_SERVICE_URL}/health`, {
+      method: 'GET'
+    }, 5000);
     
     if (!response.ok) {
       throw new Error(`TTS service health check failed: ${response.status}`);
@@ -328,4 +324,4 @@ router.get('/health', async (req, res) => {
   }
 });
 
-export default router; 
+export default router;

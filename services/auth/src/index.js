@@ -125,7 +125,19 @@ app.post('/auth/verify', async (req, res) => {
   console.log('Original URI:', req.headers['x-original-uri']);
   console.log('Authorization:', req.headers.authorization);
   
-  const authHeader = req.headers.authorization;
+  let authHeader = req.headers.authorization;
+  if (!authHeader) {
+    try {
+      const originalUri = req.headers['x-original-uri'] || '';
+      const tokenFromQuery = new URL(originalUri, 'http://localhost').searchParams.get('token');
+      if (tokenFromQuery) {
+        authHeader = `Bearer ${tokenFromQuery}`;
+      }
+    } catch (error) {
+      console.log('Failed to parse token from original URI:', error.message);
+    }
+  }
+
   if (!authHeader) {
     console.log('No authorization header found');
     return res.status(401).json({ 

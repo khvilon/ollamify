@@ -5,18 +5,21 @@ import { getEmbedding, getEmbeddingDimension } from '../embeddings.js';
 import crypto from 'crypto';
 import qdrantClient from './qdrant.js';
 import logger from '../utils/logger.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 export const DocumentQueries = {
 
   // Получение документа по ID
   async findById(project, id) {
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
     const { rows } = await pool.query(`
       SELECT 
         d.*,
-        '${project}' as project
-      FROM "${project}".documents d
+        $2 as project
+      FROM ${projectIdentifier}.documents d
       WHERE d.id = $1
-    `, [id]);
+    `, [id, projectName]);
     
     if (!rows.length) {
       throw new NotFoundError('Document');
@@ -31,7 +34,7 @@ export const DocumentQueries = {
         ]
       };
       
-      const results = await qdrantClient.search(project, null, 1, filter);
+      const results = await qdrantClient.search(projectName, null, 1, filter);
       if (results.length > 0) {
         rows[0].content = results[0].content;
       }
@@ -44,13 +47,15 @@ export const DocumentQueries = {
 
   // Удаление документа
   async delete(project, id) {
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       // Удаляем документ из PostgreSQL
       const { rows } = await client.query(`
-        DELETE FROM "${project}".documents
+        DELETE FROM ${projectIdentifier}.documents
         WHERE id = $1
         RETURNING id
       `, [id]);
@@ -63,7 +68,7 @@ export const DocumentQueries = {
       
       // Удаляем документ из Qdrant
       try {
-        await qdrantClient.deleteDocument(project, id);
+        await qdrantClient.deleteDocument(projectName, id);
       } catch (qdrantError) {
         logger.error(`Error deleting document from Qdrant:`, qdrantError);
         // Не блокируем выполнение, так как основные данные уже удалены из PostgreSQL

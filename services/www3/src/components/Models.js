@@ -58,10 +58,7 @@ function Models() {
                 socketRef.current.close();
             }
             
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            // Используем window.location.hostname вместо localhost
-            const host = window.location.host;
-            const wsUrl = `${protocol}//${host}/ws/models`;
+            const wsUrl = window.authenticatedWebSocketUrl('/ws/models');
             
             console.log(`Connecting to WebSocket: ${wsUrl}`);
             const socket = new WebSocket(wsUrl);

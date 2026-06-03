@@ -43,9 +43,6 @@ CREATE TABLE IF NOT EXISTS admin.api_keys (
 -- Create index on user_id for faster lookups
 CREATE INDEX IF NOT EXISTS api_keys_user_id_idx ON admin.api_keys(user_id);
 
--- Grant privileges to khvilon
-ALTER USER khvilon WITH SUPERUSER;
-
 -- Create vector extension
 CREATE EXTENSION IF NOT EXISTS vector;
 
@@ -79,3 +76,18 @@ ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS model_name TEXT;
 ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS request_summary TEXT;
 ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS endpoint_category TEXT;
 ALTER TABLE admin.user_logs ADD COLUMN IF NOT EXISTS user_text TEXT;
+
+-- Create friendly Ollamify servers table
+CREATE TABLE IF NOT EXISTS admin.friendly_servers (
+    id SERIAL PRIMARY KEY,
+    name TEXT NOT NULL,
+    base_url TEXT UNIQUE NOT NULL,
+    username TEXT,
+    api_key TEXT NOT NULL,
+    enabled BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_friendly_servers_enabled
+ON admin.friendly_servers(enabled);

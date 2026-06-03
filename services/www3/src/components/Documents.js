@@ -81,9 +81,7 @@ function Documents() {
 
     // Функция для подключения к WebSocket
     const connectWebSocket = useCallback(() => {
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const host = window.location.host;
-        const socket = new WebSocket(`${protocol}//${host}/ws/documents`);
+        const socket = new WebSocket(window.authenticatedWebSocketUrl('/ws/documents'));
         
         socket.addEventListener('open', () => {
             console.log('WebSocket connected for documents');
@@ -805,6 +803,5 @@ function Documents() {
 
 // Export for browser environment
 window.Documents = Documents;
-
 
 

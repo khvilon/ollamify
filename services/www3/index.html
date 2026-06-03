@@ -12,40 +12,64 @@
     <link rel="icon" href="/ollamify_icon.svg" type="image/svg+xml" />
     
     <!-- Material UI Dependencies -->
-    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap" />
-    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <link rel="stylesheet" href="/static/css/vendor/roboto.css" />
+    <link rel="stylesheet" href="/static/css/vendor/material-icons.css" />
     
     <!-- React and Dependencies -->
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="/static/js/vendor/react.development.js"></script>
+    <script src="/static/js/vendor/react-dom.development.js"></script>
     
     <!-- React Router -->
-    <script src="https://unpkg.com/@remix-run/router@1.14.1/dist/router.umd.min.js"></script>
-    <script src="https://unpkg.com/react-router@6.21.1/dist/umd/react-router.development.js"></script>
-    <script src="https://unpkg.com/react-router-dom@6.21.1/dist/umd/react-router-dom.development.js"></script>
+    <script src="/static/js/vendor/router.umd.min.js"></script>
+    <script src="/static/js/vendor/react-router.development.js"></script>
+    <script src="/static/js/vendor/react-router-dom.development.js"></script>
     
     <!-- Material UI -->
-    <script src="https://unpkg.com/@emotion/react@11.11.1/dist/emotion-react.umd.min.js"></script>
-    <script src="https://unpkg.com/@emotion/styled@11.11.0/dist/emotion-styled.umd.min.js"></script>
-    <script src="https://unpkg.com/@mui/material@5.14.13/umd/material-ui.development.js"></script>
-    <script src="https://unpkg.com/@mui/x-data-grid@6.18.6/dist/umd/mui-x-data-grid.development.js"></script>
+    <script src="/static/js/vendor/emotion-react.umd.min.js"></script>
+    <script src="/static/js/vendor/emotion-styled.umd.min.js"></script>
+    <script src="/static/js/vendor/material-ui.development.js"></script>
+    <script src="/static/js/vendor/mui-x-data-grid.js"></script>
     
     <!-- Markdown Support -->
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="/static/js/vendor/marked.min.js"></script>
     <script>
+        function sanitizeMarkdownHtml(html) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html || '', 'text/html');
+            const blockedTags = ['script', 'style', 'iframe', 'object', 'embed', 'form', 'meta', 'link'];
+            doc.querySelectorAll(blockedTags.join(',')).forEach((node) => node.remove());
+
+            doc.body.querySelectorAll('*').forEach((element) => {
+                [...element.attributes].forEach((attribute) => {
+                    const name = attribute.name.toLowerCase();
+                    const value = attribute.value.trim().replace(/[\u0000-\u001F\u007F\s]+/g, '').toLowerCase();
+
+                    if (name.startsWith('on')) {
+                        element.removeAttribute(attribute.name);
+                        return;
+                    }
+
+                    if (['href', 'src', 'xlink:href', 'formaction'].includes(name) &&
+                        (value.startsWith('javascript:') || value.startsWith('vbscript:') || value.startsWith('data:'))) {
+                        element.removeAttribute(attribute.name);
+                    }
+                });
+            });
+
+            return doc.body.innerHTML;
+        }
+
         window.ReactMarkdown = {
             default: function(props) {
                 const { children } = props;
-                const html = marked.parse(children || '');
-                const div = document.createElement('div');
-                div.innerHTML = html;
+                const html = sanitizeMarkdownHtml(marked.parse(children || ''));
                 return React.createElement('div', { dangerouslySetInnerHTML: { __html: html } });
             }
         };
     </script>
 
     <!-- Babel -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="/static/js/vendor/babel.min.js"></script>
 
     <style>
         .material-icons {
@@ -131,7 +155,7 @@
                     const response = await fetch(url, options);
                     
                     // Если получаем 401 или 403, удаляем токен и перенаправляем на логин
-                    if (response.status === 401 || response.status === 403) {
+                    if (response.status === 401) {
                         localStorage.removeItem('token');
                         window.location.href = '/login';
                         return null;
@@ -147,6 +171,14 @@
 
         // Make api available globally
         window.api = api;
+
+        window.authenticatedWebSocketUrl = (path) => {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host;
+            const token = localStorage.getItem('token');
+            const url = `${protocol}//${host}${path}`;
+            return token ? `${url}?token=${encodeURIComponent(token)}` : url;
+        };
 
         // Utility function to validate JSON
         function isValidJson(str) {

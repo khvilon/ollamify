@@ -47,8 +47,6 @@ services:
         condition: service_started
       frida:
         condition: service_started
-      tts:
-        condition: service_started
       tts-realtime:
         condition: service_started
       stt:
@@ -65,6 +63,13 @@ services:
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
       - TTS_SERVICE_URL=http://tts-realtime:8006
+      - VLLM_MANAGER_URL=${VLLM_MANAGER_URL:-http://vllm-manager:8007}
+      - OLLAMIFY_OLLAMA_MAX_ACTIVE_PER_INSTANCE=${OLLAMIFY_OLLAMA_MAX_ACTIVE_PER_INSTANCE:-1}
+      - OLLAMIFY_OLLAMA_MAX_QUEUE_PER_INSTANCE=${OLLAMIFY_OLLAMA_MAX_QUEUE_PER_INSTANCE:-32}
+      - OLLAMIFY_OLLAMA_QUEUE_TIMEOUT_MS=${OLLAMIFY_OLLAMA_QUEUE_TIMEOUT_MS:-60000}
+      - OLLAMIFY_VLLM_MAX_ACTIVE=${OLLAMIFY_VLLM_MAX_ACTIVE:-64}
+      - OLLAMIFY_VLLM_MAX_QUEUE=${OLLAMIFY_VLLM_MAX_QUEUE:-128}
+      - OLLAMIFY_VLLM_QUEUE_TIMEOUT_MS=${OLLAMIFY_VLLM_QUEUE_TIMEOUT_MS:-30000}
     expose:
       - "80"
     container_name: zeus
@@ -102,8 +107,6 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
       - ./services/vector-db/config.yaml:/qdrant/config/production.yaml
-    ports:
-      - "6333:6333"
     expose:
       - "6333"
       - "6334"
@@ -117,8 +120,6 @@ services:
       dockerfile: Dockerfile
     volumes:
       - frida_models:/app/models
-    ports:
-      - "8002:8002"
     expose:
       - "8002"
     container_name: frida
@@ -132,8 +133,6 @@ services:
     volumes:
       - reranker_models:/app/models
       - ./services/reranker/app.py:/app/app.py
-    ports:
-      - "8001:8001"
     expose:
       - "8001"
     environment:
@@ -148,6 +147,9 @@ services:
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
+    environment:
+      - OLLAMA_NUM_PARALLEL=${OLLAMA_NUM_PARALLEL:-1}
+      - OLLAMA_MAX_QUEUE=${OLLAMA_MAX_QUEUE:-16}
     expose:
       - "11434"
     healthcheck:
@@ -218,41 +220,18 @@ services:
     networks:
       - app-network
 
-  tts:
-    build:
-      context: ./services/tts
-      dockerfile: Dockerfile
-    volumes:
-      - tts_models:/app/models
-    ports:
-      - "8003:8003"
-    expose:
-      - "8003"
-    environment:
-      - PORT=8003
-      - TORCH_HOME=/app/models
-      - HF_HOME=/app/models
-      - TRANSFORMERS_CACHE=/app/models
-    container_name: tts
-    networks:
-      - app-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
   tts-realtime:
     build:
       context: ./services/tts-realtime
       dockerfile: Dockerfile
-    ports:
-      - "8006:8006"
+    volumes:
+      - tts_hf_cache:/root/.cache/huggingface
     expose:
       - "8006"
     environment:
       - PORT=8006
+      - HF_HOME=/root/.cache/huggingface
+      - TTS_PRELOAD_ON_STARTUP=1
     container_name: tts-realtime
     networks:
       - app-network
@@ -269,8 +248,6 @@ services:
       dockerfile: Dockerfile
     volumes:
       - stt_models:/app/models
-    ports:
-      - "8004:8004"
     expose:
       - "8004"
     environment:
@@ -309,10 +286,10 @@ volumes:
   frida_models:
   reranker_models:
     name: ollamify-reranker-models
-  tts_models:
-    name: ollamify-tts-models
   stt_models:
     name: ollamify-stt-models
+  tts_hf_cache:
+    name: ollamify-tts-hf-cache
 
 networks:
   app-network:

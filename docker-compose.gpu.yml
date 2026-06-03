@@ -18,11 +18,11 @@ services:
         condition: service_started
       frida:
         condition: service_started
-      tts:
-        condition: service_started
       tts-realtime:
         condition: service_started
       stt:
+        condition: service_started
+      vllm-manager:
         condition: service_started
     environment:
       - ZEUS_PORT=80
@@ -36,6 +36,13 @@ services:
       - QDRANT_HOST=vector-db
       - QDRANT_PORT=6333
       - TTS_SERVICE_URL=http://tts-realtime:8006
+      - VLLM_MANAGER_URL=http://vllm-manager:8007
+      - OLLAMIFY_OLLAMA_MAX_ACTIVE_PER_INSTANCE=${OLLAMIFY_OLLAMA_MAX_ACTIVE_PER_INSTANCE:-1}
+      - OLLAMIFY_OLLAMA_MAX_QUEUE_PER_INSTANCE=${OLLAMIFY_OLLAMA_MAX_QUEUE_PER_INSTANCE:-32}
+      - OLLAMIFY_OLLAMA_QUEUE_TIMEOUT_MS=${OLLAMIFY_OLLAMA_QUEUE_TIMEOUT_MS:-60000}
+      - OLLAMIFY_VLLM_MAX_ACTIVE=${OLLAMIFY_VLLM_MAX_ACTIVE:-64}
+      - OLLAMIFY_VLLM_MAX_QUEUE=${OLLAMIFY_VLLM_MAX_QUEUE:-128}
+      - OLLAMIFY_VLLM_QUEUE_TIMEOUT_MS=${OLLAMIFY_VLLM_QUEUE_TIMEOUT_MS:-30000}
     expose:
       - "80"
     container_name: zeus
@@ -84,47 +91,12 @@ services:
               count: 1
               capabilities: [gpu]
 
-  tts:
-    build:
-      context: ./services/tts
-      dockerfile: Dockerfile
-    volumes:
-      - tts_models:/app/models
-    ports:
-      - "8003:8003"
-    expose:
-      - "8003"
-    environment:
-      - PORT=8003
-      - TORCH_HOME=/app/models
-      - HF_HOME=/app/models
-      - TRANSFORMERS_CACHE=/app/models
-      - NVIDIA_VISIBLE_DEVICES=all
-    container_name: tts
-    networks:
-      - app-network
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
-
   stt:
     build:
       context: ./services/stt
       dockerfile: Dockerfile.gpu
     volumes:
       - stt_models:/app/models
-    ports:
-      - "8004:8004"
     expose:
       - "8004"
     environment:
@@ -149,6 +121,18 @@ services:
       timeout: 10s
       retries: 3
       start_period: 120s
+
+  tts-realtime:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - MOSS_DEVICE=cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   gpu-info:
     build:
@@ -177,8 +161,46 @@ services:
       retries: 3
       start_period: 10s
 
+  vllm-manager:
+    build:
+      context: ./services/vllm
+      dockerfile: Dockerfile
+    volumes:
+      - vllm_hf_cache:/root/.cache/huggingface
+    expose:
+      - "8007"
+    environment:
+      - PORT=8007
+      - VLLM_INNER_HOST=127.0.0.1
+      - VLLM_INNER_PORT=8008
+      - VLLM_MODEL=${VLLM_MODEL:-}
+      - VLLM_DEFAULT_ARGS=${VLLM_DEFAULT_ARGS:---dtype auto --gpu-memory-utilization 0.90}
+      - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      - VLLM_LOAD_TIMEOUT_SECONDS=${VLLM_LOAD_TIMEOUT_SECONDS:-600}
+      - VLLM_PROXY_TIMEOUT_SECONDS=${VLLM_PROXY_TIMEOUT_SECONDS:-0}
+      - HF_HOME=/root/.cache/huggingface
+      - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
+      - NVIDIA_VISIBLE_DEVICES=${VLLM_NVIDIA_VISIBLE_DEVICES:-all}
+    container_name: vllm-manager
+    restart: unless-stopped
+    networks:
+      - app-network
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
 volumes:
-  tts_models:
-    name: ollamify-tts-models
   stt_models:
-    name: ollamify-stt-models 
+    name: ollamify-stt-models
+  vllm_hf_cache:
+    name: ollamify-vllm-hf-cache

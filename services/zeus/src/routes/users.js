@@ -4,6 +4,11 @@ import { asyncHandler } from '../errors.js';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import pool from '../db/conf.js';
+import {
+  isAdminUser,
+  requireAdmin,
+  requireSelfOrAdmin
+} from '../utils/accessControl.js';
 
 const router = express.Router();
 const saltRounds = 10;
@@ -19,8 +24,13 @@ const generateApiKey = () => {
 
 // Users CRUD
 router.get('/', asyncHandler(async (req, res) => {
-  const users = await UserQueries.findAll();
-  res.json(users);
+  if (isAdminUser(req.user)) {
+    const users = await UserQueries.findAll();
+    return res.json(users);
+  }
+
+  const user = await UserQueries.findById(req.user.id);
+  res.json(user ? [user] : []);
 }));
 
 // Profile endpoint - returns current user data with statistics
@@ -96,29 +106,29 @@ router.get('/profile', asyncHandler(async (req, res) => {
   }
 }));
 
-router.get('/:id', asyncHandler(async (req, res) => {
+router.get('/:id', requireSelfOrAdmin('id'), asyncHandler(async (req, res) => {
   const user = await UserQueries.findById(req.params.id);
   res.json(user);
 }));
 
-router.put('/:id', asyncHandler(async (req, res) => {
+router.put('/:id', requireSelfOrAdmin('id'), asyncHandler(async (req, res) => {
   const { email, password, role } = req.body;
   const updateData = {
     ...(email && { email }),
     ...(password && { password_hash: await hashPassword(password) }),
-    ...(role && { is_admin: role === 'admin' })
+    ...(role && isAdminUser(req.user) && { is_admin: role === 'admin' })
   };
   
   const user = await UserQueries.update(req.params.id, updateData);
   res.json(user);
 }));
 
-router.delete('/:id', asyncHandler(async (req, res) => {
+router.delete('/:id', requireAdmin, asyncHandler(async (req, res) => {
   await UserQueries.deleteById(req.params.id);
   res.status(204).end();
 }));
 
-router.post('/', asyncHandler(async (req, res) => {
+router.post('/', requireAdmin, asyncHandler(async (req, res) => {
   const { email, password, role } = req.body;
   const passwordHash = await hashPassword(password);
   const user = await UserQueries.create(email, email, passwordHash, role === 'admin');
@@ -126,25 +136,25 @@ router.post('/', asyncHandler(async (req, res) => {
 }));
 
 // API Keys
-router.get('/:userId/api-keys', asyncHandler(async (req, res) => {
+router.get('/:userId/api-keys', requireSelfOrAdmin('userId'), asyncHandler(async (req, res) => {
   const keys = await UserQueries.findApiKeysByUserId(req.params.userId);
   res.json(keys);
 }));
 
-router.post('/:userId/api-keys', asyncHandler(async (req, res) => {
+router.post('/:userId/api-keys', requireSelfOrAdmin('userId'), asyncHandler(async (req, res) => {
   const { name } = req.body;
   const keyValue = generateApiKey();
   const key = await UserQueries.createApiKey(name, keyValue, req.params.userId);
   res.status(201).json(key);
 }));
 
-router.put('/:userId/api-keys/:keyId', asyncHandler(async (req, res) => {
+router.put('/:userId/api-keys/:keyId', requireSelfOrAdmin('userId'), asyncHandler(async (req, res) => {
   const { name } = req.body;
   const key = await UserQueries.updateApiKey(req.params.keyId, name, req.params.userId);
   res.json(key);
 }));
 
-router.delete('/:userId/api-keys/:keyId', asyncHandler(async (req, res) => {
+router.delete('/:userId/api-keys/:keyId', requireSelfOrAdmin('userId'), asyncHandler(async (req, res) => {
   await UserQueries.deleteApiKey(req.params.keyId, req.params.userId);
   res.status(204).end();
 }));

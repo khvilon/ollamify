@@ -5,13 +5,14 @@ import multer from 'multer';
 import crypto from 'crypto';
 import pdfParseFork from 'pdf-parse-fork';
 import mammoth from 'mammoth';
-import { getEmbedding, getEmbeddingDimension, splitIntoChunks } from '../embeddings.js';
+import { getEmbedding, splitIntoChunks } from '../embeddings.js';
 import { render_page, sanitizeText } from '../documentsTools.js';
 import DocumentQueries from '../db/documents.js';
 import dotenv from 'dotenv';
 import logger from '../utils/logger.js';
 import qdrantClient from '../db/qdrant.js';
 import { broadcastDocumentUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
+import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
 
 dotenv.config();
 
@@ -115,7 +116,9 @@ router.get('/', async (req, res) => {
     project_filter = ''
   } = req.query;
   
-  const offset = (page - 1) * limit;
+  const numericPage = Math.max(1, parseInt(page, 10) || 1);
+  const numericLimit = Math.max(1, parseInt(limit, 10) || 10);
+  const offset = (numericPage - 1) * numericLimit;
   
   // Проверяем допустимые значения для сортировки
   const allowedOrderBy = ['created_at', 'name', 'total_chunks', 'loaded_chunks'];
@@ -124,40 +127,38 @@ router.get('/', async (req, res) => {
   
   try {
     if (project) {
+      const projectName = assertValidProjectName(project);
+      const projectIdentifier = quoteIdentifier(projectName);
       // Проверяем существует ли схема
       const schemaExists = await pool.query(`
         SELECT schema_name 
         FROM information_schema.schemata 
         WHERE schema_name = $1
-      `, [project]);
+      `, [projectName]);
       
       if (schemaExists.rows.length === 0) {
-        logger.info(`Project "${project}" not found, returning empty array`);
+        logger.info(`Project "${projectName}" not found, returning empty array`);
         return res.json({
           documents: [],
           total: 0,
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: numericPage,
+          limit: numericLimit,
           total_pages: 0
         });
       }
       
       // Формируем параметры запроса
-      const queryParams = [];
-      let paramIndex = 1;
+      const filterParams = [];
 
       // Добавляем LIMIT и OFFSET
-      queryParams.push(limit);
-      queryParams.push(offset);
 
       // Формируем условия WHERE для поиска
       const whereConditions = [];
 
       if (search) {
-        whereConditions.push(`name ILIKE $${paramIndex}`);
-        queryParams.push(`%${search}%`);
-        paramIndex++;
-        logger.info(`Search condition added: search="${search}", paramIndex=${paramIndex-1}`);
+        filterParams.push(`%${search}%`);
+        whereConditions.push(`name ILIKE $${filterParams.length}`);
+        logger.info(`Search condition added: search="${search}", paramIndex=${filterParams.length}`);
       }
 
       const whereClause = whereConditions.length > 0 
@@ -165,17 +166,21 @@ router.get('/', async (req, res) => {
         : '';
       
       logger.info(`Executing search query with conditions: ${whereClause}`);
-      logger.info(`Query params: ${JSON.stringify(queryParams)}`);
+      logger.info(`Query params: ${JSON.stringify(filterParams)}`);
 
       // Получаем общее количество документов с учетом поиска
       const countResult = await pool.query(`
         SELECT COUNT(*) as total
-        FROM "${project}".documents
+        FROM ${projectIdentifier}.documents
         ${whereClause}
-      `, whereConditions.length > 0 ? queryParams.slice(2) : []);
+      `, filterParams);
       
       const total = parseInt(countResult.rows[0].total);
-      const total_pages = Math.ceil(total / limit);
+      const total_pages = Math.ceil(total / numericLimit);
+      const resultParams = [...filterParams, numericLimit, offset, projectName];
+      const limitParam = filterParams.length + 1;
+      const offsetParam = filterParams.length + 2;
+      const projectParam = filterParams.length + 3;
       
       // Получаем документы с пагинацией и поиском
       const result = await pool.query(`
@@ -188,24 +193,25 @@ router.get('/', async (req, res) => {
           metadata,
           created_at,
           external_id,
-          '${project}' as project
-        FROM "${project}".documents
+          $${projectParam} as project
+        FROM ${projectIdentifier}.documents
         ${whereClause}
         ORDER BY ${orderByField} ${orderDirection}
-        LIMIT $1 OFFSET $2
-      `, queryParams);
+        LIMIT $${limitParam} OFFSET $${offsetParam}
+      `, resultParams);
       
-      logger.info(`Found ${result.rows.length} documents in project "${project}" (page ${page} of ${total_pages})`);
+      logger.info(`Found ${result.rows.length} documents in project "${projectName}" (page ${numericPage} of ${total_pages})`);
       
       res.json({
         documents: result.rows,
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: numericPage,
+        limit: numericLimit,
         total_pages
       });
     } else {
       // Для всех проектов
+      const projectFilterName = project_filter ? assertValidProjectName(project_filter) : '';
       const schemas = await pool.query(`
         SELECT schema_name
         FROM information_schema.schemata
@@ -217,8 +223,8 @@ router.get('/', async (req, res) => {
           'admin'
         )
         AND schema_name NOT LIKE 'pg_%'
-        ${project_filter ? `AND schema_name = $1` : ''}
-      `, project_filter ? [project_filter] : []);
+        ${projectFilterName ? `AND schema_name = $1` : ''}
+      `, projectFilterName ? [projectFilterName] : []);
       
       logger.info(`Found ${schemas.rows.length} project schemas`);
       
@@ -228,12 +234,10 @@ router.get('/', async (req, res) => {
       // Формируем условия WHERE для поиска
       const whereConditions = [];
       const queryParams = [];
-      let paramIndex = 1;
 
       if (search) {
-        whereConditions.push(`name ILIKE $${paramIndex}`);
         queryParams.push(`%${search}%`);
-        paramIndex++;
+        whereConditions.push(`name ILIKE $${queryParams.length}`);
       }
 
       const whereClause = whereConditions.length > 0 
@@ -244,7 +248,8 @@ router.get('/', async (req, res) => {
       logger.info(`Query params: ${JSON.stringify(queryParams)}`);
 
       for (const schema of schemas.rows) {
-        const projectName = schema.schema_name;
+        const projectName = assertValidProjectName(schema.schema_name);
+        const projectIdentifier = quoteIdentifier(projectName);
         try {
           // Проверяем существование таблицы documents в схеме
           const tableExists = await pool.query(`
@@ -263,7 +268,7 @@ router.get('/', async (req, res) => {
           // Получаем количество документов в проекте
           const countResult = await pool.query(`
             SELECT COUNT(*) as total
-            FROM "${projectName}".documents
+            FROM ${projectIdentifier}.documents
             ${whereClause}
           `, queryParams);
           
@@ -280,12 +285,12 @@ router.get('/', async (req, res) => {
               metadata,
               created_at,
               external_id,
-              '${projectName}' as project
-            FROM "${projectName}".documents
+              $${queryParams.length + 3} as project
+            FROM ${projectIdentifier}.documents
             ${whereClause}
             ORDER BY ${orderByField} ${orderDirection}
-            LIMIT ${parseInt(limit)} OFFSET ${offset}
-          `, queryParams);
+            LIMIT $${queryParams.length + 1} OFFSET $${queryParams.length + 2}
+          `, [...queryParams, numericLimit, offset, projectName]);
           
           allDocuments.push(...docs.rows);
         } catch (err) {
@@ -304,20 +309,23 @@ router.get('/', async (req, res) => {
         return aValue < bValue ? 1 : -1;
       });
       
-      const total_pages = Math.ceil(total / limit);
+      const total_pages = Math.ceil(total / numericLimit);
       
-      logger.info(`Returning ${allDocuments.length} documents (page ${page} of ${total_pages})`);
+      logger.info(`Returning ${allDocuments.length} documents (page ${numericPage} of ${total_pages})`);
       
       res.json({
         documents: allDocuments,
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page: numericPage,
+        limit: numericLimit,
         total_pages
       });
     }
   } catch (error) {
     logger.error('Error in GET /documents:', error);
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
     res.status(500).json({ 
       error: error.message,
       details: error.stack
@@ -459,6 +467,9 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       });
     }
 
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
+
     // Модель будет определена из настроек проекта
 
     let documentContent;
@@ -540,16 +551,16 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         logger.info('Started transaction');
 
         // Получаем информацию о проекте и его модели эмбеддингов
-        logger.info(`Getting project info for "${project}"`);
+        logger.info(`Getting project info for "${projectName}"`);
         const projectInfo = await client.query(`
           SELECT name, embedding_model 
           FROM admin.projects 
           WHERE name = $1
-        `, [project]);
+        `, [projectName]);
         logger.info(`Got project info, found ${projectInfo.rows.length} rows`);
 
         if (projectInfo.rows.length === 0) {
-          throw new Error(`Project "${project}" not found`);
+          throw new Error(`Project "${projectName}" not found`);
         }
 
         const projectEmbeddingModel = projectInfo.rows[0].embedding_model;
@@ -560,12 +571,11 @@ router.post('/', uploadWithEncoding, async (req, res) => {
           SELECT schema_name 
           FROM information_schema.schemata 
           WHERE schema_name = $1
-        `, [project]);
+        `, [projectName]);
 
         if (schemaExists.rows.length === 0) {
-          logger.info(`Creating new schema for project ${project}`);
-          const dimension = await getEmbeddingDimension(projectEmbeddingModel);
-          await createProjectSchema(project, dimension);
+          logger.info(`Creating new schema for project ${projectName}`);
+          await createProjectSchema(projectName, projectEmbeddingModel);
         }
 
         logger.info('Splitting text into chunks...');
@@ -584,7 +594,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
           logger.info(`Checking for existing document with external_id: ${external_id}`);
           const existingDoc = await client.query(`
             SELECT id, content_hash
-            FROM "${project}".documents
+            FROM ${projectIdentifier}.documents
             WHERE external_id = $1
           `, [external_id]);
 
@@ -597,7 +607,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               clientReleased = true;
               return res.json({
                 ...doc,
-                project,
+                project: projectName,
                 status: 'exists',
                 message: 'Document already exists with same content'
               });
@@ -607,7 +617,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               // Удаляем запрос на удаление из chunks таблицы
               // Вместо этого удаляем старые векторы только из Qdrant
               try {
-                await qdrantClient.deleteDocument(project, doc.id);
+                await qdrantClient.deleteDocument(projectName, doc.id);
                 logger.info(`Deleted old vectors from Qdrant for document ${doc.id}`);
               } catch (qdrantError) {
                 logger.warn(`Failed to delete vectors from Qdrant: ${qdrantError.message}`);
@@ -616,7 +626,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
               // Обновляем документ
               const result = await client.query(`
-                UPDATE "${project}".documents
+                UPDATE ${projectIdentifier}.documents
                 SET name = $1, content_hash = $2, total_chunks = $3, loaded_chunks = 0, metadata = $4
                 WHERE id = $5
                 RETURNING id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
@@ -629,7 +639,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
               res.json({
                 ...document,
-                project,
+                project: projectName,
                 status: 'updated',
                 message: 'Document updated with new content',
                 loadedChunks: 0,
@@ -637,7 +647,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               });
 
               // Запускаем обработку чанков асинхронно
-              processChunks(project, document.id, chunks, projectEmbeddingModel);
+              processChunks(projectName, document.id, chunks, projectEmbeddingModel);
               return;
             }
           }
@@ -645,7 +655,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         // Создаем новый документ
         const result = await client.query(`
-          INSERT INTO "${project}".documents 
+          INSERT INTO ${projectIdentifier}.documents
             (name, content_hash, total_chunks, loaded_chunks, metadata, external_id)
           VALUES 
             ($1, $2, $3, $4, $5, $6)
@@ -663,7 +673,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
 
         res.json({
           ...document,
-          project,
+          project: projectName,
           status: 'created',
           message: 'Document created successfully',
           loadedChunks: 0,
@@ -671,27 +681,27 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         });
 
         // Запускаем обработку чанков асинхронно
-        processChunks(project, documentId, chunks, projectEmbeddingModel);
+        processChunks(projectName, documentId, chunks, projectEmbeddingModel);
 
         // Отправляем WebSocket уведомление о новом документе
         broadcastDocumentUpdate({
           ...document,
-          project
+          project: projectName
         });
 
         // Запускаем процесс обработки документа асинхронно
-        processDocument(documentContent, contentHash, project, documentId)
+        processDocument(documentContent, contentHash, projectName, documentId)
           .then(() => {
             logger.info(`Document ${documentId} fully processed`);
             // Отправляем WebSocket уведомление о завершении обработки
             broadcastDocumentUpdate({
               ...document,
               loaded_chunks: chunks.length,
-              project
+              project: projectName
             });
             
             // Обновляем статистику проекта
-            updateProjectStats(project);
+            updateProjectStats(projectName);
           })
           .catch(error => {
             logger.error(`Error processing document ${documentId}:`, error);
@@ -714,6 +724,12 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         clientReleased = true;
         logger.info('Database connection released after processing error');
       }
+      if (processingError.code === 'INVALID_PROJECT_NAME') {
+        return res.status(400).json({
+          error: processingError.message,
+          code: processingError.code
+        });
+      }
       return res.status(500).json({
         error: 'Failed to process document',
         details: processingError.message,
@@ -726,6 +742,12 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       client.release();
       clientReleased = true;
       logger.info('Database connection released after unhandled error');
+    }
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({
+        error: error.message,
+        code: error.code
+      });
     }
     res.status(500).json({
       error: 'Internal server error',
@@ -787,22 +809,24 @@ router.get('/:id', async (req, res) => {
   }
   
   try {
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
     // Получаем базовую информацию о документе из PostgreSQL
-    logger.info(`Getting document info from PostgreSQL for document ${id} in project "${project}"`);
+    logger.info(`Getting document info from PostgreSQL for document ${id} in project "${projectName}"`);
     const result = await pool.query(`
       SELECT 
         d.*,
         NULL as content,
-        '${project}' as project
-      FROM "${project}".documents d
+        $2 as project
+      FROM ${projectIdentifier}.documents d
       WHERE d.id = $1
-    `, [id]);
+    `, [id, projectName]);
     
     // Если документ найден, пытаемся получить содержимое из Qdrant
     if (result.rows.length > 0) {
       try {
         logger.info(`Getting document content from Qdrant for document ${id}`);
-        const qdrantContent = await qdrantClient.search(project, null, 1, {
+        const qdrantContent = await qdrantClient.search(projectName, null, 1, {
           must: [
             { key: 'document_id', match: { value: parseInt(id) } }
           ]
@@ -819,17 +843,20 @@ router.get('/:id', async (req, res) => {
     }
     
     if (result.rows.length === 0) {
-      logger.info(`Document with ID ${id} not found in project "${project}"`);
+      logger.info(`Document with ID ${id} not found in project "${projectName}"`);
       return res.status(404).json({
         error: 'Document not found',
         code: 'DOCUMENT_NOT_FOUND'
       });
     }
     
-    logger.info(`Document with ID ${id} found in project "${project}"`);
+    logger.info(`Document with ID ${id} found in project "${projectName}"`);
     res.json(result.rows[0]);
   } catch (error) {
     logger.error('Error fetching document:', error);
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
     res.status(500).json({ 
       error: error.message,
       details: error.stack
@@ -885,11 +912,15 @@ router.delete('/:id', async (req, res) => {
   }
   
   try {
-    await DocumentQueries.delete(project, id);
-    logger.info(`Document with ID ${id} deleted from project "${project}"`);
+    const projectName = assertValidProjectName(project);
+    await DocumentQueries.delete(projectName, id);
+    logger.info(`Document with ID ${id} deleted from project "${projectName}"`);
     res.status(204).send();
   } catch (error) {
     logger.error('Error deleting document:', error);
+    if (error.code === 'INVALID_PROJECT_NAME') {
+      return res.status(400).json({ error: error.message, code: error.code });
+    }
     res.status(500).json({ 
       error: error.message,
       details: error.stack
@@ -900,9 +931,11 @@ router.delete('/:id', async (req, res) => {
 // Функция для асинхронной обработки чанков
 async function processChunks(project, documentId, chunks, embeddingModel) {
   try {
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
     // Получаем информацию о документе
     const docResult = await pool.query(`
-      SELECT name, metadata FROM "${project}".documents WHERE id = $1
+      SELECT name, metadata FROM ${projectIdentifier}.documents WHERE id = $1
     `, [documentId]);
     
     if (docResult.rows.length === 0) {
@@ -917,16 +950,16 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
     
     // Проверяем, что модель эмбеддинга правильная
     if (!embeddingModel) {
-      logger.error(`No embedding model specified for project ${project}, trying to get from database`);
-      const projectModelInfo = await qdrantClient.getProjectEmbeddingModel(project);
+      logger.error(`No embedding model specified for project ${projectName}, trying to get from database`);
+      const projectModelInfo = await qdrantClient.getProjectEmbeddingModel(projectName);
       if (!projectModelInfo) {
-        logger.error(`Could not determine embedding model for project ${project}`);
+        logger.error(`Could not determine embedding model for project ${projectName}`);
         return;
       }
       embeddingModel = projectModelInfo;
     }
     
-    logger.info(`Using embedding model: ${embeddingModel} for project ${project}`);
+    logger.info(`Using embedding model: ${embeddingModel} for project ${projectName}`);
     
     // Батч точек для оптимизированной загрузки в Qdrant
     const batchSize = 10; // Размер батча
@@ -951,7 +984,7 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
             chunk_index: i,
             content: chunk,
             filename: documentName,
-            project: project,
+            project: projectName,
             created_at: new Date().toISOString(),
             metadata: documentMetadata // Добавляем метаданные документа
           }
@@ -963,15 +996,15 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
         // Если батч достиг нужного размера или это последний чанк, отправляем в Qdrant
         if (points.length >= batchSize || i === chunks.length - 1) {
           // Сохраняем батч в Qdrant
-          await qdrantClient.upsertPoints(project, points);
+          await qdrantClient.upsertPoints(projectName, points);
           logger.info(`Saved batch of ${points.length} points to Qdrant`);
           
           // Обновляем количество загруженных чанков в PostgreSQL
           await pool.query(`
-            UPDATE "${project}".documents
-            SET loaded_chunks = loaded_chunks + ${points.length}
-            WHERE id = $1
-          `, [documentId]);
+            UPDATE ${projectIdentifier}.documents
+            SET loaded_chunks = loaded_chunks + $1
+            WHERE id = $2
+          `, [points.length, documentId]);
           
           // Очищаем батч
           points.length = 0;
@@ -979,7 +1012,7 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
           // Получаем обновленную информацию о документе
           const docInfo = await pool.query(`
             SELECT id, name, content_hash, total_chunks, loaded_chunks, metadata, created_at, external_id
-            FROM "${project}".documents
+            FROM ${projectIdentifier}.documents
             WHERE id = $1
           `, [documentId]);
           
@@ -987,7 +1020,7 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
             // Отправляем WebSocket уведомление о прогрессе
             broadcastDocumentUpdate({
               ...docInfo.rows[0],
-              project
+              project: projectName
             });
           }
         }
@@ -1006,11 +1039,13 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
 // Функция для обработки документа
 async function processDocument(text, contentHash, project, documentId) {
   try {
-    logger.info(`Starting document processing for ${documentId} in project ${project}`);
+    const projectName = assertValidProjectName(project);
+    const projectIdentifier = quoteIdentifier(projectName);
+    logger.info(`Starting document processing for ${documentId} in project ${projectName}`);
     
     // Получаем информацию о документе
     const docResult = await pool.query(`
-      SELECT * FROM "${project}".documents WHERE id = $1
+      SELECT * FROM ${projectIdentifier}.documents WHERE id = $1
     `, [documentId]);
     
     if (docResult.rows.length === 0) {
@@ -1031,10 +1066,11 @@ async function processDocument(text, contentHash, project, documentId) {
 // Функция для обновления статистики проекта
 async function updateProjectStats(projectName) {
   try {
+    const projectIdentifier = quoteIdentifier(projectName);
     // Получаем количество документов в проекте
     const result = await pool.query(`
       SELECT COUNT(*) as document_count
-      FROM "${projectName}".documents
+      FROM ${projectIdentifier}.documents
     `);
     
     const stats = {

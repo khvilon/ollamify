@@ -11,7 +11,14 @@ const {
     CircularProgress,
     Alert,
     Fade,
-    Icon
+    Icon,
+    Button,
+    TextField,
+    FormControl,
+    InputLabel,
+    Select,
+    MenuItem,
+    LinearProgress
 } = window.MaterialUI;
 
 const { useEffect, useState } = window.React;
@@ -23,6 +30,12 @@ function Gpus() {
     const [gpus, setGpus] = useState([]);
     const [metricsAvailable, setMetricsAvailable] = useState(false);
     const [metricsStale, setMetricsStale] = useState(false);
+    const [vllm, setVllm] = useState(null);
+    const [limits, setLimits] = useState(null);
+    const [vllmModels, setVllmModels] = useState([]);
+    const [vllmSelectedModel, setVllmSelectedModel] = useState('');
+    const [vllmCustomModel, setVllmCustomModel] = useState('');
+    const [vllmActionLoading, setVllmActionLoading] = useState(false);
 
     useEffect(() => {
         let cancelled = false;
@@ -43,6 +56,8 @@ function Gpus() {
                 setGpus(data.gpus || []);
                 setMetricsAvailable(!!data.metricsAvailable);
                 setMetricsStale(!!data.metricsStale);
+                setVllm(data.vllm || null);
+                setLimits(data.limits || null);
                 setError('');
             } catch (e) {
                 if (cancelled) return;
@@ -53,7 +68,24 @@ function Gpus() {
             }
         };
 
+        const loadVllmModels = async () => {
+            try {
+                const response = await window.api.fetch('/api/gpus/vllm/models');
+                if (!response || !response.ok) return;
+                const data = await response.json();
+                if (cancelled) return;
+                const models = data.models || [];
+                setVllmModels(models);
+                if (!vllmSelectedModel && models.length > 0) {
+                    setVllmSelectedModel(models[0]);
+                }
+            } catch (e) {
+                // The model list is optional UI data; status polling still works without it.
+            }
+        };
+
         load();
+        loadVllmModels();
         // "Realtime" polling (best-effort). If metrics are not available, polling is harmless.
         timerId = setInterval(load, 2000);
 
@@ -62,6 +94,68 @@ function Gpus() {
             if (timerId) clearInterval(timerId);
         };
     }, []);
+
+    const handleLoadVllmModel = async () => {
+        const model = (vllmCustomModel || vllmSelectedModel || '').trim();
+        if (!model) {
+            setError('vLLM model is required');
+            return;
+        }
+
+        setVllmActionLoading(true);
+        try {
+            const response = await window.api.fetch('/api/gpus/vllm/load', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ model })
+            });
+            if (!response) return;
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to load vLLM model');
+            }
+            const data = await response.json();
+            setVllm(data);
+            setError('');
+        } catch (e) {
+            setError(e.message || 'Failed to load vLLM model');
+        } finally {
+            setVllmActionLoading(false);
+        }
+    };
+
+    const handleUnloadVllmModel = async () => {
+        setVllmActionLoading(true);
+        try {
+            const response = await window.api.fetch('/api/gpus/vllm/unload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (!response) return;
+            if (!response.ok) {
+                const data = await response.json().catch(() => ({}));
+                throw new Error(data.error || 'Failed to unload vLLM model');
+            }
+            const data = await response.json();
+            setVllm(data);
+            setError('');
+        } catch (e) {
+            setError(e.message || 'Failed to unload vLLM model');
+        } finally {
+            setVllmActionLoading(false);
+        }
+    };
+
+    const vllmState = vllm?.state || (vllm?.available === false ? 'unavailable' : 'unknown');
+    const vllmStateColor =
+        vllmState === 'running' ? 'success' :
+        vllmState === 'loading' ? 'warning' :
+        vllmState === 'error' || vllmState === 'unavailable' ? 'error' :
+        'default';
+    const selectedVllmModel = (vllmCustomModel || vllmSelectedModel || '').trim();
+    const ollamaQueue = limits?.ollama || {};
+    const ollamaQueued = Object.values(ollamaQueue).reduce((sum, item) => sum + (item?.queued || 0), 0);
+    const ollamaActive = Object.values(ollamaQueue).reduce((sum, item) => sum + (item?.active || 0), 0);
 
     return (
         <Container maxWidth="lg">
@@ -110,7 +204,109 @@ function Gpus() {
                             color={metricsAvailable ? (metricsStale ? 'warning' : 'success') : 'default'}
                             variant="outlined"
                         />
+                        <Chip
+                            icon={<Icon>memory</Icon>}
+                            label={`vLLM: ${vllmState}`}
+                            color={vllmStateColor}
+                            variant="outlined"
+                        />
+                        {vllm?.current_model && (
+                            <Chip
+                                icon={<Icon>hub</Icon>}
+                                label={`vLLM model: ${vllm.current_model}`}
+                                color="info"
+                                variant="outlined"
+                            />
+                        )}
+                        <Chip
+                            icon={<Icon>sync_alt</Icon>}
+                            label={`Ollama queue: ${ollamaActive}/${ollamaQueued}`}
+                            color={ollamaQueued > 0 ? 'warning' : 'default'}
+                            variant="outlined"
+                        />
+                        <Chip
+                            icon={<Icon>speed</Icon>}
+                            label={`vLLM queue: ${limits?.vllm?.active || 0}/${limits?.vllm?.queued || 0}`}
+                            color={(limits?.vllm?.queued || 0) > 0 ? 'warning' : 'default'}
+                            variant="outlined"
+                        />
                     </Box>
+                </Paper>
+
+                <Paper sx={{
+                    p: 3,
+                    mb: 3,
+                    borderRadius: 2,
+                    background: theme => theme.palette.mode === 'light'
+                        ? 'rgba(255, 255, 255, 0.5)'
+                        : 'rgba(50, 50, 50, 0.5)',
+                    backdropFilter: 'blur(10px)',
+                }}>
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 2 }}>
+                        vLLM
+                    </Typography>
+                    {(vllmState === 'loading' || vllmActionLoading) && (
+                        <LinearProgress sx={{ mb: 2 }} />
+                    )}
+                    <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} md={5}>
+                            <FormControl fullWidth size="small">
+                                <InputLabel>Model</InputLabel>
+                                <Select
+                                    value={vllmSelectedModel}
+                                    label="Model"
+                                    onChange={(event) => setVllmSelectedModel(event.target.value)}
+                                >
+                                    {vllmModels.map(model => (
+                                        <MenuItem key={model} value={model}>{model}</MenuItem>
+                                    ))}
+                                </Select>
+                            </FormControl>
+                        </Grid>
+                        <Grid item xs={12} md={5}>
+                            <TextField
+                                fullWidth
+                                size="small"
+                                label="HuggingFace model or URL"
+                                value={vllmCustomModel}
+                                onChange={(event) => setVllmCustomModel(event.target.value)}
+                            />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                            <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', justifyContent: { xs: 'flex-start', md: 'flex-end' } }}>
+                                <Button
+                                    variant="contained"
+                                    size="small"
+                                    startIcon={<Icon>play_arrow</Icon>}
+                                    disabled={vllmActionLoading || !selectedVllmModel}
+                                    onClick={handleLoadVllmModel}
+                                >
+                                    Load
+                                </Button>
+                                <Button
+                                    variant="outlined"
+                                    size="small"
+                                    startIcon={<Icon>stop</Icon>}
+                                    disabled={vllmActionLoading || !vllm?.current_model}
+                                    onClick={handleUnloadVllmModel}
+                                >
+                                    Unload
+                                </Button>
+                            </Box>
+                        </Grid>
+                    </Grid>
+                    {vllm?.served_models?.length > 0 && (
+                        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 2 }}>
+                            {vllm.served_models.map(model => (
+                                <Chip key={model} size="small" label={model} color="info" variant="outlined" />
+                            ))}
+                        </Box>
+                    )}
+                    {vllm?.error && (
+                        <Typography variant="body2" color="error" sx={{ mt: 2, wordBreak: 'break-word' }}>
+                            {vllm.error}
+                        </Typography>
+                    )}
                 </Paper>
 
                 {loading ? (
