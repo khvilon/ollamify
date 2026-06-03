@@ -23,7 +23,11 @@ RUN python -m pip install --no-cache-dir --isolated --upgrade pip \
         --index-url ${PYTORCH_INDEX_URL} \
         --extra-index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
-    python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn requests \
+    python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn \
+        --index-url ${PIP_EXTRA_INDEX_URL} \
+        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
+
+RUN python -m pip install --no-cache-dir --isolated requests \
         --index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
 
