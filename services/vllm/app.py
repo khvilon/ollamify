@@ -20,7 +20,7 @@ INNER_BASE_URL = f"http://{INNER_HOST}:{INNER_PORT}"
 LOAD_TIMEOUT_SECONDS = int(os.environ.get("VLLM_LOAD_TIMEOUT_SECONDS", "600"))
 STOP_TIMEOUT_SECONDS = int(os.environ.get("VLLM_STOP_TIMEOUT_SECONDS", "10"))
 KILL_TIMEOUT_SECONDS = int(os.environ.get("VLLM_KILL_TIMEOUT_SECONDS", "5"))
-DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.60")
+DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.55")
 PROXY_TIMEOUT_SECONDS = float(os.environ.get("VLLM_PROXY_TIMEOUT_SECONDS", "0") or "0")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434").rstrip("/")
 
@@ -28,6 +28,27 @@ REQUIRE_GPU = os.environ.get("VLLM_REQUIRE_GPU", "1").lower() not in {"0", "fals
 UNLOAD_OLLAMA_MODEL = os.environ.get("VLLM_UNLOAD_OLLAMA_MODEL", "1").lower() not in {"0", "false", "no"}
 
 DEFAULT_MODEL_ALIASES = {
+    "qwen3:4b": {
+        "target": "Qwen/Qwen3-4B-AWQ",
+        "extra_args": [
+            "--max-model-len",
+            "2048",
+        ],
+    },
+    "qwen3:8b": {
+        "target": "Qwen/Qwen3-8B-FP8",
+        "extra_args": [
+            "--max-model-len",
+            "2048",
+        ],
+    },
+    "LiquidAI/LFM2.5-8B-A1B": {
+        "target": "LiquidAI/LFM2.5-8B-A1B",
+        "extra_args": [
+            "--max-model-len",
+            "2048",
+        ],
+    },
     "qwen3.5:9b": {
         "target": "RedHatAI/Qwen3.5-9B-FP8-dynamic",
         "extra_args": [
