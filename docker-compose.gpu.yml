@@ -187,6 +187,7 @@ services:
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
       - NVIDIA_VISIBLE_DEVICES=${VLLM_NVIDIA_VISIBLE_DEVICES:-all}
     container_name: vllm-manager
+    init: true
     restart: unless-stopped
     networks:
       - app-network

@@ -33,8 +33,6 @@ DEFAULT_MODEL_ALIASES = {
         "extra_args": [
             "--max-model-len",
             "4096",
-            "--gpu-memory-utilization",
-            "0.72",
             "--language-model-only",
         ],
     },
