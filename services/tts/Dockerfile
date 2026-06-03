@@ -18,7 +18,8 @@ ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
 ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG PIP_TIMEOUT=120
 ARG PIP_RETRIES=10
-RUN python -m pip install --no-cache-dir --isolated --upgrade torch torchvision torchaudio \
+RUN python -m pip install --no-cache-dir --isolated \
+    torch==2.7.1+cu128 torchvision==0.22.1+cu128 torchaudio==2.7.1+cu128 \
     --index-url ${PYTORCH_INDEX_URL} \
     --extra-index-url ${PIP_EXTRA_INDEX_URL} \
     --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
@@ -47,4 +48,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8003/health || exit 1
 
 # Запуск приложения
-CMD ["python", "app.py"] 
+CMD ["python", "app.py"]
