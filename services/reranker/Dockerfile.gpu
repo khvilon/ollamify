@@ -30,8 +30,8 @@ RUN python -m pip install --no-cache-dir --isolated \
 RUN python -m pip install --no-cache-dir --isolated \
     --index-url ${PIP_EXTRA_INDEX_URL} \
     --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} \
-    "transformers[sentencepiece,onnx]>=4.36.0" \
-    "huggingface-hub>=0.19.0" \
+    "transformers[sentencepiece,onnx]>=4.36.0,<5.0.0" \
+    "huggingface-hub>=0.23.0,<1.0.0" \
     accelerate>=0.25.0 \
     einops>=0.7.0 \
     tiktoken>=0.5.0 \
