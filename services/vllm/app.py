@@ -18,6 +18,8 @@ INNER_HOST = os.environ.get("VLLM_INNER_HOST", "127.0.0.1")
 INNER_PORT = int(os.environ.get("VLLM_INNER_PORT", "8008"))
 INNER_BASE_URL = f"http://{INNER_HOST}:{INNER_PORT}"
 LOAD_TIMEOUT_SECONDS = int(os.environ.get("VLLM_LOAD_TIMEOUT_SECONDS", "600"))
+STOP_TIMEOUT_SECONDS = int(os.environ.get("VLLM_STOP_TIMEOUT_SECONDS", "10"))
+KILL_TIMEOUT_SECONDS = int(os.environ.get("VLLM_KILL_TIMEOUT_SECONDS", "5"))
 DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.60")
 PROXY_TIMEOUT_SECONDS = float(os.environ.get("VLLM_PROXY_TIMEOUT_SECONDS", "0") or "0")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434").rstrip("/")
@@ -265,13 +267,16 @@ def stop_current_locked():
         proc.terminate()
 
     try:
-        proc.wait(timeout=30)
+        proc.wait(timeout=STOP_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
         except Exception:
             proc.kill()
-        proc.wait(timeout=10)
+        try:
+            proc.wait(timeout=KILL_TIMEOUT_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
 
 
 def wait_until_ready(expected_model, proc):
@@ -311,9 +316,10 @@ def wait_until_ready(expected_model, proc):
 
     with state_lock:
         if process is proc:
+            stop_current_locked()
             status.update({
                 "state": "error",
-                "pid": proc.pid if proc.poll() is None else None,
+                "pid": None,
                 "error": last_error or "Timed out waiting for vLLM readiness",
             })
 
