@@ -2,6 +2,7 @@ FROM vllm/vllm-openai:latest
 
 WORKDIR /app
 
+RUN pip uninstall -y nixl-cux nixl-cu12 nixl-cu13 nixl || true
 RUN pip install --no-cache-dir --ignore-installed blinker flask requests
 
 COPY app.py /app/app.py

@@ -167,6 +167,7 @@ services:
       dockerfile: Dockerfile
     volumes:
       - vllm_hf_cache:/root/.cache/huggingface
+      - ollama_data:/root/.ollama:ro
     expose:
       - "8007"
     environment:
@@ -174,10 +175,14 @@ services:
       - VLLM_INNER_HOST=127.0.0.1
       - VLLM_INNER_PORT=8008
       - VLLM_MODEL=${VLLM_MODEL:-}
-      - VLLM_DEFAULT_ARGS=${VLLM_DEFAULT_ARGS:---dtype auto --gpu-memory-utilization 0.90}
+      - VLLM_DEFAULT_ARGS=${VLLM_DEFAULT_ARGS:---dtype auto --gpu-memory-utilization 0.60}
       - VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
+      - VLLM_MODEL_ALIASES=${VLLM_MODEL_ALIASES:-}
       - VLLM_LOAD_TIMEOUT_SECONDS=${VLLM_LOAD_TIMEOUT_SECONDS:-600}
       - VLLM_PROXY_TIMEOUT_SECONDS=${VLLM_PROXY_TIMEOUT_SECONDS:-0}
+      - VLLM_REQUIRE_GPU=${VLLM_REQUIRE_GPU:-1}
+      - VLLM_UNLOAD_OLLAMA_MODEL=${VLLM_UNLOAD_OLLAMA_MODEL:-1}
+      - OLLAMA_URL=http://ollama:11434
       - HF_HOME=/root/.cache/huggingface
       - HUGGING_FACE_HUB_TOKEN=${HUGGING_FACE_HUB_TOKEN:-}
       - NVIDIA_VISIBLE_DEVICES=${VLLM_NVIDIA_VISIBLE_DEVICES:-all}

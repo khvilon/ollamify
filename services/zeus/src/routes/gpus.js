@@ -1,10 +1,10 @@
 import express from 'express';
 import logger from '../utils/logger.js';
-import { getOllamaInstances } from '../utils/ollama.js';
+import { getOllamaInstances, refreshOllamaModelIndex } from '../utils/ollama.js';
 import { getGpuMetrics } from '../utils/gpuMetrics.js';
 import { getProviderLimitSnapshots } from '../utils/providerLimits.js';
 import {
-  RECOMMENDED_VLLM_MODELS,
+  buildVllmModelOptionsFromOllamaIndex,
   getVllmStatus,
   loadVllmModel,
   unloadVllmModel
@@ -42,8 +42,14 @@ router.get('/vllm/status', async (req, res) => {
   }
 });
 
-router.get('/vllm/models', (req, res) => {
-  res.json({ models: RECOMMENDED_VLLM_MODELS });
+router.get('/vllm/models', async (req, res) => {
+  try {
+    const idx = await refreshOllamaModelIndex({ force: true });
+    res.json({ models: buildVllmModelOptionsFromOllamaIndex(idx) });
+  } catch (error) {
+    logger.error('Error fetching vLLM model options:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch vLLM model options' });
+  }
 });
 
 router.post('/vllm/load', async (req, res) => {

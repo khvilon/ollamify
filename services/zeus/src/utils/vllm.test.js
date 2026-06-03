@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildVllmModelOptionsFromOllamaIndex,
   doesVllmServeModel,
   normalizeVllmRequestedModel
 } from './vllm.js';
@@ -37,4 +38,25 @@ test('matches vLLM served model aliases returned by /v1/models', () => {
 test('does not match when vLLM is unavailable or not running', () => {
   assert.equal(doesVllmServeModel({ available: false, state: 'running', current_model: 'x' }, 'x'), false);
   assert.equal(doesVllmServeModel({ available: true, state: 'loading', current_model: 'x' }, 'x'), false);
+});
+
+test('builds vLLM model options from installed Ollama completion models', () => {
+  const idx = {
+    modelsByInstance: new Map([
+      [0, [
+        { name: 'qwen3.5:9b', capabilities: ['vision', 'completion', 'tools'] },
+        { name: 'qwen3-embedding:8b', capabilities: ['embedding'] },
+        { name: 'qwen3:8b', details: { family: 'qwen3' } }
+      ]],
+      [1, [
+        { name: 'qwen3.5:9b', capabilities: ['completion'] },
+        { model: 'llama3.1:8b', capabilities: ['completion'] }
+      ]]
+    ])
+  };
+
+  assert.deepEqual(
+    buildVllmModelOptionsFromOllamaIndex(idx),
+    ['qwen3.5:9b', 'qwen3:8b', 'llama3.1:8b']
+  );
 });

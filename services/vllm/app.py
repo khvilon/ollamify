@@ -1,3 +1,4 @@
+import json
 import os
 import shlex
 import signal
@@ -17,8 +18,25 @@ INNER_HOST = os.environ.get("VLLM_INNER_HOST", "127.0.0.1")
 INNER_PORT = int(os.environ.get("VLLM_INNER_PORT", "8008"))
 INNER_BASE_URL = f"http://{INNER_HOST}:{INNER_PORT}"
 LOAD_TIMEOUT_SECONDS = int(os.environ.get("VLLM_LOAD_TIMEOUT_SECONDS", "600"))
-DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.90")
+DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.60")
 PROXY_TIMEOUT_SECONDS = float(os.environ.get("VLLM_PROXY_TIMEOUT_SECONDS", "0") or "0")
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://ollama:11434").rstrip("/")
+
+REQUIRE_GPU = os.environ.get("VLLM_REQUIRE_GPU", "1").lower() not in {"0", "false", "no"}
+UNLOAD_OLLAMA_MODEL = os.environ.get("VLLM_UNLOAD_OLLAMA_MODEL", "1").lower() not in {"0", "false", "no"}
+
+DEFAULT_MODEL_ALIASES = {
+    "qwen3.5:9b": {
+        "target": "RedHatAI/Qwen3.5-9B-FP8-dynamic",
+        "extra_args": [
+            "--max-model-len",
+            "4096",
+            "--gpu-memory-utilization",
+            "0.72",
+            "--language-model-only",
+        ],
+    },
+}
 
 state_lock = threading.RLock()
 process = None
@@ -26,38 +44,14 @@ status = {
     "state": "stopped",
     "current_model": None,
     "desired_model": None,
+    "actual_model": None,
     "served_models": [],
     "pid": None,
     "started_at": None,
     "error": None,
     "inner_url": INNER_BASE_URL,
+    "command": None,
 }
-
-REQUIRE_CPU_AVX = os.environ.get("VLLM_REQUIRE_CPU_AVX", "1").lower() not in {"0", "false", "no"}
-
-
-def get_cpu_flags():
-    try:
-        with open("/proc/cpuinfo", "r", encoding="utf-8", errors="ignore") as cpuinfo:
-            for line in cpuinfo:
-                if line.lower().startswith("flags"):
-                    _, flags = line.split(":", 1)
-                    return set(flags.strip().split())
-    except Exception:
-        return set()
-    return set()
-
-
-def get_runtime_blocker():
-    flags = get_cpu_flags()
-    if REQUIRE_CPU_AVX and not ({"avx", "avx2", "avx512f"} & flags):
-        return (
-            "vLLM cannot start in this container because the CPU exposed by the host/VM "
-            "does not advertise AVX/AVX2/AVX512. The current vLLM image loads UCX code "
-            "compiled with AVX support. Expose host CPU flags to the VM or use a vLLM "
-            "image built for this CPU."
-        )
-    return None
 
 
 def normalize_model(value):
@@ -85,17 +79,150 @@ def parse_args(value):
     return []
 
 
-def build_command(model, extra_args=None):
+def normalize_alias_entry(entry):
+    if isinstance(entry, str):
+        return {"target": normalize_model(entry), "extra_args": []}
+
+    if not isinstance(entry, dict):
+        return None
+
+    target = normalize_model(entry.get("target") or entry.get("model") or entry.get("hf_model"))
+    if not target:
+        return None
+
+    return {
+        "target": target,
+        "extra_args": parse_args(entry.get("extra_args") or entry.get("args") or []),
+    }
+
+
+def parse_model_aliases():
+    aliases = {
+        source: {
+            "target": value["target"],
+            "extra_args": list(value.get("extra_args", [])),
+        }
+        for source, value in DEFAULT_MODEL_ALIASES.items()
+    }
+    raw = os.environ.get("VLLM_MODEL_ALIASES", "").strip()
+    if not raw:
+        return aliases
+
+    try:
+        if raw.startswith("{"):
+            data = json.loads(raw)
+            if not isinstance(data, dict):
+                raise ValueError("VLLM_MODEL_ALIASES JSON must be an object")
+            for source, entry in data.items():
+                source_model = normalize_model(source)
+                alias_entry = normalize_alias_entry(entry)
+                if source_model and alias_entry:
+                    aliases[source_model] = alias_entry
+        else:
+            for item in raw.split(","):
+                if "=" not in item:
+                    continue
+                source, target = item.split("=", 1)
+                source_model = normalize_model(source)
+                target_model = normalize_model(target)
+                if source_model and target_model:
+                    aliases[source_model] = {"target": target_model, "extra_args": []}
+    except Exception as exc:
+        print(f"[vllm-manager] failed to parse VLLM_MODEL_ALIASES: {exc}", flush=True)
+
+    return aliases
+
+
+def resolve_model_request(model, extra_args=None):
+    served_model = normalize_model(model)
+    if not served_model:
+        return None
+
+    aliases = parse_model_aliases()
+    alias = aliases.get(served_model)
+    actual_model = served_model
+    resolved_extra_args = []
+
+    if alias:
+        actual_model = alias["target"]
+        resolved_extra_args.extend(alias.get("extra_args", []))
+
+    resolved_extra_args.extend(parse_args(extra_args))
+
+    return {
+        "served_model": served_model,
+        "actual_model": actual_model,
+        "extra_args": resolved_extra_args,
+        "aliased": bool(alias),
+    }
+
+
+def get_gpu_blocker():
+    if not REQUIRE_GPU:
+        return None
+
+    visible_devices = os.environ.get("NVIDIA_VISIBLE_DEVICES", "").strip().lower()
+    if visible_devices in {"", "none", "void"}:
+        return "vLLM requires an NVIDIA GPU, but no NVIDIA devices are exposed to the container."
+
+    try:
+        result = subprocess.run(
+            ["nvidia-smi", "-L"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            return None
+        detail = (result.stderr or result.stdout or "").strip()
+        return f"vLLM requires an NVIDIA GPU, but nvidia-smi did not report one. {detail}".strip()
+    except FileNotFoundError:
+        if os.path.exists("/dev/nvidia0") or os.path.exists("/dev/nvidiactl"):
+            return None
+        return "vLLM requires an NVIDIA GPU, but nvidia-smi is missing and no /dev/nvidia* device is visible."
+    except Exception as exc:
+        return f"vLLM requires an NVIDIA GPU, but GPU detection failed: {exc}"
+
+
+def unload_ollama_model(model):
+    if not UNLOAD_OLLAMA_MODEL or not model:
+        return
+
+    try:
+        response = requests.post(
+            f"{OLLAMA_URL}/api/generate",
+            json={
+                "model": model,
+                "prompt": "",
+                "stream": False,
+                "keep_alive": 0,
+            },
+            timeout=15,
+        )
+        if response.ok:
+            print(f"[vllm-manager] requested Ollama unload for {model}", flush=True)
+        else:
+            print(
+                f"[vllm-manager] Ollama unload for {model} returned {response.status_code}: {response.text[:300]}",
+                flush=True,
+            )
+    except Exception as exc:
+        print(f"[vllm-manager] failed to unload Ollama model {model}: {exc}", flush=True)
+
+
+def build_command(actual_model, served_model, extra_args=None):
     args = [
         "vllm",
         "serve",
-        model,
+        actual_model,
         "--host",
         INNER_HOST,
         "--port",
         str(INNER_PORT),
         "--served-model-name",
-        model,
+        served_model,
     ]
     args.extend(parse_args(DEFAULT_ARGS))
     args.extend(parse_args(extra_args))
@@ -162,6 +289,12 @@ def wait_until_ready(expected_model, proc):
 
         try:
             served_models = get_models_from_vllm()
+            normalized_served_models = {normalize_model(model) for model in served_models}
+            if normalize_model(expected_model) not in normalized_served_models:
+                last_error = f"vLLM is ready, but expected model {expected_model} is not served"
+                time.sleep(2)
+                continue
+
             with state_lock:
                 if process is proc:
                     status.update({
@@ -187,21 +320,22 @@ def wait_until_ready(expected_model, proc):
 
 def start_model(model, extra_args=None):
     global process
-    normalized = normalize_model(model)
-    if not normalized:
+    resolved = resolve_model_request(model, extra_args)
+    if not resolved:
         return {"error": "model is required"}, 400
 
-    runtime_blocker = get_runtime_blocker()
-    if runtime_blocker:
+    gpu_blocker = get_gpu_blocker()
+    if gpu_blocker:
         with state_lock:
             stop_current_locked()
             status.update({
                 "state": "error",
                 "current_model": None,
-                "desired_model": normalized,
+                "desired_model": resolved["served_model"],
+                "actual_model": resolved["actual_model"],
                 "served_models": [],
                 "pid": None,
-                "error": runtime_blocker,
+                "error": gpu_blocker,
                 "command": None,
             })
             return current_status_locked(), 503
@@ -212,27 +346,31 @@ def start_model(model, extra_args=None):
             process
             and process.poll() is None
             and status["state"] == "running"
-            and status["current_model"] == normalized
+            and status["current_model"] == resolved["served_model"]
+            and status.get("actual_model") == resolved["actual_model"]
         ):
             return current_status_locked(), 200
 
         stop_current_locked()
-        command = build_command(normalized, extra_args)
+        unload_ollama_model(resolved["served_model"])
+        command = build_command(resolved["actual_model"], resolved["served_model"], resolved["extra_args"])
         print(f"[vllm-manager] starting: {' '.join(shlex.quote(part) for part in command)}", flush=True)
         process = subprocess.Popen(command, start_new_session=True)
         status.update({
             "state": "loading",
             "current_model": None,
-            "desired_model": normalized,
+            "desired_model": resolved["served_model"],
+            "actual_model": resolved["actual_model"],
             "served_models": [],
             "pid": process.pid,
             "started_at": int(time.time()),
             "error": None,
             "command": command,
+            "aliased": resolved["aliased"],
         })
         proc = process
 
-    threading.Thread(target=wait_until_ready, args=(normalized, proc), daemon=True).start()
+    threading.Thread(target=wait_until_ready, args=(resolved["served_model"], proc), daemon=True).start()
     return current_status(), 202
 
 
@@ -243,7 +381,7 @@ def current_status_locked():
             status["served_models"] = get_models_from_vllm(timeout=1)
         except Exception:
             pass
-    runtime_blocker = get_runtime_blocker()
+    runtime_blocker = get_gpu_blocker()
     return {
         "available": runtime_blocker is None,
         "runtime_blocker": runtime_blocker,
@@ -281,10 +419,12 @@ def unload_model():
             "state": "stopped",
             "current_model": None,
             "desired_model": None,
+            "actual_model": None,
             "served_models": [],
             "pid": None,
             "error": None,
             "command": None,
+            "aliased": False,
         })
         return jsonify(current_status_locked())
 

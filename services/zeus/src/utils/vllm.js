@@ -36,14 +36,6 @@ let cachedStatus = {
   value: null
 };
 
-export const RECOMMENDED_VLLM_MODELS = [
-  'Qwen/Qwen2.5-7B-Instruct',
-  'Qwen/Qwen2.5-14B-Instruct',
-  'meta-llama/Llama-3.1-8B-Instruct',
-  'mistralai/Mistral-7B-Instruct-v0.3',
-  'google/gemma-2-9b-it'
-];
-
 export function normalizeVllmRequestedModel(model) {
   if (typeof model !== 'string') {
     return '';
@@ -67,6 +59,39 @@ export function normalizeVllmRequestedModel(model) {
   }
 
   return normalized.replace(/^\/+/, '');
+}
+
+export function buildVllmModelOptionsFromOllamaIndex(idx) {
+  const modelsByInstance = idx?.modelsByInstance;
+  if (!modelsByInstance || typeof modelsByInstance.values !== 'function') {
+    return [];
+  }
+
+  const names = [];
+  const seen = new Set();
+
+  for (const models of modelsByInstance.values()) {
+    for (const model of models || []) {
+      const name = model?.name || model?.model;
+      if (!name || seen.has(name)) {
+        continue;
+      }
+
+      const capabilities = Array.isArray(model.capabilities) ? model.capabilities : [];
+      const embeddingOnly = capabilities.length > 0
+        && capabilities.includes('embedding')
+        && !capabilities.includes('completion');
+
+      if (embeddingOnly) {
+        continue;
+      }
+
+      seen.add(name);
+      names.push(name);
+    }
+  }
+
+  return names;
 }
 
 export function doesVllmServeModel(status, model) {
