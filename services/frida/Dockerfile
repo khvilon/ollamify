@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM pytorch/pytorch:2.7.1-cuda12.8-cudnn9-runtime
 
 WORKDIR /app
 
@@ -9,20 +9,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Установка зависимостей с поддержкой CUDA 12.8 для RTX 5070 Ti
+# Проверяем PyTorch из базового CUDA 12.8 образа и ставим зависимости сервиса.
 # Важно: `--isolated` игнорирует pip-конфиги/ENV, которые могут добавлять `pypi.nvidia.com` и ломать сборку в некоторых сетях.
-ARG PYTORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
 ARG PIP_EXTRA_INDEX_URL=https://pypi.org/simple
 ARG PIP_TIMEOUT=120
 ARG PIP_RETRIES=10
-RUN python -m pip install --no-cache-dir --isolated --upgrade pip \
-        --index-url ${PIP_EXTRA_INDEX_URL} \
-        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
-    python -m pip install --no-cache-dir --isolated \
-        torch==2.7.1+cu128 torchvision==0.22.1+cu128 torchaudio==2.7.1+cu128 \
-        --index-url ${PYTORCH_INDEX_URL} \
-        --extra-index-url ${PIP_EXTRA_INDEX_URL} \
-        --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES} && \
+RUN python -c "import torch, torchaudio, torchvision; print(torch.__version__)" && \
     python -m pip install --no-cache-dir --isolated sentence-transformers flask gunicorn \
         --index-url ${PIP_EXTRA_INDEX_URL} \
         --timeout ${PIP_TIMEOUT} --retries ${PIP_RETRIES}
