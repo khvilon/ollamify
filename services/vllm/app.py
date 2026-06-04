@@ -336,13 +336,16 @@ def wait_until_ready(expected_model, proc):
     with state_lock:
         if process is proc:
             stop_current_locked()
-            timeout_error = f"Timed out after {LOAD_TIMEOUT_SECONDS}s waiting for vLLM readiness"
-            if last_error:
-                timeout_error = f"{timeout_error}; last readiness error: {last_error}"
+            if time.time() >= deadline:
+                readiness_error = f"Timed out after {LOAD_TIMEOUT_SECONDS}s waiting for vLLM readiness"
+                if last_error:
+                    readiness_error = f"{readiness_error}; last readiness error: {last_error}"
+            else:
+                readiness_error = last_error or "vLLM stopped before readiness"
             status.update({
                 "state": "error",
                 "pid": None,
-                "error": timeout_error,
+                "error": readiness_error,
             })
 
 
