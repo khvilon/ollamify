@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import {
   buildVllmModelOptionsFromOllamaIndex,
   doesVllmServeModel,
+  getVllmCompletionMaxTokens,
+  getVllmMaxModelLen,
   normalizeVllmRequestedModel
 } from './vllm.js';
 
@@ -59,4 +61,21 @@ test('builds vLLM model options from installed Ollama completion models', () => 
     buildVllmModelOptionsFromOllamaIndex(idx),
     ['qwen3.5:9b', 'qwen3:8b', 'llama3.1:8b']
   );
+});
+
+test('extracts max model length from vLLM manager command', () => {
+  assert.equal(getVllmMaxModelLen({
+    command: ['vllm', 'serve', 'Qwen/Qwen3-4B-AWQ', '--max-model-len', '2048']
+  }), 2048);
+
+  assert.equal(getVllmMaxModelLen({ command: ['vllm', 'serve', 'x'] }), null);
+});
+
+test('caps vLLM completion tokens to leave prompt room', () => {
+  const status = {
+    command: ['vllm', 'serve', 'Qwen/Qwen3-4B-AWQ', '--max-model-len', '2048']
+  };
+
+  assert.equal(getVllmCompletionMaxTokens(status, 8192), 512);
+  assert.equal(getVllmCompletionMaxTokens(status, 128), 128);
 });

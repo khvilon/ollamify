@@ -30,6 +30,7 @@ const VLLM_MANAGER_URL = process.env.VLLM_MANAGER_URL || 'http://vllm-manager:80
 const VLLM_STATUS_TIMEOUT_MS = Number(process.env.VLLM_STATUS_TIMEOUT_MS) || 1500;
 const VLLM_LOAD_TIMEOUT_MS = Number(process.env.VLLM_LOAD_TIMEOUT_MS) || 30_000;
 const VLLM_COMPLETION_TIMEOUT_MS = Number(process.env.VLLM_COMPLETION_TIMEOUT_MS) || 600_000;
+const DEFAULT_VLLM_OUTPUT_TOKEN_FRACTION = 0.25;
 
 let cachedStatus = {
   updatedAt: 0,
@@ -106,6 +107,37 @@ export function doesVllmServeModel(status, model) {
   ].filter(Boolean).map(normalizeVllmRequestedModel));
 
   return servedModels.has(requested);
+}
+
+export function getVllmMaxModelLen(status) {
+  const command = Array.isArray(status?.command) ? status.command : [];
+  const maxModelLenIndex = command.indexOf('--max-model-len');
+  if (maxModelLenIndex === -1 || maxModelLenIndex >= command.length - 1) {
+    return null;
+  }
+
+  const parsed = Number(command[maxModelLenIndex + 1]);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return Math.floor(parsed);
+}
+
+export function getVllmCompletionMaxTokens(status, requestedMaxTokens, fallbackMaxTokens = 512) {
+  const requested = Number(requestedMaxTokens);
+  const fallback = Number(fallbackMaxTokens);
+  const requestedLimit = Number.isFinite(requested) && requested > 0
+    ? Math.floor(requested)
+    : (Number.isFinite(fallback) && fallback > 0 ? Math.floor(fallback) : 512);
+
+  const maxModelLen = getVllmMaxModelLen(status);
+  if (!maxModelLen) {
+    return requestedLimit;
+  }
+
+  const outputBudget = Math.max(64, Math.floor(maxModelLen * DEFAULT_VLLM_OUTPUT_TOKEN_FRACTION));
+  return Math.min(requestedLimit, outputBudget);
 }
 
 export async function getVllmStatus({ force = false } = {}) {

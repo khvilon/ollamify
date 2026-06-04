@@ -12,6 +12,8 @@ import { runOllamaLimited, runVllmLimited } from '../utils/providerLimits.js';
 import {
   callVllmChatCompletions,
   forwardToVllm,
+  getVllmCompletionMaxTokens,
+  getVllmMaxModelLen,
   getVllmTargetForModel,
 } from '../utils/vllm.js';
 
@@ -22,6 +24,11 @@ const MAX_KEYWORD_WORDS = 4;
 const MAX_KEYWORDS_FOR_SEARCH = 10;
 const MAX_AGGREGATED_QUERY_LENGTH = 200;
 const RAG_PROJECT_SEARCH_CONCURRENCY = Math.max(1, Number(process.env.RAG_PROJECT_SEARCH_CONCURRENCY) || 3);
+const DEFAULT_COMPLETION_MAX_TOKENS = Math.max(1, Number(process.env.DEFAULT_COMPLETION_MAX_TOKENS) || 8192);
+const RAG_INTENT_MAX_TOKENS = Math.max(1, Number(process.env.RAG_INTENT_MAX_TOKENS) || 128);
+const RAG_KEYWORDS_MAX_TOKENS = Math.max(1, Number(process.env.RAG_KEYWORDS_MAX_TOKENS) || 192);
+const RAG_VLLM_ANSWER_MAX_TOKENS = Math.max(1, Number(process.env.RAG_VLLM_ANSWER_MAX_TOKENS) || 512);
+const RAG_VLLM_CONTEXT_CHAR_LIMIT = Math.max(0, Number(process.env.RAG_VLLM_CONTEXT_CHAR_LIMIT) || 2200);
 
 const VLLM_CHAT_PAYLOAD_FIELDS = [
   'model',
@@ -53,6 +60,43 @@ function buildVllmChatPayload(body, model) {
   }
   payload.model = model;
   return payload;
+}
+
+function buildRagContextFromDocs(docs, maxChars = 0) {
+  const fragments = [];
+  let usedChars = 0;
+  const limited = Number.isFinite(maxChars) && maxChars > 0;
+
+  for (const [index, doc] of docs.entries()) {
+    const metadataEntries = doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
+      ? Object.entries(doc.metadata)
+      : [];
+    const metadataStr = metadataEntries.length > 0
+      ? '\nDocument metadata:\n' + metadataEntries
+        .map(([key, value]) => `- ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
+        .join('\n')
+      : '';
+    const prefix = `${index + 1}. From document ${doc.filename}:${metadataStr}\n`;
+    const rawContent = (doc.content || '').trim();
+    let content = rawContent;
+
+    if (limited) {
+      const remaining = maxChars - usedChars - prefix.length - 2;
+      if (remaining < 240) {
+        break;
+      }
+
+      if (content.length > remaining) {
+        content = `${content.slice(0, Math.max(0, remaining - 18)).trim()}\n[truncated]`;
+      }
+    }
+
+    const fragment = `${prefix}${content}`;
+    fragments.push(fragment);
+    usedChars += fragment.length + 2;
+  }
+
+  return `Relevant fragments:\n\n${fragments.join('\n\n')}`;
 }
 
 async function mapWithConcurrency(items, limit, mapper) {
@@ -566,8 +610,11 @@ Question: ${question}`
 }
 
 // Отправка запроса к OpenRouter API или Ollama
-async function getCompletion(messages, model, think = true) {
-  const maxTokens = 8192;
+async function getCompletion(messages, model, think = true, options = {}) {
+  const requestedMaxTokens = Number(options.maxTokens);
+  const maxTokens = Number.isFinite(requestedMaxTokens) && requestedMaxTokens > 0
+    ? Math.floor(requestedMaxTokens)
+    : DEFAULT_COMPLETION_MAX_TOKENS;
 
   // Model is selected per-request:
   // - local Ollama: "llama3.1:8b"
@@ -658,13 +705,14 @@ async function getCompletion(messages, model, think = true) {
     } else {
       const vllmTarget = await getVllmTargetForModel(actualModel);
       if (vllmTarget) {
+        const vllmMaxTokens = getVllmCompletionMaxTokens(vllmTarget.status, maxTokens, RAG_VLLM_ANSWER_MAX_TOKENS);
         const data = await runVllmLimited({ model: actualModel, label: 'complete' }, async () => {
           const response = await callVllmChatCompletions({
             model: vllmTarget.model,
             messages,
             stream: false,
             temperature: 0.7,
-            max_tokens: maxTokens
+            max_tokens: vllmMaxTokens
           });
           return response.json();
         });
@@ -677,6 +725,7 @@ async function getCompletion(messages, model, think = true) {
         logger.info('LLM Response from vLLM:', {
           model: actualModel,
           service: 'vLLM',
+          maxTokens: vllmMaxTokens,
           responseLength: llmResponse.length,
           response: llmResponse
         });
@@ -1861,7 +1910,7 @@ async function extractQueryIntent(originalQuery, model) {
     ];
     
     // Используем указанную модель для получения ответа
-    const intentQuery = await getCompletion(messages, model);
+    const intentQuery = await getCompletion(messages, model, false, { maxTokens: RAG_INTENT_MAX_TOKENS });
     logger.info('Extracted intent query:', {
       originalQuery,
       intentQuery,
@@ -1917,7 +1966,7 @@ Rules:
       }
     ];
 
-    const rawResponse = await getCompletion(messages, targetModel, false);
+    const rawResponse = await getCompletion(messages, targetModel, false, { maxTokens: RAG_KEYWORDS_MAX_TOKENS });
     const strippedResponse = rawResponse
       .replace(THINK_TAG_REGEX, '')
       .replace(/```json?/gi, '')
@@ -2414,10 +2463,29 @@ ${processedDocs.map((doc, index) => {
   return `${index + 1}. Из документа ${doc.filename}:${metadataStr}
 ${doc.content.trim()}`;
 }).join('\n\n')}`;
+
+    const vllmTargetForRag = await getVllmTargetForModel(model);
+    const vllmMaxModelLen = vllmTargetForRag ? getVllmMaxModelLen(vllmTargetForRag.status) : null;
+    const ragContextCharLimit = vllmTargetForRag && vllmMaxModelLen && vllmMaxModelLen <= 4096
+      ? RAG_VLLM_CONTEXT_CHAR_LIMIT
+      : 0;
+    const contextForLlm = ragContextCharLimit > 0
+      ? buildRagContextFromDocs(processedDocs, ragContextCharLimit)
+      : context;
+
+    if (ragContextCharLimit > 0) {
+      logger.info('Applied vLLM RAG context limit:', {
+        model,
+        maxModelLen: vllmMaxModelLen,
+        contextLength: contextForLlm.length,
+        originalContextLength: context.length,
+        contextLimit: ragContextCharLimit
+      });
+    }
     
     // Логируем полный контекст, который отправляется в LLM
     logger.info('FULL CONTEXT FOR LLM:');
-    logger.info(context);
+    logger.info(contextForLlm);
     
     logger.info('Getting answer from LLM...');
     // Для получения ответа используем оригинальный запрос пользователя
@@ -2431,11 +2499,11 @@ ${doc.content.trim()}`;
       {
         role: "user",
         content: `Context:
-${context}
+${contextForLlm}
 
 Question: ${question}`
       }
-    ], model, think);
+    ], model, think, vllmTargetForRag ? { maxTokens: RAG_VLLM_ANSWER_MAX_TOKENS } : {});
 
     // Извлекаем секции размышлений для RAG запросов
     const { answer, thinking } = extractThinkingSection(rawAnswer);
