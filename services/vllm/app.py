@@ -17,7 +17,7 @@ PORT = int(os.environ.get("PORT", "8007"))
 INNER_HOST = os.environ.get("VLLM_INNER_HOST", "127.0.0.1")
 INNER_PORT = int(os.environ.get("VLLM_INNER_PORT", "8008"))
 INNER_BASE_URL = f"http://{INNER_HOST}:{INNER_PORT}"
-LOAD_TIMEOUT_SECONDS = int(os.environ.get("VLLM_LOAD_TIMEOUT_SECONDS", "600"))
+LOAD_TIMEOUT_SECONDS = int(os.environ.get("VLLM_LOAD_TIMEOUT_SECONDS", "1800"))
 STOP_TIMEOUT_SECONDS = int(os.environ.get("VLLM_STOP_TIMEOUT_SECONDS", "10"))
 KILL_TIMEOUT_SECONDS = int(os.environ.get("VLLM_KILL_TIMEOUT_SECONDS", "5"))
 DEFAULT_ARGS = os.environ.get("VLLM_DEFAULT_ARGS", "--dtype auto --gpu-memory-utilization 0.55")
@@ -336,10 +336,13 @@ def wait_until_ready(expected_model, proc):
     with state_lock:
         if process is proc:
             stop_current_locked()
+            timeout_error = f"Timed out after {LOAD_TIMEOUT_SECONDS}s waiting for vLLM readiness"
+            if last_error:
+                timeout_error = f"{timeout_error}; last readiness error: {last_error}"
             status.update({
                 "state": "error",
                 "pid": None,
-                "error": last_error or "Timed out waiting for vLLM readiness",
+                "error": timeout_error,
             })
 
 
