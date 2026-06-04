@@ -29,6 +29,22 @@ async function initializeAdminSchema() {
       CREATE INDEX IF NOT EXISTS idx_projects_name
       ON admin.projects (name)
     `);
+
+    await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS created_by INTEGER`);
+    await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS embedding_model TEXT`);
+    await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+    await client.query(`
+      UPDATE admin.projects
+      SET embedding_model = 'frida'
+      WHERE embedding_model IS NULL OR embedding_model = ''
+    `);
+    await client.query(`
+      UPDATE admin.projects
+      SET created_at = CURRENT_TIMESTAMP
+      WHERE created_at IS NULL
+    `);
+    await client.query(`ALTER TABLE admin.projects ALTER COLUMN embedding_model SET NOT NULL`);
+    await client.query(`ALTER TABLE admin.projects ALTER COLUMN created_at SET DEFAULT CURRENT_TIMESTAMP`);
     
     // Создаем таблицу users, если она не существует
     await client.query(`
