@@ -28,6 +28,7 @@ Authorization: Bearer YOUR_API_KEY
 ## Supported Services
 
 - **AI & RAG** - Answer generation and document search
+- **MCP** - Remote tools for agents and IDEs
 - **Documents** - Document management for RAG
 - **TTS** - Text-to-Speech synthesis
 - **STT** - Speech-to-Text recognition
@@ -75,6 +76,27 @@ Detailed code examples in various programming languages are available on the "Co
             details: {
               type: 'string',
               description: 'Additional information about the error'
+            }
+          }
+        },
+        ProjectSummary: {
+          type: 'object',
+          properties: {
+            name: {
+              type: 'string',
+              description: 'Project name',
+              example: 'my-documents'
+            },
+            description: {
+              type: 'string',
+              description: 'Project description for humans and external agents',
+              maxLength: 4000,
+              example: 'Product manuals and support articles'
+            },
+            embedding_model: {
+              type: 'string',
+              description: 'Embedding model configured for this project',
+              example: 'frida'
             }
           }
         },
@@ -460,7 +482,7 @@ const filteredPaths = {};
 Object.keys(fullSpecs.paths || {}).forEach(path => {
   const pathItem = fullSpecs.paths[path];
   const filteredPathItem = {};
-  
+
   Object.keys(pathItem).forEach(method => {
     const operation = pathItem[method];
     // Исключаем эндпоинты с тегом "Internal"
@@ -468,7 +490,7 @@ Object.keys(fullSpecs.paths || {}).forEach(path => {
       filteredPathItem[method] = operation;
     }
   });
-  
+
   // Добавляем путь только если есть неотфильтрованные методы
   if (Object.keys(filteredPathItem).length > 0) {
     filteredPaths[path] = filteredPathItem;
@@ -478,4 +500,4 @@ Object.keys(fullSpecs.paths || {}).forEach(path => {
 export const externalSpecs = {
   ...fullSpecs,
   paths: filteredPaths
-}; 
+};

@@ -2,6 +2,17 @@ import fetch from 'node-fetch';
 import logger from './utils/logger.js';
 import { resolveOllamaBaseUrlForModel } from './utils/ollama.js';
 
+function normalizeOllamaKeepAlive(value, fallback = '-1m') {
+  const normalized = String(value || fallback).trim();
+  return normalized === '-1' ? '-1m' : normalized;
+}
+
+const OLLAMA_KEEP_ALIVE = normalizeOllamaKeepAlive(process.env.OLLAMA_KEEP_ALIVE);
+const OLLAMA_EMBEDDING_KEEP_ALIVE = normalizeOllamaKeepAlive(
+  process.env.OLLAMA_EMBEDDING_KEEP_ALIVE,
+  OLLAMA_KEEP_ALIVE
+);
+
 export async function getEmbeddingDimension(model) {
     try {
       // Если модель FRIDA, у нее фиксированная размерность 1536
@@ -14,7 +25,7 @@ export async function getEmbeddingDimension(model) {
       const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model, prompt: 'test' })
+        body: JSON.stringify({ model, prompt: 'test', keep_alive: OLLAMA_EMBEDDING_KEEP_ALIVE })
       });
 
       if (!response.ok) {
@@ -41,7 +52,7 @@ export async function getEmbedding(text, model) {
     const response = await fetch(`${ollamaBaseUrl}/api/embeddings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, prompt: text })
+      body: JSON.stringify({ model, prompt: text, keep_alive: OLLAMA_EMBEDDING_KEEP_ALIVE })
     });
 
     if (!response.ok) {

@@ -5,6 +5,7 @@
 ## Index
 
 - **API documentation (pre-install friendly)**: [`api/README.md`](api/README.md)
+- **MCP integration**: [`mcp.md`](mcp.md)
 - **UI guide**: [`ui/README.md`](ui/README.md)
 - **Configuration**: [`configuration.md`](configuration.md)
 - **Architecture**: [`architecture.md`](architecture.md)

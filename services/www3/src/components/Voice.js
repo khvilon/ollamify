@@ -63,10 +63,16 @@ function Voice() {
     const [sttModels, setSttModels] = useState({});
     const [selectedSttModel, setSelectedSttModel] = useState('');
     const [currentSttModel, setCurrentSttModel] = useState(''); // Текущая загруженная модель
-    const [sttLanguage, setSttLanguage] = useState('ru');
+    const [sttLanguage, setSttLanguage] = useState('auto');
     const [isLoadingSttModels, setIsLoadingSttModels] = useState(true);
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [isLoadingModel, setIsLoadingModel] = useState(false); // Загрузка модели
+    const [sttDebug, setSttDebug] = useState(null);
+    const [micDevices, setMicDevices] = useState([]);
+    const [selectedMicId, setSelectedMicId] = useState('default');
+    const [isLoadingMicDevices, setIsLoadingMicDevices] = useState(false);
+    const [liveAmplitude, setLiveAmplitude] = useState([]);
+    const [liveRms, setLiveRms] = useState(0);
     
     // Клонирование голоса (заглушка для будущего)
     const [showVoiceCloning, setShowVoiceCloning] = useState(false);
@@ -75,6 +81,12 @@ function Voice() {
     const [activeTab, setActiveTab] = useState(0);
     
     const audioRef = useRef(null);
+    const recordingStartRef = useRef(0);
+    const audioStreamRef = useRef(null);
+    const audioContextRef = useRef(null);
+    const analyserRef = useRef(null);
+    const monitorAnimationRef = useRef(null);
+    const monitorLastUpdateRef = useRef(0);
     const theme = useTheme();
 
     const isSecureContext = useMemo(() => {
@@ -246,6 +258,121 @@ function Voice() {
         handleLoadSttModel(newModel);
     };
 
+    const stopMicMonitor = useCallback(() => {
+        if (monitorAnimationRef.current) {
+            cancelAnimationFrame(monitorAnimationRef.current);
+            monitorAnimationRef.current = null;
+        }
+        if (audioContextRef.current) {
+            audioContextRef.current.close().catch(() => {});
+            audioContextRef.current = null;
+        }
+        analyserRef.current = null;
+        setLiveRms(0);
+        setLiveAmplitude([]);
+    }, []);
+
+    const startMicMonitor = useCallback((stream) => {
+        try {
+            stopMicMonitor();
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+
+            const audioContext = new AudioCtx();
+            const analyser = audioContext.createAnalyser();
+            analyser.fftSize = 1024;
+            analyser.smoothingTimeConstant = 0.3;
+
+            const source = audioContext.createMediaStreamSource(stream);
+            source.connect(analyser);
+
+            const timeDomainData = new Float32Array(analyser.fftSize);
+            audioContextRef.current = audioContext;
+            analyserRef.current = analyser;
+            monitorLastUpdateRef.current = 0;
+
+            const draw = (ts) => {
+                if (!analyserRef.current) return;
+                analyserRef.current.getFloatTimeDomainData(timeDomainData);
+
+                // Ограничиваем частоту обновления UI, чтобы не перегружать React.
+                if (ts - monitorLastUpdateRef.current > 80) {
+                    monitorLastUpdateRef.current = ts;
+
+                    let sum = 0;
+                    for (let i = 0; i < timeDomainData.length; i++) {
+                        sum += timeDomainData[i] * timeDomainData[i];
+                    }
+                    const rms = Math.sqrt(sum / timeDomainData.length);
+                    setLiveRms(rms);
+
+                    const bars = 48;
+                    const groupSize = Math.max(1, Math.floor(timeDomainData.length / bars));
+                    const envelope = [];
+                    for (let b = 0; b < bars; b++) {
+                        let localSum = 0;
+                        let count = 0;
+                        const start = b * groupSize;
+                        const end = Math.min(start + groupSize, timeDomainData.length);
+                        for (let i = start; i < end; i++) {
+                            localSum += Math.abs(timeDomainData[i]);
+                            count++;
+                        }
+                        envelope.push(count > 0 ? Math.min(1, localSum / count * 4) : 0);
+                    }
+                    setLiveAmplitude(envelope);
+                }
+                monitorAnimationRef.current = requestAnimationFrame(draw);
+            };
+
+            monitorAnimationRef.current = requestAnimationFrame(draw);
+        } catch (error) {
+            console.warn('Mic monitor init failed:', error);
+        }
+    }, [stopMicMonitor]);
+
+    useEffect(() => {
+        return () => {
+            stopMicMonitor();
+            if (audioStreamRef.current) {
+                audioStreamRef.current.getTracks().forEach(track => track.stop());
+                audioStreamRef.current = null;
+            }
+        };
+    }, [stopMicMonitor]);
+
+    const loadMicrophones = useCallback(async () => {
+        if (!navigator?.mediaDevices?.enumerateDevices) return;
+        setIsLoadingMicDevices(true);
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const audioInputs = devices.filter((d) => d.kind === 'audioinput');
+            setMicDevices(audioInputs);
+            if (audioInputs.length > 0 && !audioInputs.some((d) => d.deviceId === selectedMicId)) {
+                setSelectedMicId(audioInputs[0].deviceId || 'default');
+            }
+        } catch (err) {
+            console.warn('Failed to enumerate microphones:', err);
+        } finally {
+            setIsLoadingMicDevices(false);
+        }
+    }, [selectedMicId]);
+
+    useEffect(() => {
+        loadMicrophones();
+    }, [loadMicrophones]);
+
+    useEffect(() => {
+        if (!navigator?.mediaDevices?.addEventListener) return;
+        const onDeviceChange = () => {
+            loadMicrophones();
+        };
+        navigator.mediaDevices.addEventListener('devicechange', onDeviceChange);
+        return () => {
+            navigator.mediaDevices.removeEventListener('devicechange', onDeviceChange);
+        };
+    }, [loadMicrophones]);
+
     // Языки для TTS берём из доступных голосов сервиса, чтобы UI всегда совпадал с backend.
     const ttsLanguages = useMemo(() => {
         const languageLabels = {
@@ -274,6 +401,7 @@ function Voice() {
 
     // Языки для STT (Whisper поддерживает много языков)
     const sttLanguages = [
+        { code: 'auto', name: 'Auto-detect' },
         { code: 'ru', name: 'Russian' },
         { code: 'en', name: 'English' },
         { code: 'es', name: 'Spanish' },
@@ -368,6 +496,7 @@ function Voice() {
         try {
             setSttError(null);
             setSttResult('');
+            setSttDebug(null);
 
             // Browser support / secure context checks
             if (!navigator?.mediaDevices?.getUserMedia) {
@@ -383,8 +512,36 @@ function Voice() {
                 return;
             }
             
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-            const recorder = new MediaRecorder(stream);
+            const audioConstraints = selectedMicId && selectedMicId !== 'default'
+                ? { deviceId: { exact: selectedMicId } }
+                : true;
+            let stream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+            } catch (err) {
+                // Fallback: если выбранное устройство пропало, пытаемся открыть дефолтный микрофон.
+                if (selectedMicId && selectedMicId !== 'default') {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    window.enqueueSnackbar('Selected microphone is unavailable. Switched to default input.', { variant: 'warning' });
+                } else {
+                    throw err;
+                }
+            }
+            audioStreamRef.current = stream;
+            loadMicrophones();
+            startMicMonitor(stream);
+            const preferredMimeTypes = [
+                'audio/webm;codecs=opus',
+                'audio/webm',
+                'audio/ogg;codecs=opus',
+                'audio/ogg'
+            ];
+            const supportedMimeType = preferredMimeTypes.find(
+                (mime) => typeof MediaRecorder.isTypeSupported === 'function' && MediaRecorder.isTypeSupported(mime)
+            );
+            const recorder = supportedMimeType
+                ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+                : new MediaRecorder(stream);
             const chunks = [];
 
             recorder.ondataavailable = (e) => {
@@ -394,19 +551,32 @@ function Voice() {
             };
 
             recorder.onstop = async () => {
-                const audioBlob = new Blob(chunks, { type: 'audio/wav' });
+                const recordedMs = Date.now() - recordingStartRef.current;
+                if (recordedMs < 350) {
+                    setSttError('Слишком короткая запись. Нажмите запись и скажите фразу чуть дольше.');
+                    stopMicMonitor();
+                    stream.getTracks().forEach(track => track.stop());
+                    audioStreamRef.current = null;
+                    return;
+                }
+                const blobType = recorder.mimeType || (chunks[0] && chunks[0].type) || 'audio/webm';
+                const audioBlob = new Blob(chunks, { type: blobType });
                 await transcribeAudio(audioBlob);
                 
                 // Останавливаем поток
+                stopMicMonitor();
                 stream.getTracks().forEach(track => track.stop());
+                audioStreamRef.current = null;
             };
 
             recorder.start();
+            recordingStartRef.current = Date.now();
             setMediaRecorder(recorder);
             setIsRecording(true);
             
         } catch (err) {
             console.error('Error starting recording:', err);
+            stopMicMonitor();
             const name = err?.name || '';
             if (name === 'NotAllowedError' || name === 'SecurityError') {
                 setSttError('Доступ к микрофону запрещён. Разрешите микрофон в настройках браузера и обновите страницу.');
@@ -421,6 +591,7 @@ function Voice() {
     const handleStopRecording = () => {
         if (mediaRecorder && isRecording) {
             mediaRecorder.stop();
+            stopMicMonitor();
             setIsRecording(false);
             setMediaRecorder(null);
         }
@@ -429,10 +600,24 @@ function Voice() {
     const transcribeAudio = async (audioBlob) => {
         try {
             setIsTranscribing(true);
+            if (!audioBlob || audioBlob.size < 2048) {
+                throw new Error(`Recorded audio is too small (${audioBlob?.size || 0} bytes). Check microphone permissions/input device.`);
+            }
             
             const formData = new FormData();
-            formData.append('audio', audioBlob, 'recording.wav');
-            formData.append('language', sttLanguage);
+            const mimeToExt = (mime) => {
+                if (!mime) return 'webm';
+                if (mime.includes('ogg')) return 'ogg';
+                if (mime.includes('wav')) return 'wav';
+                if (mime.includes('mp4')) return 'mp4';
+                return 'webm';
+            };
+            formData.append('audio', audioBlob, `recording.${mimeToExt(audioBlob.type)}`);
+            formData.append('client_audio_mime', audioBlob.type || '');
+            formData.append('client_audio_size', String(audioBlob.size || 0));
+            if (sttLanguage && sttLanguage !== 'auto') {
+                formData.append('language', sttLanguage);
+            }
             formData.append('task', 'transcribe');
 
             const response = await window.api.fetch('/api/stt/transcribe', {
@@ -447,6 +632,7 @@ function Voice() {
 
             const result = await response.json();
             setSttResult(result.text);
+            setSttDebug(result.debug || null);
             
             window.enqueueSnackbar('Speech recognition completed!', { variant: 'success' });
 
@@ -837,6 +1023,29 @@ function Voice() {
                                     </Select>
                                 </FormControl>
 
+                                {/* Выбор микрофона */}
+                                <FormControl fullWidth sx={{ mb: 2 }}>
+                                    <InputLabel>Microphone</InputLabel>
+                                    <Select
+                                        value={selectedMicId}
+                                        label="Microphone"
+                                        onChange={(e) => setSelectedMicId(e.target.value)}
+                                        disabled={isRecording || isTranscribing || isLoadingMicDevices}
+                                    >
+                                        {micDevices.length === 0 ? (
+                                            <MenuItem value="default">
+                                                <em>{isLoadingMicDevices ? 'Loading microphones...' : 'Default microphone'}</em>
+                                            </MenuItem>
+                                        ) : (
+                                            micDevices.map((device, idx) => (
+                                                <MenuItem key={device.deviceId || `mic-${idx}`} value={device.deviceId || 'default'}>
+                                                    {device.label || `Microphone ${idx + 1}`}
+                                                </MenuItem>
+                                            ))
+                                        )}
+                                    </Select>
+                                </FormControl>
+
                                 <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
                                     💡 Tip: Click the record button, speak clearly, and stop recording for transcription.
                                 </Typography>
@@ -896,6 +1105,30 @@ function Voice() {
                                     )}
                                 </Box>
 
+                                {/* Live амплитудная дорожка во время записи */}
+                                {isRecording && (
+                                    <Paper sx={{ p: 1.5, mb: 2, bgcolor: alpha(theme.palette.warning.main, 0.08) }}>
+                                        <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
+                                            Live mic level (RMS): {liveRms.toFixed(4)}
+                                        </Typography>
+                                        <Box sx={{ display: 'flex', alignItems: 'flex-end', gap: '2px', height: 56 }}>
+                                            {(liveAmplitude.length ? liveAmplitude : new Array(48).fill(0)).map((v, idx) => (
+                                                <Box
+                                                    key={idx}
+                                                    sx={{
+                                                        flex: 1,
+                                                        minWidth: 2,
+                                                        height: `${Math.max(6, Math.round(v * 100))}%`,
+                                                        borderRadius: '2px',
+                                                        bgcolor: v > 0.35 ? 'success.main' : (v > 0.12 ? 'warning.main' : 'grey.400'),
+                                                        transition: 'height 80ms linear'
+                                                    }}
+                                                />
+                                            ))}
+                                        </Box>
+                                    </Paper>
+                                )}
+
                                 {/* Прогресс */}
                                 {isTranscribing && (
                                     <LinearProgress sx={{ mb: 2 }} />
@@ -927,6 +1160,29 @@ function Voice() {
                                         )
                                     }}
                                 />
+
+                                {/* Диагностика входного аудио */}
+                                {sttDebug && (
+                                    <Paper sx={{ p: 1.5, mb: 2, bgcolor: alpha(theme.palette.info.main, 0.08) }}>
+                                        <Typography variant="caption" sx={{ display: 'block', mb: 0.5 }}>
+                                            Debug audio: {sttDebug.input_size_bytes || 0} bytes •
+                                            {' '}dur {sttDebug.input_duration_sec ?? '-'}s •
+                                            {' '}rms {sttDebug.input_rms ?? '-'} •
+                                            {' '}hash {sttDebug.input_audio_hash || '-'}
+                                        </Typography>
+                                        <Typography
+                                            variant="caption"
+                                            sx={{
+                                                display: 'block',
+                                                fontFamily: 'monospace',
+                                                whiteSpace: 'pre-wrap',
+                                                wordBreak: 'break-all'
+                                            }}
+                                        >
+                                            {sttDebug.input_amplitude_ascii || '(no amplitude track)'}
+                                        </Typography>
+                                    </Paper>
+                                )}
 
                                 {/* Кнопки действий */}
                                 {sttResult && (

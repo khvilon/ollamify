@@ -43,6 +43,7 @@ It provides production‑ready building blocks out of the box:
   - local models via **Ollama**
   - proxied models via **OpenRouter** (by using `openrouter/...` model names)
 - **Multi-tenant access control**: users + API keys (one Ollamify instance can serve multiple apps)
+- **MCP server** for external agents and IDEs to list projects and search indexed documents
 - **Web UI** to manage projects/models/users and to test everything in a chat
 
 ## Screenshot
@@ -129,6 +130,7 @@ docker compose -f docker-compose.yml -f docker-compose.gpu.yml -f docker-compose
 
 - **Docs index**: [`docs/README.md`](docs/README.md)
 - **API docs (pre-install friendly)**: [`docs/api/README.md`](docs/api/README.md)
+- **MCP integration**: [`docs/mcp.md`](docs/mcp.md)
 - **UI guide**: [`docs/ui/README.md`](docs/ui/README.md)
 - **Configuration**: [`docs/configuration.md`](docs/configuration.md)
 - **Architecture**: [`docs/architecture.md`](docs/architecture.md)

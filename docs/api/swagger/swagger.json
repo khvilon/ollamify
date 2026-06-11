@@ -17,6 +17,7 @@
   ],
   "tags": [
     { "name": "Documents", "description": "Document management for RAG" },
+    { "name": "MCP", "description": "Remote MCP tools for external agents and IDEs" },
     { "name": "AI & RAG", "description": "RAG endpoints (search + answer)" },
     { "name": "AI & Embeddings", "description": "OpenAI-style embeddings endpoint" },
     { "name": "OpenAI Compatible", "description": "OpenAI-compatible chat completions" },
@@ -73,6 +74,12 @@
         "type": "object",
         "properties": {
           "name": { "type": "string", "example": "my-docs" },
+          "description": {
+            "type": "string",
+            "description": "Project description for humans and external agents",
+            "maxLength": 4000,
+            "example": "Support articles and product manuals"
+          },
           "embedding_model": { "type": "string", "example": "nomic-embed-text" }
         }
       },
@@ -194,6 +201,7 @@
           "useReranker": { "type": "boolean", "default": true, "example": true },
           "limit": { "type": "integer", "default": 30, "minimum": 1, "maximum": 100, "example": 20 },
           "think": { "type": "boolean", "default": true, "example": true },
+          "mode": { "type": "string", "enum": ["vector", "keyword", "hybrid"], "default": "hybrid", "example": "hybrid" },
           "useHybridSearch": { "type": "boolean", "default": true, "example": true },
           "temperature": { "type": "number", "minimum": 0, "maximum": 2, "example": 0.7 },
           "max_tokens": { "type": "integer", "minimum": 1, "example": 1024 }
@@ -206,6 +214,8 @@
           "content": { "type": "string" },
           "similarity": { "type": "number" },
           "project": { "type": "string" },
+          "document_id": { "type": "integer" },
+          "chunk_index": { "type": "integer" },
           "metadata": { "type": "object" }
         }
       },
@@ -241,7 +251,12 @@
           "question": { "type": "string", "example": "Что такое нейронные сети?" },
           "project": { "type": "string", "example": "ml-documents" },
           "limit": { "type": "integer", "default": 100, "minimum": 1, "maximum": 100, "example": 10 },
-          "useHybridSearch": { "type": "boolean", "default": true, "example": true }
+          "mode": { "type": "string", "enum": ["vector", "keyword", "hybrid"], "default": "hybrid", "example": "hybrid" },
+          "useHybridSearch": { "type": "boolean", "default": true, "example": true },
+          "useReranker": { "type": "boolean", "default": false, "example": false },
+          "includeAdjacentChunks": { "type": "boolean", "default": false, "example": false },
+          "minScore": { "type": "number", "example": 0.25 },
+          "keywords": { "type": "array", "items": { "type": "string" }, "example": ["indexing", "hybrid search"] }
         }
       },
       "RagChunksResponse": {
@@ -252,6 +267,8 @@
             "items": { "$ref": "#/components/schemas/RagChunk" }
           },
           "intentQuery": { "type": "string" },
+          "keywords": { "type": "array", "items": { "type": "string" } },
+          "mode": { "type": "string" },
           "limitApplied": { "type": "integer" }
         }
       },

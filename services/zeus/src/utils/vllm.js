@@ -30,12 +30,29 @@ const VLLM_MANAGER_URL = process.env.VLLM_MANAGER_URL || 'http://vllm-manager:80
 const VLLM_STATUS_TIMEOUT_MS = Number(process.env.VLLM_STATUS_TIMEOUT_MS) || 1500;
 const VLLM_LOAD_TIMEOUT_MS = Number(process.env.VLLM_LOAD_TIMEOUT_MS) || 30_000;
 const VLLM_COMPLETION_TIMEOUT_MS = Number(process.env.VLLM_COMPLETION_TIMEOUT_MS) || 600_000;
-const DEFAULT_VLLM_OUTPUT_TOKEN_FRACTION = 0.25;
+const DEFAULT_VLLM_OUTPUT_TOKEN_FRACTION = 0.5;
 
 let cachedStatus = {
   updatedAt: 0,
   value: null
 };
+
+export function buildVllmChatCompletionPayload({ think, chat_template_kwargs, ...fields } = {}) {
+  const payload = { ...fields };
+
+  if (chat_template_kwargs && typeof chat_template_kwargs === 'object' && !Array.isArray(chat_template_kwargs)) {
+    payload.chat_template_kwargs = { ...chat_template_kwargs };
+  }
+
+  if (typeof think === 'boolean') {
+    payload.chat_template_kwargs = {
+      ...(payload.chat_template_kwargs || {}),
+      enable_thinking: think
+    };
+  }
+
+  return payload;
+}
 
 export function normalizeVllmRequestedModel(model) {
   if (typeof model !== 'string') {
@@ -246,13 +263,14 @@ export async function callVllmChatCompletions(payload, timeoutMs = VLLM_COMPLETI
 }
 
 export async function forwardToVllm({ req, res, path = '/v1/chat/completions', timeoutMs = VLLM_COMPLETION_TIMEOUT_MS }) {
+  const body = buildVllmChatCompletionPayload(req.body ?? {});
   const response = await fetchWithTimeout(`${VLLM_MANAGER_URL}${path}`, {
     method: req.method || 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Accept': req.headers?.accept || 'application/json'
     },
-    body: JSON.stringify(req.body ?? {})
+    body: JSON.stringify(body)
   }, timeoutMs);
 
   res.status(response.status);

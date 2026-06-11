@@ -42,6 +42,19 @@ DEFAULT_MODEL_ALIASES = {
             "2048",
         ],
     },
+    "qwen3.5:4b": {
+        "target": "Qwen/Qwen3.5-4B",
+        "extra_args": [
+            "--max-model-len",
+            "2048",
+            "--language-model-only",
+            "--reasoning-parser",
+            "qwen3",
+            "--enforce-eager",
+            "--gpu-memory-utilization",
+            "0.90",
+        ],
+    },
     "LiquidAI/LFM2.5-8B-A1B": {
         "target": "LiquidAI/LFM2.5-8B-A1B",
         "extra_args": [

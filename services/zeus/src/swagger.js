@@ -44,6 +44,38 @@ const options = {
             }
           }
         },
+        Project: {
+          type: 'object',
+          properties: {
+            id: {
+              type: 'integer',
+              description: 'Project ID'
+            },
+            name: {
+              type: 'string',
+              description: 'Project name'
+            },
+            description: {
+              type: 'string',
+              description: 'Project description for humans and external agents',
+              maxLength: 4000
+            },
+            embedding_model: {
+              type: 'string',
+              description: 'Embedding model configured for this project'
+            },
+            created_at: {
+              type: 'string',
+              format: 'date-time',
+              description: 'Creation timestamp'
+            },
+            created_by: {
+              type: 'integer',
+              nullable: true,
+              description: 'Creator user ID'
+            }
+          }
+        },
         Document: {
           type: 'object',
           properties: {
@@ -194,4 +226,4 @@ const options = {
   apis: ['./src/routes/*.js']
 };
 
-export const specs = swaggerJsdoc(options); 
+export const specs = swaggerJsdoc(options);

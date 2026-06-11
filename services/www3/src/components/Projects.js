@@ -46,7 +46,8 @@ function Projects() {
     const [modelInput, setModelInput] = useState('');
     const [isLoadingModels, setIsLoadingModels] = useState(true);
     const [formData, setFormData] = useState({
-        name: ''
+        name: '',
+        description: ''
     });
     
     // Ссылка на WebSocket соединение
@@ -222,14 +223,15 @@ function Projects() {
                 },
                 body: JSON.stringify({
                     name: formData.name,
-                    embeddingModel: selectedModel.name
+                    embeddingModel: selectedModel.name,
+                    description: formData.description
                 }),
             });
 
             if (!response.ok) throw new Error('Failed to create project');
             
             setDialogOpen(false);
-            setFormData({ name: '' });
+            setFormData({ name: '', description: '' });
             setSelectedModel(null);
             setModelInput('');
             await fetchProjects();
@@ -251,14 +253,17 @@ function Projects() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name: formData.name }),
+                body: JSON.stringify({
+                    name: formData.name,
+                    description: formData.description
+                }),
             });
 
             if (!response.ok) throw new Error('Failed to update project');
             
             setDialogOpen(false);
             setSelectedProject(null);
-            setFormData({ name: '' });
+            setFormData({ name: '', description: '' });
             setSelectedModel(null);
             setModelInput('');
             await fetchProjects();
@@ -294,7 +299,10 @@ function Projects() {
 
     const handleEditClick = (project) => {
         setSelectedProject(project);
-        setFormData({ name: project.name });
+        setFormData({
+            name: project.name,
+            description: project.description || ''
+        });
         const modelData = models.find(m => m.name === project.embedding_model);
         setSelectedModel(modelData || null);
         setModelInput(project.embedding_model);
@@ -309,7 +317,7 @@ function Projects() {
     const handleDialogClose = () => {
         setDialogOpen(false);
         setSelectedProject(null);
-        setFormData({ name: '' });
+        setFormData({ name: '', description: '' });
         setSelectedModel(null);
         setModelInput('');
     };
@@ -364,6 +372,7 @@ function Projects() {
                         <TableHead>
                             <TableRow>
                                 <TableCell>Name</TableCell>
+                                <TableCell>Description</TableCell>
                                 <TableCell>Embedding Model</TableCell>
                                 <TableCell>Created By</TableCell>
                                 <TableCell>Created At</TableCell>
@@ -374,13 +383,13 @@ function Projects() {
                         <TableBody>
                             {loading && !projects.length ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} align="center">
+                                    <TableCell colSpan={7} align="center">
                                         <CircularProgress />
                                     </TableCell>
                                 </TableRow>
                             ) : !projects.length ? (
                                 <TableRow>
-                                    <TableCell colSpan={6} align="center">
+                                    <TableCell colSpan={7} align="center">
                                         No projects found
                                     </TableCell>
                                 </TableRow>
@@ -388,6 +397,11 @@ function Projects() {
                                 projects.map((project) => (
                                     <TableRow key={project.id}>
                                         <TableCell>{project.name}</TableCell>
+                                        <TableCell sx={{ maxWidth: 280 }}>
+                                            <Typography variant="body2" color="text.secondary" noWrap>
+                                                {project.description || 'No description'}
+                                            </Typography>
+                                        </TableCell>
                                         <TableCell>
                                             <Chip 
                                                 label={project.embedding_model}
@@ -445,6 +459,18 @@ function Projects() {
                                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                                 margin="normal"
                                 required
+                                disabled={!!selectedProject}
+                                helperText={selectedProject ? 'Project renaming is not supported yet' : ''}
+                            />
+                            <TextField
+                                fullWidth
+                                label="Description"
+                                value={formData.description}
+                                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                                margin="normal"
+                                multiline
+                                minRows={3}
+                                inputProps={{ maxLength: 4000 }}
                             />
                             <Autocomplete
                                 fullWidth
@@ -460,7 +486,7 @@ function Projects() {
                                         label="Embedding Model"
                                         margin="normal"
                                         required
-                                        error={!selectedModel && !isLoadingModels}
+                                        error={!selectedProject && !selectedModel && !isLoadingModels}
                                     />
                                 )}
                                 disabled={!!selectedProject}

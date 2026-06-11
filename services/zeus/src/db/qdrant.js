@@ -8,10 +8,10 @@ class QdrantClient {
     this.host = 'vector-db';
     this.port = 6333;
     this.url = `http://${this.host}:${this.port}`;
-    
+
     // Создаем клиент Qdrant
     this.client = new QdrantRestClient({ url: this.url, checkCompatibility: false });
-    
+
     logger.info(`QdrantClient initialized with URL: ${this.url}`);
   }
 
@@ -32,10 +32,17 @@ class QdrantClient {
           };
         }
 
+        const numericPointId = typeof item.id === 'number' ? item.id : Number(item.id);
+        const canInferChunkCoordinates = Number.isFinite(numericPointId) && numericPointId >= 1000000;
+        const inferredDocumentId = canInferChunkCoordinates ? Math.floor(numericPointId / 1000000) : undefined;
+        const inferredChunkIndex = canInferChunkCoordinates ? numericPointId % 1000000 : undefined;
+
         return {
           filename: item.payload.filename || 'unknown',
           content: item.payload.content || '',
           project: item.payload.project || collectionName,
+          document_id: item.payload.document_id ?? inferredDocumentId,
+          chunk_index: item.payload.chunk_index ?? inferredChunkIndex,
           similarity: typeof item.score === 'number' ? item.score : 0.0,
           metadata: item.payload.metadata || {}
         };
@@ -59,21 +66,21 @@ class QdrantClient {
   async createCollection(collectionName, dimension, distance = 'Cosine') {
     try {
       logger.info(`Creating collection ${collectionName} with dimension ${dimension}`);
-      
+
       // Стандартная конфигурация для всех коллекций - эмбеддинги создаются внешним сервисом
       const vectorsConfig = {
         size: dimension,
         distance
       };
-      
+
       // Создаем коллекцию
-      await this.client.createCollection(collectionName, { 
+      await this.client.createCollection(collectionName, {
         vectors: vectorsConfig,
         optimizers_config: {
           default_segment_number: 2
         }
       });
-      
+
       // Настраиваем payload схему (необязательно, но полезно)
       await this.client.updateCollection(collectionName, {
         payload_schema: {
@@ -85,14 +92,14 @@ class QdrantClient {
           created_at: { type: 'datetime' }
         }
       });
-      
+
       // Создаем индекс для быстрого поиска по document_id
       await this.client.createPayloadIndex(collectionName, {
         field_name: 'document_id',
         field_schema: 'integer',
         wait: true
       });
-      
+
       logger.info(`Collection ${collectionName} created successfully`);
       return { status: 'ok' };
     } catch (error) {
@@ -107,16 +114,16 @@ class QdrantClient {
       // Используем pool из импорта, чтобы не создавать циклическую зависимость
       const { pool } = await import('./conf.js');
       const { rows } = await pool.query(`
-        SELECT embedding_model 
-        FROM admin.projects 
+        SELECT embedding_model
+        FROM admin.projects
         WHERE name = $1
         LIMIT 1
       `, [projectName]);
-      
+
       if (rows.length === 0) {
         return null;
       }
-      
+
       return rows[0].embedding_model;
     } catch (error) {
       logger.error(`Error getting embedding model for project ${projectName}:`, error);
@@ -153,7 +160,7 @@ class QdrantClient {
       // Преобразуем ID в числовой формат, который требует Qdrant
       const formattedPoints = points.map(point => {
         let formattedPoint = { ...point };
-        
+
         // Если id уже число, используем его напрямую
         if (typeof point.id === 'number') {
           // ничего не делаем
@@ -169,15 +176,15 @@ class QdrantClient {
           // В крайнем случае, генерируем случайный числовой ID
           formattedPoint.id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
         }
-        
+
         return formattedPoint;
       });
-      
+
       const result = await this.client.upsert(collectionName, {
         wait: true,
         points: formattedPoints
       });
-      
+
       logger.info(`Upserted ${points.length} points into collection ${collectionName}`);
       return result;
     } catch (error) {
@@ -193,17 +200,17 @@ class QdrantClient {
       if (!vector && !filter) {
         throw new Error('Either vector or filter must be provided for search');
       }
-      
+
       const searchParams = {
         limit,
         with_payload: true
       };
-      
+
       // Добавляем вектор, если он есть
       if (vector) {
         searchParams.vector = vector;
       }
-      
+
       // Добавляем фильтр, если он есть, всегда включая фильтр по проекту
       if (filter) {
         // Если передан фильтр, добавляем в него условие проекта
@@ -211,7 +218,7 @@ class QdrantClient {
           filter.must = [];
         }
         // Проверяем, чтобы не добавить дублирующееся условие
-        const hasProjectFilter = filter.must.some(cond => 
+        const hasProjectFilter = filter.must.some(cond =>
           cond.key === 'project' && cond.match && cond.match.value === collectionName
         );
         if (!hasProjectFilter) {
@@ -229,7 +236,7 @@ class QdrantClient {
         };
         logger.info(`Added project filter to search: ${collectionName}`);
       }
-      
+
       let points = [];
       try {
         if (vector) {
@@ -243,16 +250,16 @@ class QdrantClient {
         logger.error(`Search in collection ${collectionName} failed:`, searchError);
         return []; // Возвращаем пустой массив в случае ошибки
       }
-      
+
       logger.info(`Found ${points.length} points in collection ${collectionName}`);
-      
+
       // Проверяем, что у всех результатов указан проект
       if (points.length > 0) {
         const missingProject = points.filter(p => p && p.payload && !p.payload.project);
         if (missingProject.length > 0) {
           logger.warn(`${missingProject.length} points in collection ${collectionName} don't have project field`);
         }
-        
+
         const missingScore = points.filter(p => p && typeof p.score === 'undefined');
         if (missingScore.length > 0) {
           logger.warn(`${missingScore.length} points in collection ${collectionName} don't have score field`);
@@ -300,14 +307,53 @@ class QdrantClient {
     }
   }
 
+  async getChunksByDocumentAndIndices(collectionName, documentId, chunkIndices) {
+    const numericDocumentId = Number(documentId);
+    const indices = Array.isArray(chunkIndices)
+      ? Array.from(new Set(chunkIndices.map(index => Number(index)).filter(Number.isInteger)))
+      : [];
+
+    if (!Number.isInteger(numericDocumentId) || indices.length === 0) {
+      return [];
+    }
+
+    const filter = {
+      must: [
+        { key: 'project', match: { value: collectionName } },
+        { key: 'document_id', match: { value: numericDocumentId } }
+      ],
+      should: indices.map(index => ({
+        key: 'chunk_index',
+        match: { value: index }
+      }))
+    };
+
+    try {
+      const result = await this.client.scroll(collectionName, {
+        limit: indices.length,
+        filter,
+        with_payload: true,
+        with_vector: false
+      });
+
+      const points = Array.isArray(result.points) ? result.points : [];
+      return this._formatSearchResults(collectionName, points)
+        .filter(doc => indices.includes(Number(doc.chunk_index)))
+        .sort((a, b) => Number(a.chunk_index) - Number(b.chunk_index));
+    } catch (error) {
+      logger.error(`Failed to load adjacent chunks in collection ${collectionName}:`, error);
+      return [];
+    }
+  }
+
   // Удаление документа со всеми чанками
   async deleteDocument(collectionName, documentId) {
     try {
       // Преобразуем documentId в число, если он передан как строка
       const numericDocumentId = parseInt(documentId, 10);
-      
+
       logger.info(`Attempting to delete document ${documentId} (numeric: ${numericDocumentId}) from collection ${collectionName}`);
-      
+
       const result = await this.client.delete(collectionName, {
         filter: {
           must: [
@@ -316,7 +362,7 @@ class QdrantClient {
         },
         wait: true
       });
-      
+
       logger.info(`Delete operation result for document ${documentId}:`, result);
       logger.info(`Deleted document ${documentId} from collection ${collectionName}`);
       return result;
@@ -325,7 +371,7 @@ class QdrantClient {
       throw error;
     }
   }
-  
+
   // Получение списка всех коллекций
   async listCollections() {
     try {
@@ -339,4 +385,4 @@ class QdrantClient {
 }
 
 // Экспортируем синглтон
-export default new QdrantClient(); 
+export default new QdrantClient();

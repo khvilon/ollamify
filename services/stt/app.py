@@ -9,6 +9,7 @@ import os
 import io
 import tempfile
 import logging
+import hashlib
 import torch
 from typing import Dict, List, Any, Optional
 from flask import Flask, request, jsonify, send_file
@@ -45,7 +46,7 @@ model_name = "base"  # По умолчанию small модель
 # Поддерживаемые языки (основные для Whisper)
 SUPPORTED_LANGUAGES = {
     'ru': 'Русский',
-    'en': 'English', 
+    'en': 'English',
     'es': 'Español',
     'fr': 'Français',
     'de': 'Deutsch',
@@ -77,7 +78,7 @@ WHISPER_MODELS = {
 def load_whisper_model(model_name: str = "base"):
     """Загрузка модели Whisper"""
     global whisper_model, device
-    
+
     try:
         # Определяем устройство
         if torch.cuda.is_available():
@@ -86,21 +87,21 @@ def load_whisper_model(model_name: str = "base"):
         else:
             device = "cpu"
             logger.info("Используется CPU для Whisper")
-        
+
         logger.info(f"Загружаем модель Whisper: {model_name}")
         logger.info(f"Размер модели: {WHISPER_MODELS.get(model_name, {}).get('size', 'unknown')}")
-        
+
         # Загружаем модель
         whisper_model = whisper.load_model(model_name, device=device, download_root=os.environ.get('WHISPER_CACHE', '/app/models'))
-        
+
         logger.info(f"Модель Whisper {model_name} успешно загружена на {device}")
-        
+
         # Очищаем кеш GPU если нужно
         if device == "cuda":
             torch.cuda.empty_cache()
-            
+
         return True
-        
+
     except Exception as e:
         logger.error(f"Ошибка загрузки модели Whisper: {e}")
         return False
@@ -115,27 +116,71 @@ def preprocess_audio(audio_file, target_sr: int = 16000) -> np.ndarray:
             audio_file.seek(0)  # Сброс позиции
         else:
             audio_data = audio_file
-        
+
         # Конвертируем через pydub для поддержки различных форматов
         audio = AudioSegment.from_file(io.BytesIO(audio_data))
-        
+
         # Конвертируем в моно и нужную частоту
         audio = audio.set_channels(1).set_frame_rate(target_sr)
-        
+
         # Конвертируем в numpy array
         audio_array = np.array(audio.get_array_of_samples(), dtype=np.float32)
-        
+
         # Нормализуем
         if audio.sample_width == 2:  # 16-bit
             audio_array = audio_array / 32768.0
         elif audio.sample_width == 4:  # 32-bit
             audio_array = audio_array / 2147483648.0
-        
+
         return audio_array
-        
+
     except Exception as e:
         logger.error(f"Ошибка предобработки аудио: {e}")
         raise
+
+
+def analyze_audio_quality(audio_array: np.ndarray, sample_rate: int = 16000) -> Dict[str, float]:
+    """Базовая оценка качества входного аудио для защиты от галлюцинаций на тишине."""
+    if audio_array is None or len(audio_array) == 0:
+        return {"duration_sec": 0.0, "rms": 0.0}
+    duration_sec = float(len(audio_array)) / float(sample_rate)
+    rms = float(np.sqrt(np.mean(np.square(audio_array))))
+    return {"duration_sec": duration_sec, "rms": rms}
+
+
+def build_amplitude_envelope(audio_array: np.ndarray, points: int = 64) -> List[float]:
+    """Строит компактную амплитудную огибающую (0..1) для быстрой диагностики входа."""
+    if audio_array is None or len(audio_array) == 0 or points <= 0:
+        return []
+    abs_audio = np.abs(audio_array.astype(np.float32))
+    max_amp = float(np.max(abs_audio)) if len(abs_audio) > 0 else 0.0
+    if max_amp <= 1e-9:
+        return [0.0] * points
+    chunk = max(1, int(np.ceil(len(abs_audio) / points)))
+    envelope: List[float] = []
+    for idx in range(0, len(abs_audio), chunk):
+        segment = abs_audio[idx:idx + chunk]
+        if len(segment) == 0:
+            continue
+        envelope.append(float(np.mean(segment) / max_amp))
+    if len(envelope) > points:
+        envelope = envelope[:points]
+    elif len(envelope) < points:
+        envelope.extend([0.0] * (points - len(envelope)))
+    return [round(min(1.0, max(0.0, value)), 4) for value in envelope]
+
+
+def envelope_to_ascii(envelope: List[float]) -> str:
+    """ASCII-визуализация огибающей для логов/UI без графики."""
+    if not envelope:
+        return ""
+    palette = " .:-=+*#%@"
+    last_idx = len(palette) - 1
+    chars = []
+    for value in envelope:
+        level = int(round(min(1.0, max(0.0, value)) * last_idx))
+        chars.append(palette[level])
+    return "".join(chars)
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -147,7 +192,7 @@ def health_check():
         description: Сервис работает
     """
     global whisper_model
-    
+
     # Информация о памяти GPU
     gpu_info = {}
     if torch.cuda.is_available():
@@ -159,7 +204,7 @@ def health_check():
         }
     else:
         gpu_info = {'gpu_available': False}
-    
+
     return jsonify({
         'status': 'healthy',
         'model_loaded': whisper_model is not None,
@@ -209,13 +254,13 @@ def load_model():
     try:
         data = request.get_json()
         new_model_name = data.get('model_name', 'base')
-        
+
         if new_model_name not in WHISPER_MODELS:
             return jsonify({'error': f'Неизвестная модель: {new_model_name}'}), 400
-        
+
         global model_name
         model_name = new_model_name
-        
+
         success = load_whisper_model(model_name)
         if success:
             return jsonify({
@@ -225,7 +270,7 @@ def load_model():
             })
         else:
             return jsonify({'error': 'Не удалось загрузить модель'}), 500
-            
+
     except Exception as e:
         logger.error(f"Ошибка при загрузке модели: {e}")
         return jsonify({'error': str(e)}), 500
@@ -262,26 +307,34 @@ def transcribe_audio():
         description: Ошибка сервера
     """
     global whisper_model, model_name
-    
+
     try:
         # Проверяем наличие аудио файла
         if 'audio' not in request.files:
             return jsonify({'error': 'Аудио файл не найден'}), 400
-        
+
         audio_file = request.files['audio']
         if audio_file.filename == '':
             return jsonify({'error': 'Файл не выбран'}), 400
-        
+
         # Получаем параметры
         language = request.form.get('language', None)  # auto-detect если None
         task = request.form.get('task', 'transcribe')  # transcribe или translate
         requested_model = request.form.get('model', None)  # модель для использования
-        
+        client_audio_mime = request.form.get('client_audio_mime', '')
+        client_audio_size = request.form.get('client_audio_size', '')
+
+        # Диагностика входного файла: позволяет быстро понять, меняется ли аудио между запросами
+        raw_audio_bytes = audio_file.read()
+        audio_file.seek(0)
+        input_size_bytes = len(raw_audio_bytes)
+        input_audio_hash = hashlib.sha1(raw_audio_bytes).hexdigest()[:12] if input_size_bytes > 0 else "empty"
+
         # Проверяем и загружаем нужную модель
         if requested_model:
             if requested_model not in WHISPER_MODELS:
                 return jsonify({'error': f'Неизвестная модель: {requested_model}. Доступные: {list(WHISPER_MODELS.keys())}'}), 400
-            
+
             # Если запрошенная модель отличается от загруженной, перегружаем
             if requested_model != model_name or whisper_model is None:
                 logger.info(f"Переключение модели с {model_name} на {requested_model}")
@@ -293,32 +346,85 @@ def transcribe_audio():
             # Если модель не указана, используем текущую загруженную
             if whisper_model is None:
                 return jsonify({'error': 'Модель не загружена. Укажите параметр model или загрузите модель через /model/load'}), 500
-        
-        logger.info(f"Начинаем транскрибацию, модель: {model_name}, язык: {language}, задача: {task}")
-        
+
+        logger.info(
+            "Начинаем транскрибацию, модель: %s, язык: %s, задача: %s, файл: %s, mime: %s, size: %s, hash: %s, client_mime: %s, client_size: %s",
+            model_name,
+            language,
+            task,
+            audio_file.filename,
+            audio_file.mimetype,
+            input_size_bytes,
+            input_audio_hash,
+            client_audio_mime,
+            client_audio_size,
+        )
+
         # Предобрабатываем аудио
         audio_array = preprocess_audio(audio_file)
-        
+
+        # Базовые проверки качества входа (частая причина "галлюцинаций" на тишине)
+        audio_metrics = analyze_audio_quality(audio_array, sample_rate=16000)
+        envelope = build_amplitude_envelope(audio_array, points=64)
+        envelope_ascii = envelope_to_ascii(envelope)
+        if audio_metrics["duration_sec"] < 0.35:
+            return jsonify({
+                'error': 'Слишком короткий фрагмент аудио. Запишите немного дольше.',
+                'duration_sec': round(audio_metrics["duration_sec"], 3),
+                'amplitude_ascii': envelope_ascii
+            }), 400
+        # Не блокируем распознавание только из-за низкого RMS:
+        # для некоторых связок браузер/кодек уровень может быть занижен.
+        # Вместо отказа логируем это как предупреждение.
+        if audio_metrics["rms"] < 0.0002:
+            logger.warning(
+                "Низкий RMS входного аудио (rms=%s, duration=%s, file=%s, mime=%s, size=%s, hash=%s)",
+                round(audio_metrics["rms"], 6),
+                round(audio_metrics["duration_sec"], 3),
+                audio_file.filename,
+                audio_file.mimetype,
+                input_size_bytes,
+                input_audio_hash
+            )
+
         # Запускаем Whisper
         options = {
             'task': task,
-            'fp16': device == 'cuda'  # Используем fp16 только на GPU
+            'fp16': device == 'cuda',  # Используем fp16 только на GPU
+            # Стабилизация декодирования: меньше "зацикливаний" и автодописывания на тишине
+            'temperature': 0.0,
+            'condition_on_previous_text': False,
+            'no_speech_threshold': 0.6,
+            'compression_ratio_threshold': 2.4
         }
-        
+
         if language and language in SUPPORTED_LANGUAGES:
             options['language'] = language
-        
+
         result = whisper_model.transcribe(audio_array, **options)
-        
+
         # Формируем ответ
         response_data = {
             'text': result['text'].strip(),
             'language': result.get('language', 'unknown'),
             'task': task,
             'model': model_name,
-            'segments': []
+            'segments': [],
+            'debug': {
+                'input_filename': audio_file.filename,
+                'input_mime': audio_file.mimetype,
+                'input_size_bytes': input_size_bytes,
+                'input_audio_hash': input_audio_hash,
+                'input_duration_sec': round(audio_metrics["duration_sec"], 3),
+                'input_rms': round(audio_metrics["rms"], 6),
+                'input_amplitude_envelope': envelope,
+                'input_amplitude_ascii': envelope_ascii,
+                'language_forced': bool(language and language in SUPPORTED_LANGUAGES),
+                'client_audio_mime': client_audio_mime,
+                'client_audio_size': client_audio_size
+            }
         }
-        
+
         # Добавляем сегменты если есть
         if 'segments' in result:
             for segment in result['segments']:
@@ -327,11 +433,11 @@ def transcribe_audio():
                     'end': segment.get('end', 0),
                     'text': segment.get('text', '').strip()
                 })
-        
+
         logger.info(f"Транскрибация завершена: {len(response_data['text'])} символов, модель: {model_name}")
-        
+
         return jsonify(response_data)
-        
+
     except Exception as e:
         logger.error(f"Ошибка транскрибации: {e}")
         logger.error(traceback.format_exc())
@@ -351,12 +457,12 @@ def transcribe_stream():
 if __name__ == '__main__':
     # Загружаем модель при старте
     logger.info("Запуск STT сервиса...")
-    
+
     if load_whisper_model(model_name):
         logger.info("STT сервис готов к работе!")
     else:
         logger.error("Не удалось загрузить модель Whisper")
-    
+
     # Запускаем сервер
     port = int(os.environ.get('PORT', 8004))
     app.run(host='0.0.0.0', port=port, debug=False) 

@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  buildVllmChatCompletionPayload,
   buildVllmModelOptionsFromOllamaIndex,
   doesVllmServeModel,
   getVllmCompletionMaxTokens,
@@ -76,6 +77,19 @@ test('caps vLLM completion tokens to leave prompt room', () => {
     command: ['vllm', 'serve', 'Qwen/Qwen3-4B-AWQ', '--max-model-len', '2048']
   };
 
-  assert.equal(getVllmCompletionMaxTokens(status, 8192), 512);
+  assert.equal(getVllmCompletionMaxTokens(status, 8192), 1024);
   assert.equal(getVllmCompletionMaxTokens(status, 128), 128);
+});
+
+test('adds Qwen thinking control to vLLM chat payloads', () => {
+  const payload = buildVllmChatCompletionPayload({
+    model: 'qwen3:4b',
+    messages: [{ role: 'user', content: 'ping' }],
+    stream: false,
+    temperature: 0.7,
+    max_tokens: 128,
+    think: false
+  });
+
+  assert.deepEqual(payload.chat_template_kwargs, { enable_thinking: false });
 });

@@ -7,22 +7,24 @@
     "dev": "nodemon src/index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@qdrant/js-client-rest": "^1.7.0",
+    "bcrypt": "^5.1.1",
     "cors": "^2.8.5",
-    "pg": "^8.11.3",
     "dotenv": "^16.3.1",
-    "node-fetch": "^3.3.2",
-    "multer": "^1.4.5-lts.1",
-    "pdf-parse-fork": "^1.2.0",
+    "express": "^4.18.2",
     "jsdom": "^23.0.1",
     "jsonwebtoken": "^9.0.2",
-    "bcrypt": "^5.1.1",
     "mammoth": "^1.6.0",
-    "winston": "^3.11.0",
-    "swagger-ui-express": "^5.0.0",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "pdf-parse-fork": "^1.2.0",
+    "pg": "^8.11.3",
     "swagger-jsdoc": "^6.2.8",
-    "@qdrant/js-client-rest": "^1.7.0",
-    "ws": "^8.15.1"
+    "swagger-ui-express": "^5.0.0",
+    "winston": "^3.11.0",
+    "ws": "^8.15.1",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

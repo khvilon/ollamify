@@ -18,6 +18,7 @@ async function initializeAdminSchema() {
       CREATE TABLE IF NOT EXISTS admin.projects (
         id SERIAL PRIMARY KEY,
         name TEXT UNIQUE NOT NULL,
+        description TEXT DEFAULT '',
         created_by INTEGER,
         embedding_model TEXT NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -31,8 +32,14 @@ async function initializeAdminSchema() {
     `);
 
     await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS created_by INTEGER`);
+    await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS description TEXT DEFAULT ''`);
     await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS embedding_model TEXT`);
     await client.query(`ALTER TABLE admin.projects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP`);
+    await client.query(`
+      UPDATE admin.projects
+      SET description = ''
+      WHERE description IS NULL
+    `);
     await client.query(`
       UPDATE admin.projects
       SET embedding_model = 'frida'

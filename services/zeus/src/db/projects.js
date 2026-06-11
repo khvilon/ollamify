@@ -3,6 +3,7 @@ import { createProjectSchema } from './init.js';
 import qdrantClient from './qdrant.js';
 import logger from '../utils/logger.js';
 import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
+import { assertValidProjectDescription } from '../utils/projectDescriptions.js';
 
 class ProjectQueries {
   // Получение всех проектов с информацией о создателе
@@ -28,18 +29,19 @@ class ProjectQueries {
   }
 
   // Создание нового проекта
-  async create(name, embeddingModel, userId) {
+  async create(name, embeddingModel, userId, description = '') {
     const projectName = assertValidProjectName(name);
+    const projectDescription = assertValidProjectDescription(description);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
 
       // Создаем запись в admin.projects
       const { rows } = await client.query(`
-        INSERT INTO admin.projects (name, embedding_model, created_by)
-        VALUES ($1, $2, $3)
+        INSERT INTO admin.projects (name, embedding_model, created_by, description)
+        VALUES ($1, $2, $3, $4)
         RETURNING *
-      `, [projectName, embeddingModel, userId]);
+      `, [projectName, embeddingModel, userId, projectDescription]);
 
       // Получаем размерность эмбеддингов и создаем схему проекта
       await createProjectSchema(projectName, embeddingModel);
@@ -55,14 +57,30 @@ class ProjectQueries {
   }
 
   // Обновление проекта
-  async update(id, name) {
-    const projectName = assertValidProjectName(name);
+  async update(id, { name, description } = {}) {
+    const current = await this.findById(id);
+    if (!current) {
+      return null;
+    }
+
+    const projectName = name === undefined || name === null || name === ''
+      ? current.name
+      : assertValidProjectName(name);
+    if (projectName !== current.name) {
+      const error = new Error('Project renaming is not supported yet because project names map to PostgreSQL schemas and Qdrant collections');
+      error.code = 'PROJECT_RENAME_UNSUPPORTED';
+      throw error;
+    }
+
+    const projectDescription = description === undefined
+      ? current.description || ''
+      : assertValidProjectDescription(description);
     const { rows } = await pool.query(`
       UPDATE admin.projects
-      SET name = $1
+      SET description = $1
       WHERE id = $2
       RETURNING *
-    `, [projectName, id]);
+    `, [projectDescription, id]);
     return rows[0];
   }
 

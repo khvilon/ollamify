@@ -20,6 +20,15 @@ All endpoints below are shown **without** the `/api` prefix (as in OpenAPI). Exa
 - **Swagger UI**: `http://localhost/api/docs`
 - **OpenAPI JSON**: `http://localhost/api/docs/swagger.json`
 
+## MCP
+
+Ollamify also exposes MCP for external agents and IDEs:
+
+- Streamable HTTP: `http://localhost/api/mcp`
+- Legacy SSE: `http://localhost/api/mcp/sse`
+
+Use the same `Authorization: Bearer <TOKEN>` header as the REST API. See [`../mcp.md`](../mcp.md) for client config examples.
+
 ## Authentication
 
 All protected endpoints require:
@@ -152,7 +161,7 @@ curl -sS "$BASE_URL/documents" \
 
 #### GET `/documents/projects`
 
-List projects with their embedding models.
+List projects with descriptions and embedding models.
 
 ```bash
 curl -sS "$BASE_URL/documents/projects" \

@@ -23,6 +23,7 @@ WHERE NOT EXISTS (
 CREATE TABLE IF NOT EXISTS admin.projects (
     id SERIAL PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
+    description TEXT DEFAULT '',
     created_by INTEGER REFERENCES admin.users(id),
     embedding_model VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
