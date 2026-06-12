@@ -44,7 +44,12 @@ class QdrantClient {
           document_id: item.payload.document_id ?? inferredDocumentId,
           chunk_index: item.payload.chunk_index ?? inferredChunkIndex,
           similarity: typeof item.score === 'number' ? item.score : 0.0,
-          metadata: item.payload.metadata || {}
+          metadata: item.payload.metadata || {},
+          extracted_metadata: item.payload.extracted_metadata &&
+            typeof item.payload.extracted_metadata === 'object' &&
+            !Array.isArray(item.payload.extracted_metadata)
+            ? item.payload.extracted_metadata
+            : {}
         };
       })
       .filter(item => item.content);

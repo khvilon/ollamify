@@ -129,8 +129,24 @@ curl -sS "$BASE_URL/documents?project=my-docs&page=1&limit=10" \
 - `project` (обязательно)
 - `name` (опционально)
 - `metadata` (опционально JSON)
+- `extraction_rules` (опционально JSON array): inline-правила извлечения, которые вызывающий сервис передает вместе с документом. Ollamify применяет их к каждому чанку после нарезки документа. В первой версии поддерживаются только regex-правила.
 - `external_id` (опционально): для идемпотентности
 - `single_chunk` (опционально boolean): не делить на чанки
+
+Пример `extraction_rules`:
+
+```json
+[
+  {
+    "key": "tracker.keys",
+    "type": "regex",
+    "pattern": "\\bDEV-\\d+\\b",
+    "flags": "gi"
+  }
+]
+```
+
+Ollamify воспринимает ключи правил как opaque metadata вызывающего сервиса и сохраняет найденные значения в chunk payload `extracted_metadata`.
 
 **Пример (файл)**
 

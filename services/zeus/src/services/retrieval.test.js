@@ -40,7 +40,8 @@ test('serializes retrieved chunks with stable source coordinates', () => {
     document_id: 42,
     chunk_index: 3,
     similarity: 0.91,
-    metadata: { section: 'Inbound' }
+    metadata: { section: 'Inbound' },
+    extracted_metadata: { 'tracker.keys': ['DEV-123'] }
   });
 
   assert.deepEqual(doc, {
@@ -50,6 +51,7 @@ test('serializes retrieved chunks with stable source coordinates', () => {
     document_id: 42,
     chunk_index: 3,
     similarity: 0.91,
-    metadata: { section: 'Inbound' }
+    metadata: { section: 'Inbound' },
+    extracted_metadata: { 'tracker.keys': ['DEV-123'] }
   });
 });
