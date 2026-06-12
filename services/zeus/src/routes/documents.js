@@ -13,6 +13,11 @@ import logger from '../utils/logger.js';
 import qdrantClient from '../db/qdrant.js';
 import { broadcastDocumentUpdate, broadcastProjectStatsUpdate } from '../websocket/index.js';
 import { assertValidProjectName, quoteIdentifier } from '../utils/projectNames.js';
+import {
+  extractMetadataFromText,
+  parseJsonField,
+  validateExtractionRules
+} from '../utils/extractionRules.js';
 
 dotenv.config();
 
@@ -458,10 +463,26 @@ router.post('/', uploadWithEncoding, async (req, res) => {
       hasFile: !!req.file,
       hasContent: !!req.body.content,
       metadata: req.body.metadata,
+      extractionRulesProvided: req.body.extraction_rules != null,
       fileSize: req.file ? req.file.size : null
     });
 
-    const { project, content, metadata = {}, name, model, external_id, single_chunk } = req.body;
+    const { project, content, external_id, name, single_chunk } = req.body;
+    let metadata;
+    let extractionRules;
+
+    try {
+      metadata = {
+        ...parseJsonField(req.body.metadata, 'metadata', {})
+      };
+      extractionRules = validateExtractionRules(req.body.extraction_rules);
+    } catch (error) {
+      logger.error('Invalid document upload metadata or extraction rules:', error);
+      return res.status(400).json({
+        error: error.message,
+        code: 'INVALID_UPLOAD_METADATA'
+      });
+    }
 
     if (!project) {
       logger.error('Missing project parameter');
@@ -651,7 +672,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
               });
 
               // Запускаем обработку чанков асинхронно
-              processChunks(projectName, document.id, chunks, projectEmbeddingModel);
+              processChunks(projectName, document.id, chunks, projectEmbeddingModel, extractionRules);
               return;
             }
           }
@@ -685,7 +706,7 @@ router.post('/', uploadWithEncoding, async (req, res) => {
         });
 
         // Запускаем обработку чанков асинхронно
-        processChunks(projectName, documentId, chunks, projectEmbeddingModel);
+        processChunks(projectName, documentId, chunks, projectEmbeddingModel, extractionRules);
 
         // Отправляем WebSocket уведомление о новом документе
         broadcastDocumentUpdate({
@@ -933,7 +954,7 @@ router.delete('/:id', async (req, res) => {
 });
 
 // Функция для асинхронной обработки чанков
-async function processChunks(project, documentId, chunks, embeddingModel) {
+async function processChunks(project, documentId, chunks, embeddingModel, extractionRules = []) {
   try {
     const projectName = assertValidProjectName(project);
     const projectIdentifier = quoteIdentifier(projectName);
@@ -978,6 +999,8 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
         // Получаем эмбеддинг для чанка
         logger.info(`Getting embedding for chunk ${i + 1} using model ${embeddingModel}`);
         const embedding = await getEmbedding(chunk, embeddingModel);
+        const extractedMetadata = extractMetadataFromText(chunk, extractionRules);
+        const hasExtractedMetadata = Object.keys(extractedMetadata).length > 0;
 
         // Готовим точку для Qdrant
         const point = {
@@ -990,7 +1013,8 @@ async function processChunks(project, documentId, chunks, embeddingModel) {
             filename: documentName,
             project: projectName,
             created_at: new Date().toISOString(),
-            metadata: documentMetadata // Добавляем метаданные документа
+            metadata: documentMetadata, // Добавляем метаданные документа
+            ...(hasExtractedMetadata ? { extracted_metadata: extractedMetadata } : {})
           }
         };
 
