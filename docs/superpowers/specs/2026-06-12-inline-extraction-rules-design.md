@@ -1,56 +1,59 @@
-# Inline extraction rules design
+# Дизайн inline extraction rules
 
-## Context
+## Контекст
 
-Ollamify is a universal open source RAG tool. It must not contain project-specific
-knowledge, entity taxonomies, regex rules, or assumptions about source systems.
+Ollamify - универсальный open source RAG-инструмент. В нем не должно быть
+проектной специфики, таксономии сущностей, конкретных regex-правил или
+предположений о внешних источниках данных.
 
-Alfred AI Sync is a company-specific synchronization product. It knows how company
-sources are structured and which signals should be extracted from them.
+Alfred AI Sync - продукт конкретной компании для синхронизации данных. Он знает,
+как устроены корпоративные источники и какие признаки из них нужно извлекать.
 
-The current ingestion flow sends whole documents to Ollamify. Ollamify performs
-chunking, embedding, and stores chunk payloads in Qdrant. Because extraction must
-run at chunk scope, extraction belongs in Ollamify's ingestion pipeline, but the
-rules and semantic keys must come from the caller.
+Текущий поток загрузки отправляет в Ollamify документ целиком. Ollamify сам режет
+документ на чанки, строит embedding-и и сохраняет payload чанков в Qdrant. Так как
+извлечение должно выполняться на уровне конкретного чанка, сам запуск правил
+должен быть частью ingestion pipeline в Ollamify. При этом правила и смысл ключей
+должны приходить от вызывающего сервиса.
 
-## Decision
+## Решение
 
-Add support for caller-provided inline extraction rules to Ollamify document
-upload.
+Добавить в загрузку документов Ollamify поддержку inline extraction rules,
+переданных вызывающим сервисом.
 
-The first version supports only regex rules. It does not use NER or LLM extraction
-because upload must remain fast and inexpensive.
+Первая версия поддерживает только regex-правила. NER и LLM-извлечение не
+используются, потому что загрузка должна оставаться быстрой и недорогой.
 
-Ollamify executes the rules mechanically:
+Ollamify выполняет правила механически:
 
-1. Accept a document with optional `extraction_rules`.
-2. Validate the rules.
-3. Split the document into chunks using the existing chunking logic.
-4. Apply each rule to each chunk's text.
-5. Store extracted values in each chunk payload.
+1. Принимает документ с опциональным `extraction_rules`.
+2. Валидирует правила.
+3. Режет документ на чанки существующей логикой.
+4. Применяет каждое правило к тексту каждого чанка.
+5. Сохраняет найденные значения в payload соответствующего чанка.
 
-Ollamify does not know what any rule means. A rule key such as `tracker.keys` or
-`infra.ip` is an opaque string owned by the caller.
+Ollamify не знает, что означает конкретное правило. Ключ правила вроде
+`tracker.keys` или `infra.ip` - это opaque string, принадлежащий вызывающему
+сервису.
 
-## Non-goals
+## Что не делаем
 
-- No built-in entity types in Ollamify.
-- No project-specific profiles stored in Ollamify.
-- No NER or LLM extraction during upload.
-- No domain-specific regex rules in Ollamify.
-- No requirement for Alfred AI Sync to chunk documents.
-- No re-embedding of existing documents.
+- Не добавляем встроенные типы сущностей в Ollamify.
+- Не храним проектные профили правил в Ollamify.
+- Не используем NER или LLM-извлечение при загрузке.
+- Не добавляем доменные regex-правила в Ollamify.
+- Не заставляем Alfred AI Sync резать документы на чанки.
+- Не делаем re-embedding существующих документов.
 
-## API shape
+## API
 
-Existing upload endpoints remain backward compatible. If `extraction_rules` is
-absent, ingestion behaves as it does today.
+Существующие upload endpoints остаются обратно совместимыми. Если
+`extraction_rules` не передан, ingestion работает как раньше.
 
-For JSON requests, `extraction_rules` is an array. For multipart/form-data upload,
-`extraction_rules` is passed as a JSON string field, matching the current style of
-passing structured metadata.
+Для JSON-запросов `extraction_rules` передается массивом. Для
+multipart/form-data upload `extraction_rules` передается JSON-строкой в отдельном
+поле, аналогично текущей передаче структурированного `metadata`.
 
-Example:
+Пример:
 
 ```json
 {
@@ -69,7 +72,7 @@ Example:
 }
 ```
 
-Rule schema for version 1:
+Схема правила в первой версии:
 
 ```json
 {
@@ -80,12 +83,13 @@ Rule schema for version 1:
 }
 ```
 
-`type` must be `regex` in version 1. Unknown rule types are rejected.
+В первой версии `type` должен быть равен `regex`. Неизвестные типы правил
+отклоняются.
 
-## Payload shape
+## Payload
 
-Each Qdrant chunk payload keeps the caller's original metadata and adds extracted
-values separately:
+Payload каждого чанка в Qdrant сохраняет исходный `metadata` вызывающего сервиса
+и отдельно добавляет извлеченные значения:
 
 ```json
 {
@@ -98,82 +102,85 @@ values separately:
 }
 ```
 
-Values are deduplicated per chunk while preserving first-seen order. Rules with no
-matches do not create empty keys.
+Значения дедуплицируются внутри чанка с сохранением порядка первого появления.
+Правила без совпадений не создают пустые ключи.
 
-Search and retrieval can later use this block as generic metadata. Ollamify must
-treat keys and values as opaque caller data.
+Search и retrieval позже смогут использовать этот блок как обычную generic
+metadata. Ollamify должен воспринимать ключи и значения как opaque данные
+вызывающего сервиса.
 
-## Alfred AI Sync responsibilities
+## Ответственность Alfred AI Sync
 
-Alfred AI Sync stays responsible for company-specific choices:
+Alfred AI Sync остается ответственным за company-specific решения:
 
-- which extraction rules to send;
-- which opaque keys to use;
-- which source-level metadata to attach;
-- how rules vary by source type or project.
+- какие extraction rules отправлять;
+- какие opaque keys использовать;
+- какую metadata уровня источника прикладывать;
+- как правила отличаются по source type или проекту.
 
-Alfred sends whole documents to Ollamify. It does not reproduce Ollamify chunking.
+Alfred отправляет в Ollamify документы целиком. Он не воспроизводит chunking
+Ollamify у себя.
 
-## Existing data
+## Существующие данные
 
-Existing records are enriched without re-uploading documents and without
-re-embedding chunks.
+Существующие записи обогащаются без повторной загрузки документов и без
+re-embedding чанков.
 
-The permanent product code is the extraction engine and upload integration. The
-backfill runner is a one-time migration utility:
+Постоянной частью продукта становятся extraction engine и интеграция с upload.
+Backfill runner - одноразовая миграционная утилита:
 
-1. Stop Alfred AI Sync so no new records are written during migration.
-2. Run a temporary backfill runner against existing Ollamify chunks.
-3. The runner reads chunk text from Qdrant, applies the same inline regex rules,
-   and patches chunk payloads with `extracted_metadata`.
-4. Verify the updated payloads on a small sample.
-5. Remove the one-time runner from the working copy after migration.
-6. Start Alfred AI Sync again.
+1. Остановить Alfred AI Sync, чтобы во время миграции не писались новые записи.
+2. Запустить временный backfill runner по существующим чанкам Ollamify.
+3. Runner читает текст чанков из Qdrant, применяет те же inline regex rules и
+   патчит payload чанков полем `extracted_metadata`.
+4. Проверить обновленные payload на небольшой выборке.
+5. Удалить одноразовый runner из рабочей копии после миграции.
+6. Снова запустить Alfred AI Sync.
 
-The one-time runner is not shipped as a permanent Ollamify feature.
+Одноразовый runner не поставляется как постоянная возможность Ollamify.
 
-## Deployment order
+## Порядок деплоя
 
-1. Deploy backward-compatible Ollamify changes first.
-2. Stop the deployed Alfred AI Sync service.
-3. Deploy Alfred AI Sync changes that send `extraction_rules`.
-4. Run the one-time backfill runner.
-5. Remove the one-time runner.
-6. Start Alfred AI Sync.
+1. Сначала задеплоить обратно совместимые изменения Ollamify.
+2. Остановить развернутый Alfred AI Sync.
+3. Задеплоить изменения Alfred AI Sync, которые отправляют `extraction_rules`.
+4. Запустить одноразовый backfill runner.
+5. Удалить одноразовый runner.
+6. Запустить Alfred AI Sync.
 
-This order ensures that future Alfred writes immediately go through the new
-chunk-level extraction path, while existing data is updated in place.
+Такой порядок гарантирует, что новые записи Alfred сразу проходят через новый
+chunk-level extraction path, а старые данные обновляются на месте.
 
-## Safety and validation
+## Безопасность и валидация
 
-Ollamify validates extraction rules before chunk processing:
+Ollamify валидирует extraction rules до обработки чанков:
 
-- maximum number of rules per upload;
-- maximum regex pattern length;
-- allowed regex flags only;
-- invalid regex patterns rejected with a clear API error;
-- maximum collected matches per rule per chunk;
-- extracted value length limits.
+- максимальное число правил на один upload;
+- максимальная длина regex pattern;
+- только разрешенные regex flags;
+- некорректные regex patterns отклоняются с понятной API-ошибкой;
+- максимальное число найденных значений на правило на чанк;
+- ограничения на длину извлеченного значения.
 
-Regex execution is intentionally the only supported extraction mechanism in the
-first version. If a safe regex engine is practical in the Node.js service, use it.
-Otherwise keep the API restricted to trusted ingestion clients and enforce strict
-limits to reduce ReDoS risk.
+Regex execution намеренно является единственным механизмом extraction в первой
+версии. Если в Node.js service практично использовать safe regex engine, нужно
+использовать его. Иначе API остается рассчитанным на trusted ingestion clients, а
+строгие лимиты снижают ReDoS-риск.
 
-## Testing
+## Тестирование
 
-Ollamify tests:
+Тесты Ollamify:
 
-- valid regex rule extracts values per chunk;
-- missing `extraction_rules` keeps old behavior;
-- invalid rule returns a validation error;
-- duplicate matches are deduplicated;
-- payload contains original `metadata` and separate `extracted_metadata`;
-- one-time backfill can update existing chunk payload without changing vectors.
+- валидное regex-правило извлекает значения по чанкам;
+- отсутствие `extraction_rules` сохраняет старое поведение;
+- невалидное правило возвращает validation error;
+- дублирующиеся совпадения дедуплицируются;
+- payload содержит исходный `metadata` и отдельный `extracted_metadata`;
+- одноразовый backfill может обновить payload существующего чанка без изменения
+  vector data.
 
-Alfred AI Sync tests:
+Тесты Alfred AI Sync:
 
-- upload requests include `extraction_rules`;
-- rules can vary by source type;
-- existing metadata continues to be sent unchanged.
+- upload-запросы содержат `extraction_rules`;
+- правила могут отличаться по source type;
+- существующая metadata продолжает отправляться без изменений.
