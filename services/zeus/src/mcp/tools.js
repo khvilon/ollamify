@@ -1,6 +1,12 @@
 const MCP_MAX_RAG_LIMIT = 100;
 const MCP_DEFAULT_RAG_LIMIT = 30;
 const MCP_DEFAULT_CONTEXT_CHAR_LIMIT = Math.max(0, Number(process.env.RAG_CONTEXT_CHAR_LIMIT) || 6000);
+const MCP_MAX_SURVEY_CHUNKS_PER_PROJECT = 5;
+const MCP_DEFAULT_SURVEY_CHUNKS_PER_PROJECT = 2;
+const MCP_MAX_SURVEY_PROJECT_LIMIT = 50;
+const MCP_DEFAULT_SURVEY_PROJECT_LIMIT = 50;
+const MCP_MAX_DEEP_LIMIT_PER_PROJECT = 100;
+const MCP_DEFAULT_DEEP_LIMIT_PER_PROJECT = 30;
 
 function normalizeBoolean(value, defaultValue = false) {
   if (typeof value === 'boolean') {
@@ -36,6 +42,15 @@ function normalizeLimit(limit, defaultLimit = MCP_DEFAULT_RAG_LIMIT) {
   return Math.min(MCP_MAX_RAG_LIMIT, Math.max(1, Math.floor(numericLimit)));
 }
 
+function normalizeBoundedInteger(value, defaultValue, maxValue) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return defaultValue;
+  }
+
+  return Math.min(maxValue, Math.max(1, Math.floor(numericValue)));
+}
+
 function normalizeContextCharLimit(contextCharLimit) {
   const numericLimit = Number(contextCharLimit);
   if (!Number.isFinite(numericLimit)) {
@@ -57,6 +72,47 @@ function normalizeKeywords(keywords) {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function normalizeProjects(input = {}) {
+  const candidates = [];
+
+  if (typeof input.project === 'string' && input.project.trim()) {
+    candidates.push(input.project.trim());
+  }
+
+  if (Array.isArray(input.projects)) {
+    for (const project of input.projects) {
+      if (typeof project === 'string' && project.trim()) {
+        candidates.push(project.trim());
+      }
+    }
+  }
+
+  const seen = new Set();
+  const projects = [];
+
+  for (const project of candidates) {
+    if (seen.has(project)) {
+      continue;
+    }
+
+    seen.add(project);
+    projects.push(project);
+  }
+
+  return projects;
+}
+
+function normalizeStrategy(strategy, projects) {
+  if (typeof strategy === 'string') {
+    const normalized = strategy.trim().toLowerCase();
+    if (['survey', 'deep'].includes(normalized)) {
+      return normalized;
+    }
+  }
+
+  return projects.length > 0 ? 'deep' : 'survey';
+}
+
 export function normalizeMcpRagContextInput(input = {}) {
   const query = typeof input.query === 'string' && input.query.trim()
     ? input.query.trim()
@@ -67,11 +123,14 @@ export function normalizeMcpRagContextInput(input = {}) {
   }
 
   const project = typeof input.project === 'string' ? input.project.trim() : '';
+  const projects = normalizeProjects(input);
   const rawMinScore = Number(input.minScore);
 
   return {
     query,
     project,
+    projects,
+    strategy: normalizeStrategy(input.strategy, projects),
     mode: normalizeMode(input.mode),
     limit: normalizeLimit(input.limit),
     useReranker: normalizeBoolean(input.useReranker ?? input.rerank, true),
@@ -79,7 +138,22 @@ export function normalizeMcpRagContextInput(input = {}) {
     smartSelect: normalizeBoolean(input.smartSelect, true),
     contextCharLimit: normalizeContextCharLimit(input.contextCharLimit),
     minScore: Number.isFinite(rawMinScore) ? rawMinScore : undefined,
-    keywords: normalizeKeywords(input.keywords)
+    keywords: normalizeKeywords(input.keywords),
+    surveyChunksPerProject: normalizeBoundedInteger(
+      input.surveyChunksPerProject,
+      MCP_DEFAULT_SURVEY_CHUNKS_PER_PROJECT,
+      MCP_MAX_SURVEY_CHUNKS_PER_PROJECT
+    ),
+    surveyProjectLimit: normalizeBoundedInteger(
+      input.surveyProjectLimit,
+      MCP_DEFAULT_SURVEY_PROJECT_LIMIT,
+      MCP_MAX_SURVEY_PROJECT_LIMIT
+    ),
+    deepLimitPerProject: normalizeBoundedInteger(
+      input.deepLimitPerProject,
+      MCP_DEFAULT_DEEP_LIMIT_PER_PROJECT,
+      MCP_MAX_DEEP_LIMIT_PER_PROJECT
+    )
   };
 }
 

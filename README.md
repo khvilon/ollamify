@@ -43,7 +43,7 @@ It provides production‑ready building blocks out of the box:
   - local models via **Ollama**
   - proxied models via **OpenRouter** (by using `openrouter/...` model names)
 - **Multi-tenant access control**: users + API keys (one Ollamify instance can serve multiple apps)
-- **MCP server** for external agents and IDEs to list projects and search indexed documents
+- **MCP server** for external agents and IDEs to get guided RAG context from indexed documents
 - **Web UI** to manage projects/models/users and to test everything in a chat
 
 ## Screenshot

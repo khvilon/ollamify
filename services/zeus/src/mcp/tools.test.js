@@ -26,8 +26,54 @@ test('normalizes MCP RAG context input with internal RAG defaults', () => {
     smartSelect: true,
     contextCharLimit: 12000,
     minScore: undefined,
-    keywords: undefined
+    keywords: undefined,
+    strategy: 'deep',
+    projects: ['docs'],
+    surveyChunksPerProject: 2,
+    surveyProjectLimit: 50,
+    deepLimitPerProject: 30
   });
+});
+
+test('defaults MCP RAG context to project survey when no project is provided', () => {
+  const input = normalizeMcpRagContextInput({
+    question: 'How do I close acceptance?',
+    strategy: 'survey',
+    surveyChunksPerProject: '3',
+    surveyProjectLimit: '500'
+  });
+
+  assert.deepEqual(input, {
+    query: 'How do I close acceptance?',
+    project: '',
+    mode: 'hybrid',
+    limit: 30,
+    useReranker: true,
+    includeAdjacentChunks: true,
+    smartSelect: true,
+    contextCharLimit: 6000,
+    minScore: undefined,
+    keywords: undefined,
+    strategy: 'survey',
+    projects: [],
+    surveyChunksPerProject: 3,
+    surveyProjectLimit: 50,
+    deepLimitPerProject: 30
+  });
+});
+
+test('normalizes MCP RAG context deep mode for selected projects', () => {
+  const input = normalizeMcpRagContextInput({
+    query: 'How do I close acceptance?',
+    projects: [' user_instruction ', '', 'wiki'],
+    deepLimitPerProject: '12'
+  });
+
+  assert.deepEqual(input.projects, ['user_instruction', 'wiki']);
+  assert.equal(input.project, '');
+  assert.equal(input.strategy, 'deep');
+  assert.equal(input.limit, 30);
+  assert.equal(input.deepLimitPerProject, 12);
 });
 
 test('builds MCP tool results with text and structured content', () => {

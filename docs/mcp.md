@@ -86,9 +86,10 @@ For clients that only support stdio MCP, run a local bridge such as `mcp-remote`
 
 ## Tools
 
-- `ollamify_list_projects`: lists projects with descriptions and embedding models. Optional `includeStats`.
-- `ollamify_search_documents`: searches indexed document chunks by `vector`, `keyword`, or `hybrid` mode. Supports `project`, `limit`, `useReranker`, `includeAdjacentChunks`, `minScore`, and explicit `keywords`.
+- `ollamify_rag_context`: guided RAG retrieval. Without `project`/`projects`, returns a per-project `survey` with top snippets so the caller can choose the right project context. With `strategy: "deep"` and selected `project`/`projects`, returns final RAG `messages`, `context`, and `sources` for answering with the caller's LLM.
 - `ollamify_get_document`: returns document metadata and first available content chunk.
 - `ollamify_get_document_chunks`: reads a range of indexed chunks by `documentId` and `startChunkIndex`.
 
-All document search tools use the same retrieval service as `/api/ai/rag/chunks`.
+MCP intentionally does not expose project listing or raw document search tools. Agents should first call `ollamify_rag_context` in survey mode for the user's current question, then call it again in deep mode with exact project names from that survey.
+
+Deep RAG retrieval uses the same retrieval service as `/api/ai/rag/chunks` and formats final context with the same prompt builder as `/api/ai/rag`.
