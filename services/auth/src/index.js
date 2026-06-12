@@ -168,12 +168,14 @@ app.post('/auth/verify', async (req, res) => {
     console.log('Checking /api/documents:', originalUri.includes('/api/documents'));
     console.log('Checking /api/tts:', originalUri.includes('/api/tts'));
     console.log('Checking /api/stt:', originalUri.includes('/api/stt'));
+    console.log('Checking /api/mcp:', originalUri.includes('/api/mcp'));
     
     const isExternalEndpoint = originalUri.includes('/api/ai') || 
                                originalUri.includes('/api/v1/chat/completions') || 
                                originalUri.includes('/api/documents') ||
                                originalUri.includes('/api/tts') ||
-                               originalUri.includes('/api/stt');
+                               originalUri.includes('/api/stt') ||
+                               originalUri.includes('/api/mcp');
     console.log('Is external endpoint:', isExternalEndpoint);
 
     // First try to verify as JWT
