@@ -3,16 +3,17 @@ import assert from 'node:assert/strict';
 
 import {
   buildMcpToolResult,
-  normalizeMcpSearchInput
+  normalizeMcpRagContextInput
 } from './tools.js';
 
-test('normalizes MCP search input with common defaults', () => {
-  const input = normalizeMcpSearchInput({
+test('normalizes MCP RAG context input with internal RAG defaults', () => {
+  const input = normalizeMcpRagContextInput({
     question: 'How does indexing work?',
     project: 'docs',
     limit: '500',
-    rerank: true,
-    includeAdjacentChunks: 'true'
+    rerank: false,
+    includeAdjacentChunks: 'false',
+    contextCharLimit: '12000'
   });
 
   assert.deepEqual(input, {
@@ -20,8 +21,10 @@ test('normalizes MCP search input with common defaults', () => {
     project: 'docs',
     mode: 'hybrid',
     limit: 100,
-    useReranker: true,
-    includeAdjacentChunks: true,
+    useReranker: false,
+    includeAdjacentChunks: false,
+    smartSelect: true,
+    contextCharLimit: 12000,
     minScore: undefined,
     keywords: undefined
   });

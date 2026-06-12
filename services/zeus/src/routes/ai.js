@@ -15,6 +15,10 @@ import {
 } from '../utils/vllm.js';
 import { stripThinkingContent } from '../utils/ragText.js';
 import { searchDocuments } from '../services/retrieval.js';
+import {
+  buildRagContextFromDocs,
+  buildRagMessages
+} from '../utils/ragPrompt.js';
 
 const router = express.Router();
 
@@ -71,43 +75,6 @@ function buildVllmChatPayload(body, model) {
     ...payload,
     think: body?.think
   });
-}
-
-function buildRagContextFromDocs(docs, maxChars = 0) {
-  const fragments = [];
-  let usedChars = 0;
-  const limited = Number.isFinite(maxChars) && maxChars > 0;
-
-  for (const [index, doc] of docs.entries()) {
-    const metadataEntries = doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
-      ? Object.entries(doc.metadata)
-      : [];
-    const metadataStr = metadataEntries.length > 0
-      ? '\nDocument metadata:\n' + metadataEntries
-        .map(([key, value]) => `- ${key}: ${typeof value === 'object' ? JSON.stringify(value) : value}`)
-        .join('\n')
-      : '';
-    const prefix = `${index + 1}. From document ${doc.filename}:${metadataStr}\n`;
-    const rawContent = (doc.content || '').trim();
-    let content = rawContent;
-
-    if (limited) {
-      const remaining = maxChars - usedChars - prefix.length - 2;
-      if (remaining < 240) {
-        break;
-      }
-
-      if (content.length > remaining) {
-        content = `${content.slice(0, Math.max(0, remaining - 18)).trim()}\n[truncated]`;
-      }
-    }
-
-    const fragment = `${prefix}${content}`;
-    fragments.push(fragment);
-    usedChars += fragment.length + 2;
-  }
-
-  return `Relevant fragments:\n\n${fragments.join('\n\n')}`;
 }
 
 function extractThinkingSection(response) {
@@ -1312,26 +1279,10 @@ ${doc.content.trim()}`;
     
     logger.info('Getting answer from LLM...');
     // Для получения ответа используем оригинальный запрос пользователя
-    const rawAnswer = await getCompletion([
-      {
-        role: "system",
-        content: `You answer questions strictly from the provided context.
-                  Always answer in the same language as the question.
-                  Preserve exact menu names, button names, statuses, field names, and warnings from the context.
-                  If the question asks for one specific operation, answer that operation and do not add unrelated procedures.
-                  If the context contains several directly relevant ways to perform the requested operation, separate them clearly.
-                  Do not invent steps, prerequisites, UI labels, or explanations that are not supported by the context.
-                  If the context is insufficient, say what is missing instead of guessing.
-                  Use document metadata only when it helps answer the question.`
-      },
-      {
-        role: "user",
-        content: `Context:
-${contextForLlm}
-
-Question: ${question}`
-      }
-    ], model, think, {
+    const rawAnswer = await getCompletion(buildRagMessages({
+      question,
+      context: contextForLlm
+    }), model, think, {
       maxTokens: vllmTargetForRag ? RAG_VLLM_ANSWER_MAX_TOKENS : RAG_ANSWER_MAX_TOKENS,
       temperature: RAG_ANSWER_TEMPERATURE,
       topP: RAG_ANSWER_TOP_P

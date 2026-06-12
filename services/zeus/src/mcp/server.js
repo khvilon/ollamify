@@ -6,7 +6,19 @@ import ProjectQueries from '../db/projects.js';
 import qdrantClient from '../db/qdrant.js';
 import { searchDocuments } from '../services/retrieval.js';
 import { assertValidProjectName } from '../utils/projectNames.js';
-import { buildMcpToolResult, normalizeMcpSearchInput } from './tools.js';
+import {
+  RAG_SYSTEM_PROMPT,
+  buildRagContextFromDocs,
+  buildRagMessages
+} from '../utils/ragPrompt.js';
+import { buildMcpToolResult, normalizeMcpRagContextInput } from './tools.js';
+
+export const OLLAMIFY_MCP_TOOL_NAMES = [
+  'ollamify_list_projects',
+  'ollamify_rag_context',
+  'ollamify_get_document',
+  'ollamify_get_document_chunks'
+];
 
 function serializeProject(project, stats = undefined) {
   const payload = {
@@ -112,30 +124,47 @@ export function createOllamifyMcpServer() {
   );
 
   server.registerTool(
-    'ollamify_search_documents',
+    'ollamify_rag_context',
     {
-      title: 'Search Ollamify documents',
-      description: 'Search indexed document chunks by vector, keyword, or hybrid retrieval. Uses the same retrieval service as /api/ai/rag/chunks.',
+      title: 'Get Ollamify RAG context',
+      description: 'Retrieve and format context for answering a user question. Uses the same retrieval defaults as /api/ai/rag, but does not call an internal LLM; use the returned messages/context to answer.',
       inputSchema: {
         query: z.string().optional().describe('Search query. Alias: question.'),
         question: z.string().optional().describe('Search query alias for clients that prefer question.'),
         project: z.string().optional().describe('Project name. If omitted, searches across all projects.'),
         mode: z.enum(['vector', 'keyword', 'hybrid']).optional().describe('Retrieval mode. Defaults to hybrid.'),
-        limit: z.number().int().min(1).max(100).optional().describe('Maximum chunks to return. Defaults to 10.'),
-        useReranker: z.boolean().optional().describe('Enable reranker service if available. Defaults to false.'),
+        limit: z.number().int().min(1).max(100).optional().describe('Maximum chunks to retrieve before RAG context formatting. Defaults to 30.'),
+        useReranker: z.boolean().optional().describe('Enable reranker service if available. Defaults to true.'),
         rerank: z.boolean().optional().describe('Alias for useReranker.'),
-        includeAdjacentChunks: z.boolean().optional().describe('Include neighboring chunks around matched chunks. Defaults to false.'),
+        includeAdjacentChunks: z.boolean().optional().describe('Include neighboring chunks around matched chunks. Defaults to true.'),
+        smartSelect: z.boolean().optional().describe('Apply the same score-drop selection used by /api/ai/rag. Defaults to true.'),
+        contextCharLimit: z.number().int().min(0).max(50000).optional().describe('Maximum characters in the returned RAG context. Defaults to RAG_CONTEXT_CHAR_LIMIT or 6000. Use 0 for unlimited.'),
         minScore: z.number().optional().describe('Optional minimum similarity score filter.'),
-        keywords: z.array(z.string()).optional().describe('Optional exact keywords or phrases for keyword/hybrid search.'),
-        includeOriginalDocuments: z.boolean().optional().describe('Include pre-rerank/pre-filter documents in the response. Defaults to false.')
+        keywords: z.array(z.string()).optional().describe('Optional exact keywords or phrases for keyword/hybrid search.')
       }
     },
     async args => {
-      const options = normalizeMcpSearchInput(args);
+      const options = normalizeMcpRagContextInput(args);
       const result = await searchDocuments({
         ...options,
-        useReranker: options.useReranker
+        useReranker: options.useReranker,
+        smartSelect: options.smartSelect,
+        includeAdjacentChunks: options.includeAdjacentChunks
       });
+      const context = buildRagContextFromDocs(result.relevantDocuments, options.contextCharLimit);
+      const messages = buildRagMessages({
+        question: options.query,
+        context
+      });
+      const sources = result.relevantDocuments.map(doc => ({
+        filename: doc.filename,
+        project: doc.project,
+        document_id: doc.document_id,
+        chunk_index: doc.chunk_index,
+        similarity: doc.similarity,
+        metadata: doc.metadata || {},
+        extracted_metadata: doc.extracted_metadata || {}
+      }));
 
       const payload = {
         query: options.query,
@@ -144,12 +173,12 @@ export function createOllamifyMcpServer() {
         limitApplied: result.limitApplied,
         intentQuery: result.intentQuery,
         keywords: result.keywords,
-        relevantDocuments: result.relevantDocuments
+        systemPrompt: RAG_SYSTEM_PROMPT,
+        userPrompt: messages[1].content,
+        messages,
+        context,
+        sources
       };
-
-      if (args?.includeOriginalDocuments) {
-        payload.originalDocuments = result.originalDocuments;
-      }
 
       return buildMcpToolResult(payload);
     }
