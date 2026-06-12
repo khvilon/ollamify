@@ -138,8 +138,24 @@ Indexing happens asynchronously — you can track progress via `loaded_chunks / 
 - `project` (required)
 - `name` (optional)
 - `metadata` (optional JSON)
+- `extraction_rules` (optional JSON array): caller-provided inline extraction rules applied to each chunk after Ollamify splits the document. Version 1 supports only regex rules.
 - `external_id` (optional): idempotency key (if same `external_id` + same content → returns `status=exists`)
 - `single_chunk` (optional boolean): do not split into chunks
+
+Example `extraction_rules`:
+
+```json
+[
+  {
+    "key": "tracker.keys",
+    "type": "regex",
+    "pattern": "\\bDEV-\\d+\\b",
+    "flags": "gi"
+  }
+]
+```
+
+Ollamify treats rule keys as opaque caller-owned metadata keys and stores matches in chunk payload `extracted_metadata`.
 
 **Example (file)**
 
