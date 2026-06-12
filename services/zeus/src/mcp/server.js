@@ -11,7 +11,11 @@ import {
   buildRagContextFromDocs,
   buildRagMessages
 } from '../utils/ragPrompt.js';
-import { buildMcpToolResult, normalizeMcpRagContextInput } from './tools.js';
+import {
+  buildMcpToolResult,
+  normalizeMcpRagContextInput,
+  rankMcpProjectSurvey
+} from './tools.js';
 
 export const OLLAMIFY_MCP_TOOL_NAMES = [
   'ollamify_rag_context',
@@ -142,9 +146,10 @@ async function buildSurveyPayload(options) {
     instruction: 'Choose one to three project names from projectSurvey that are most likely to contain the answer, then call ollamify_rag_context again with strategy "deep" and projects set to those exact names. Do not answer from survey unless the survey snippets fully answer the question.',
     surveyChunksPerProject: options.surveyChunksPerProject,
     surveyProjectLimit: options.surveyProjectLimit,
-    projectSurvey: projectSurvey
-      .filter(item => item.sourceCount > 0 || item.error)
-      .sort((a, b) => (b.maxSimilarity || 0) - (a.maxSimilarity || 0))
+    projectSurvey: rankMcpProjectSurvey(
+      options.query,
+      projectSurvey.filter(item => item.sourceCount > 0 || item.error)
+    )
   };
 }
 

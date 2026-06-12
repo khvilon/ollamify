@@ -1,3 +1,5 @@
+import { buildDeterministicKeywords } from '../utils/ragSearch.js';
+
 const MCP_MAX_RAG_LIMIT = 100;
 const MCP_DEFAULT_RAG_LIMIT = 30;
 const MCP_DEFAULT_CONTEXT_CHAR_LIMIT = Math.max(0, Number(process.env.RAG_CONTEXT_CHAR_LIMIT) || 6000);
@@ -111,6 +113,75 @@ function normalizeStrategy(strategy, projects) {
   }
 
   return projects.length > 0 ? 'deep' : 'survey';
+}
+
+function normalizeSurveyMatchText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/[ёЁ]/g, 'е')
+    .replace(/[^\p{L}\p{N}_-]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase();
+}
+
+function surveyTextForItem(item) {
+  const parts = [
+    item?.project,
+    item?.description
+  ];
+
+  for (const source of Array.isArray(item?.topSources) ? item.topSources : []) {
+    parts.push(
+      source?.filename,
+      source?.content,
+      JSON.stringify(source?.metadata || {}),
+      JSON.stringify(source?.extracted_metadata || {})
+    );
+  }
+
+  return normalizeSurveyMatchText(parts.filter(Boolean).join(' '));
+}
+
+function calculateSurveyTextMatchScore(query, item) {
+  const haystack = surveyTextForItem(item);
+  if (!haystack) {
+    return 0;
+  }
+
+  const keywords = buildDeterministicKeywords(query, 24)
+    .map(normalizeSurveyMatchText)
+    .filter(Boolean);
+  const seen = new Set();
+  let score = 0;
+
+  for (const keyword of keywords) {
+    if (seen.has(keyword) || !haystack.includes(keyword)) {
+      continue;
+    }
+
+    seen.add(keyword);
+    const wordCount = keyword.split(/\s+/).filter(Boolean).length;
+    score += wordCount > 1 ? wordCount * 4 : 1;
+  }
+
+  return score;
+}
+
+export function rankMcpProjectSurvey(query, projectSurvey = []) {
+  if (!Array.isArray(projectSurvey) || projectSurvey.length === 0) {
+    return [];
+  }
+
+  return projectSurvey
+    .map(item => ({
+      ...item,
+      textMatchScore: calculateSurveyTextMatchScore(query, item)
+    }))
+    .sort((a, b) => (
+      (b.textMatchScore || 0) - (a.textMatchScore || 0) ||
+      (b.maxSimilarity || 0) - (a.maxSimilarity || 0)
+    ));
 }
 
 export function normalizeMcpRagContextInput(input = {}) {

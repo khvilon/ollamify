@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 
 import {
   buildMcpToolResult,
-  normalizeMcpRagContextInput
+  normalizeMcpRagContextInput,
+  rankMcpProjectSurvey
 } from './tools.js';
 
 test('normalizes MCP RAG context input with internal RAG defaults', () => {
@@ -74,6 +75,36 @@ test('normalizes MCP RAG context deep mode for selected projects', () => {
   assert.equal(input.strategy, 'deep');
   assert.equal(input.limit, 30);
   assert.equal(input.deepLimitPerProject, 12);
+});
+
+test('ranks MCP project survey by exact text matches before raw similarity', () => {
+  const ranked = rankMcpProjectSurvey('как закрыть приемку', [
+    {
+      project: 'wdb',
+      sourceCount: 2,
+      maxSimilarity: 1.1,
+      topSources: [
+        {
+          filename: 'receipt',
+          content: 'Purchase order appointment details'
+        }
+      ]
+    },
+    {
+      project: 'wd',
+      sourceCount: 2,
+      maxSimilarity: 0.7,
+      topSources: [
+        {
+          filename: 'Документация пользователя LT WMS.pdf',
+          content: 'Чтобы закрыть приемку, выполните операцию окончания приемки.'
+        }
+      ]
+    }
+  ]);
+
+  assert.equal(ranked[0].project, 'wd');
+  assert.ok(ranked[0].textMatchScore > ranked[1].textMatchScore);
 });
 
 test('builds MCP tool results with text and structured content', () => {
