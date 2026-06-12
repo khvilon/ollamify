@@ -96,6 +96,10 @@ export function normalizeRetrievalOptions(options = {}) {
   };
 }
 
+function asPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
 export function serializeRetrievedDocument(doc) {
   return {
     filename: doc?.filename || 'unknown',
@@ -104,9 +108,8 @@ export function serializeRetrievedDocument(doc) {
     document_id: doc?.document_id,
     chunk_index: doc?.chunk_index,
     similarity: typeof doc?.similarity === 'number' ? doc.similarity : 0,
-    metadata: doc?.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
-      ? doc.metadata
-      : {}
+    metadata: asPlainObject(doc?.metadata),
+    extracted_metadata: asPlainObject(doc?.extracted_metadata)
   };
 }
 
@@ -315,9 +318,8 @@ async function findKeywordDocuments(keywords, project, limit = 20) {
           project: doc.project || project,
           document_id: doc.document_id,
           chunk_index: doc.chunk_index,
-          metadata: doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
-            ? { ...doc.metadata }
-            : {},
+          metadata: { ...asPlainObject(doc.metadata) },
+          extracted_metadata: { ...asPlainObject(doc.extracted_metadata) },
           keywordScore: typeof doc.similarity === 'number' ? doc.similarity : 0,
           similarity: typeof doc.similarity === 'number' ? doc.similarity : 0,
           keywordMatches: new Set()
@@ -326,6 +328,10 @@ async function findKeywordDocuments(keywords, project, limit = 20) {
 
       const entry = docMap.get(docKey);
       const docScore = typeof doc.similarity === 'number' ? doc.similarity : 0;
+      entry.extracted_metadata = {
+        ...entry.extracted_metadata,
+        ...asPlainObject(doc.extracted_metadata)
+      };
 
       if (entry.document_id === undefined && doc.document_id !== undefined) {
         entry.document_id = doc.document_id;
@@ -397,7 +403,8 @@ async function findKeywordDocuments(keywords, project, limit = 20) {
       chunk_index: entry.chunk_index,
       similarity: entry.keywordScore,
       keywordScore: entry.keywordScore,
-      metadata
+      metadata,
+      extracted_metadata: entry.extracted_metadata
     };
   });
 
@@ -462,9 +469,8 @@ function mergeHybridResults(embeddingDocs, keywordDocs, limit) {
         project: doc.project,
         document_id: doc.document_id,
         chunk_index: doc.chunk_index,
-        metadata: doc.metadata && typeof doc.metadata === 'object' && !Array.isArray(doc.metadata)
-          ? { ...doc.metadata }
-          : {},
+        metadata: { ...asPlainObject(doc.metadata) },
+        extracted_metadata: { ...asPlainObject(doc.extracted_metadata) },
         embeddingScore: null,
         keywordScore: null,
         keywordMatches: new Set(),
@@ -473,6 +479,10 @@ function mergeHybridResults(embeddingDocs, keywordDocs, limit) {
     }
 
     const entry = docMap.get(key);
+    entry.extracted_metadata = {
+      ...entry.extracted_metadata,
+      ...asPlainObject(doc.extracted_metadata)
+    };
 
     if (entry.document_id === undefined && doc.document_id !== undefined) {
       entry.document_id = doc.document_id;
@@ -550,7 +560,8 @@ function mergeHybridResults(embeddingDocs, keywordDocs, limit) {
       document_id: entry.document_id,
       chunk_index: entry.chunk_index,
       similarity: hybridScore,
-      metadata
+      metadata,
+      extracted_metadata: entry.extracted_metadata
     };
   });
 
@@ -777,6 +788,10 @@ export async function rerankDocuments(question, relevantDocs) {
           metadata: {
             ...(originalDoc.metadata || {}),
             ...(doc.metadata || {})
+          },
+          extracted_metadata: {
+            ...asPlainObject(originalDoc.extracted_metadata),
+            ...asPlainObject(doc.extracted_metadata)
           }
         };
       });
