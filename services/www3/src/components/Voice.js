@@ -47,7 +47,7 @@ function Voice() {
     const [ttsText, setTtsText] = useState('Привет! Это тест мультиязычного синтеза речи.');
     const [ttsVoice, setTtsVoice] = useState('');
     const [ttsLanguage, setTtsLanguage] = useState('ru');
-    const [ttsSpeed, setTtsSpeed] = useState(1.0);
+    const [ttsSpeed, setTtsSpeed] = useState(0.65);
     const [ttsSampleRate, setTtsSampleRate] = useState(24000);
     const [isTtsSynthesizing, setIsTtsSynthesizing] = useState(false);
     const [ttsError, setTtsError] = useState(null);
@@ -158,10 +158,10 @@ function Voice() {
                 const voicesData = await response.json();
                 setVoices(voicesData);
 
-                // Prefer "aidar" when available, otherwise pick the first voice.
+                // Prefer the current Russian OmniVoice voice when available, otherwise pick the first voice.
                 const voiceNames = Array.isArray(voicesData) ? voicesData.map(v => v?.name).filter(Boolean) : [];
                 if (!voiceNames.includes(ttsVoice)) {
-                    const preferred = voiceNames.includes('aidar') ? 'aidar' : (voiceNames[0] || '');
+                    const preferred = voiceNames.includes('omnivoice-ru') ? 'omnivoice-ru' : (voiceNames[0] || '');
                     setTtsVoice(preferred);
                 }
             } catch (err) {
@@ -1234,4 +1234,4 @@ function Voice() {
 }
 
 // Export component
-window.Voice = Voice; 
+window.Voice = Voice;

@@ -2,16 +2,16 @@
 
 [English](architecture.md) | **Русский**
 
-## Схема системы (рендерится прямо в GitHub)
+## Схема системы
 
 ```mermaid
 flowchart LR
-  user["Пользователь (Браузер)"] -->|HTTP 80| nginx["www3 (Nginx) - UI + API gateway"]
+  user["Пользователь (браузер)"] -->|HTTP 80 / HTTPS 443| nginx["www3 (Nginx) - UI + API gateway"]
 
   nginx -->|POST auth login| auth["auth service"]
-  nginx -->|api защищено| zeus["zeus API"]
-  nginx -->|api tts защищено| tts["tts service"]
-  nginx -->|api stt защищено| stt["stt service"]
+  nginx -->|api protected| zeus["zeus API"]
+  nginx -->|api tts protected| zeus
+  nginx -->|api stt protected| stt["stt service"]
   nginx -->|ws WebSocket| zeus
 
   auth -->|SQL| pg["PostgreSQL"]
@@ -20,15 +20,16 @@ flowchart LR
   zeus -->|HTTP 11434| ollama["Ollama"]
   zeus -->|HTTP 8001| reranker["Reranker"]
   zeus -->|HTTP 8002| frida["Frida"]
+  zeus -->|HTTP 8006| tts["tts-realtime (OmniVoice)"]
   zeus -->|HTTPS| openrouter["OpenRouter (optional)"]
 
   ollama -->|кеш моделей| ollama_models["ollama_data (volume)"]
-  tts -->|кеш моделей| tts_models["tts_models (volume)"]
+  tts -->|кеш моделей| tts_models["tts_hf_cache (volume)"]
   stt -->|кеш моделей| stt_models["stt_models (volume)"]
   reranker -->|кеш моделей| reranker_models["reranker_models (volume)"]
   frida -->|кеш моделей| frida_models["frida_models (volume)"]
 
-  tts -.->|скачивание при первом запуске| model_hub["Model hubs (Silero, Whisper, HF)"]
+  tts -.->|скачивание при первом запуске| model_hub["Model hubs (OmniVoice, Whisper, HF)"]
   stt -.->|скачивание при первом запуске| model_hub
   reranker -.->|скачивание при первом запуске| model_hub
   frida -.->|скачивание при первом запуске| model_hub
@@ -36,39 +37,40 @@ flowchart LR
 
 ## Общая картина
 
-- `www3` (Nginx) — **единая точка входа** для UI и `/api` gateway.
-- `auth` проверяет JWT / API‑ключи (через Nginx `auth_request`).
-- `zeus` — основной backend: проекты, документы, RAG, модели, генерация OpenAPI.
-- `ollama` — локальный runtime для LLM + embeddings.
-- `vector-db` — Qdrant (векторный поиск).
-- `db` — PostgreSQL (+ pgvector; служебные таблицы в схеме `admin`).
-- `tts` и `stt` — отдельные сервисы, наружу идут через `/api/tts/*` и `/api/stt/*`.
+- `www3` (Nginx) - единая точка входа для UI и `/api` gateway.
+- `auth` проверяет JWT / API keys через Nginx `auth_request`.
+- `zeus` - основной backend: проекты, документы, RAG, управление моделями, OpenAPI.
+- `ollama` - локальный runtime для LLM и embeddings.
+- `vector-db` - Qdrant для векторного поиска.
+- `db` - PostgreSQL с pgvector; служебные таблицы лежат в схеме `admin`.
+- `tts-realtime` - OmniVoice TTS. Наружу он идет через `zeus` и `/api/tts/*`.
+- `stt` - Whisper STT. Наружу он идет через `/api/stt/*`.
 
-## Порты (по умолчанию)
+## Порты по умолчанию
 
 | Сервис | Порт в контейнере | Порт на хосте |
 |---|---:|---:|
-| www3 (Nginx) | 80 | 80 |
-| zeus | 80 | (внутри сети) |
-| auth | 80 | (внутри сети) |
-| db (Postgres) | 5432 | (внутри сети) |
+| www3 (Nginx) | 80 / 443 | 80 / 443 |
+| zeus | 80 | internal |
+| auth | 80 | internal |
+| db (Postgres) | 5432 | internal |
 | vector-db (Qdrant) | 6333 | 6333 |
 | frida | 8002 | 8002 |
 | reranker | 8001 | 8001 |
-| tts | 8003 | 8003 |
-| stt | 8004 | 8004 |
+| tts-realtime | 8006 | internal |
+| stt | 8004 | internal |
 
-## Роутинг gateway (Nginx)
+## Роутинг gateway
 
-- `POST /auth/login` → `auth`
-- `/api/*` → `zeus` (с авторизацией)
-- `/api/tts/*` → `tts` (с авторизацией)
-- `/api/stt/*` → `stt` (с авторизацией)
-- `/api/docs` → `zeus` (публичная Swagger UI)
+- `POST /auth/login` -> `auth`
+- `/api/*` -> `zeus` (authenticated)
+- `/api/tts/*` -> `zeus` -> `tts-realtime` (authenticated)
+- `/api/stt/*` -> `stt` (authenticated)
+- `/api/docs` -> `zeus` (public Swagger UI)
 
 ## Ключевые сценарии
 
-### Индексация документов (upload → чанки → эмбеддинги → Qdrant)
+### Индексация документов
 
 ```mermaid
 sequenceDiagram
@@ -79,19 +81,19 @@ sequenceDiagram
   participant Ollama as Ollama
   participant Q as Qdrant
 
-  UI->>GW: POST /api/documents (файл или текст)
+  UI->>GW: POST /api/documents (file or text)
   GW->>Zeus: POST /api/documents
-  Zeus->>PG: INSERT метаданных документа (admin/projects + {project}.documents)
-  loop для каждого чанка
-    Zeus->>Ollama: POST /api/embeddings (model = embedding_model проекта)
-    Ollama-->>Zeus: вектор
-    Zeus->>Q: upsert points (payload: document_id, content, metadata)
+  Zeus->>PG: INSERT document metadata
+  loop for each chunk
+    Zeus->>Ollama: POST /api/embeddings
+    Ollama-->>Zeus: embedding vector
+    Zeus->>Q: upsert points
     Zeus->>PG: UPDATE loaded_chunks
   end
-  Zeus-->>UI: 200 Created (+ прогресс асинхронно через WS)
+  Zeus-->>UI: 200 Created (+ async progress through WS)
 ```
 
-### RAG запрос (hybrid retrieval → optional rerank → answer)
+### RAG запрос
 
 ```mermaid
 sequenceDiagram
@@ -105,21 +107,20 @@ sequenceDiagram
 
   Client->>GW: POST /api/ai/rag
   GW->>Zeus: POST /api/ai/rag
-  Zeus->>Ollama: эмбеддинги для intent query (embedding model проекта)
-  Ollama-->>Zeus: вектор
-  Zeus->>Q: векторный поиск (+ опционально keyword search)
-  Q-->>Zeus: релевантные чанки
+  Zeus->>Ollama: embeddings for intent query
+  Ollama-->>Zeus: vector
+  Zeus->>Q: vector search (+ optional keyword search)
+  Q-->>Zeus: relevant chunks
   opt useReranker = true
-    Zeus->>R: POST /rerank (query + chunks)
-    R-->>Zeus: переранжированные чанки
+    Zeus->>R: POST /rerank
+    R-->>Zeus: reranked chunks
   end
-  alt model начинается с openrouter/
-    Zeus->>OR: chat.completions (OpenRouter)
-    OR-->>Zeus: ответ
-  else локальная Ollama модель
+  alt model starts with openrouter/
+    Zeus->>OR: chat.completions
+    OR-->>Zeus: answer
+  else local Ollama model
     Zeus->>Ollama: /v1/chat/completions
-    Ollama-->>Zeus: ответ
+    Ollama-->>Zeus: answer
   end
   Zeus-->>Client: answer + sources (+ optional thinking)
 ```
-

@@ -9,15 +9,15 @@ node "zeus" as zeus
 node "ollama" as ollama
 node "vector-db\n(Qdrant)" as qdrant
 database "db\n(PostgreSQL)" as pg
-node "tts" as tts
+node "tts-realtime\n(OmniVoice)" as tts
 node "stt" as stt
 node "reranker" as reranker
 node "frida" as frida
 cloud "OpenRouter" as openrouter
-cloud "Model hubs\n(Silero, Whisper, HF)" as modelhub
+cloud "Model hubs\n(OmniVoice, Whisper, HF)" as modelhub
 
 folder "ollama_data\n(volume)" as ollama_data
-folder "tts_models\n(volume)" as tts_models
+folder "tts_hf_cache\n(volume)" as tts_models
 folder "stt_models\n(volume)" as stt_models
 folder "reranker_models\n(volume)" as reranker_models
 folder "frida_models\n(volume)" as frida_models
@@ -26,7 +26,7 @@ user --> nginx : HTTP :80
 
 nginx --> auth : /auth/login\n/auth/verify (internal)
 nginx --> zeus : /api/*, /ws/*
-nginx --> tts : /api/tts/*
+zeus --> tts : HTTP :8006\n/api/tts/*
 nginx --> stt : /api/stt/*
 
 auth --> pg : SQL

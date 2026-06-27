@@ -21,7 +21,7 @@
     { "name": "AI & RAG", "description": "RAG endpoints (search + answer)" },
     { "name": "AI & Embeddings", "description": "OpenAI-style embeddings endpoint" },
     { "name": "OpenAI Compatible", "description": "OpenAI-compatible chat completions" },
-    { "name": "TTS", "description": "Text-to-Speech (Silero TTS)" },
+    { "name": "TTS", "description": "Text-to-Speech (OmniVoice)" },
     { "name": "STT", "description": "Speech-to-Text (Whisper)" }
   ],
   "components": {
@@ -275,8 +275,8 @@
       "VoiceInfo": {
         "type": "object",
         "properties": {
-          "name": { "type": "string", "example": "aidar" },
-          "gender": { "type": "string", "example": "male" },
+          "name": { "type": "string", "example": "omnivoice-he" },
+          "gender": { "type": "string", "example": "young" },
           "language": { "type": "string", "example": "ru" },
           "description": { "type": "string" }
         }
@@ -286,11 +286,11 @@
         "required": ["text"],
         "properties": {
           "text": { "type": "string", "maxLength": 1000, "example": "Привет!" },
-          "voice": { "type": "string", "enum": ["aidar", "baya", "kseniya", "xenia"], "default": "aidar" },
-          "speed": { "type": "number", "minimum": 0.5, "maximum": 2.0, "default": 1.0, "example": 1.0 },
+          "voice": { "type": "string", "enum": ["omnivoice-ru", "omnivoice-en", "omnivoice-he"], "default": "omnivoice-ru" },
+          "speed": { "type": "number", "minimum": 0.5, "maximum": 2.0, "default": 0.65, "example": 0.65 },
           "sample_rate": { "type": "integer", "enum": [8000, 24000, 48000], "default": 24000, "example": 24000 },
           "format": { "type": "string", "enum": ["wav"], "default": "wav" },
-          "language": { "type": "string", "enum": ["ru"], "default": "ru" }
+          "language": { "type": "string", "enum": ["ru", "en", "he"], "default": "ru" }
         }
       },
       "TTSResponse": {
@@ -306,12 +306,15 @@
         "type": "object",
         "properties": {
           "status": { "type": "string", "example": "healthy" },
+          "provider": { "type": "string", "example": "omnivoice" },
+          "model_id": { "type": "string", "example": "k2-fsa/OmniVoice" },
           "model_loaded": { "type": "boolean" },
-          "model_loading": { "type": "boolean" },
-          "model_error": { "type": "string", "nullable": true },
-          "device": { "type": "string", "example": "cuda" },
-          "cuda_available": { "type": "boolean" },
-          "torch_version": { "type": "string" }
+          "device": { "type": "string", "example": "cuda:0" },
+          "dtype": { "type": "string", "example": "torch.float16" },
+          "default_speed": { "type": "number", "example": 0.65 },
+          "num_step": { "type": "integer", "example": 10 },
+          "synthesis_attempts": { "type": "integer", "example": 2 },
+          "voice_designs": { "type": "array", "items": { "type": "string" }, "example": ["omnivoice-he"] }
         }
       },
       "STTModelsResponse": {

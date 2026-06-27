@@ -296,7 +296,11 @@ curl -sS "$BASE_URL/v1/chat/completions" \
 
 ---
 
-### TTS (Silero)
+### TTS (OmniVoice)
+
+Текущий TTS backend - `tts-realtime` на `k2-fsa/OmniVoice`.
+Значения по умолчанию: `speed: 0.65`, `num_step: 10`, `synthesis_attempts: 2`.
+Голоса: `omnivoice-ru`, `omnivoice-en`, `omnivoice-he` (иврит использует OmniVoice instruct `young adult, high pitch`).
 
 #### GET `/tts/voices`
 
@@ -315,8 +319,8 @@ curl -sS "$BASE_URL/tts/synthesize" \
   -H "Content-Type: application/json" \
   -d '{
     "text":"Привет!",
-    "voice":"aidar",
-    "speed":1.0,
+    "voice":"omnivoice-ru",
+    "speed":0.65,
     "sample_rate":24000,
     "format":"wav",
     "language":"ru"
@@ -331,7 +335,7 @@ curl -sS "$BASE_URL/tts/synthesize" \
 curl -sS "$BASE_URL/tts/synthesize/stream" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"text":"Привет!","voice":"baya","sample_rate":24000}' \
+  -d '{"text":"שלום","voice":"omnivoice-he","language":"he","speed":0.65,"sample_rate":24000}' \
   -o speech.wav
 ```
 

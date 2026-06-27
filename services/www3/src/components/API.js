@@ -169,7 +169,7 @@ function API() {
             title: 'Text-to-Speech',
             path: '/api/tts/*',
             method: 'GET/POST',
-            description: 'Silero TTS: voices + synthesis',
+            description: 'OmniVoice TTS: voices + synthesis',
             badge: 'TTS',
             color: 'success'
         },
@@ -216,8 +216,9 @@ curl -X POST "http://localhost/api/tts/synthesize" \\
   -H "Content-Type: application/json" \\
   -d '{
     "text": "Привет, как дела?",
-    "voice": "aidar",
+    "voice": "omnivoice-ru",
     "language": "ru",
+    "speed": 0.65,
     "sample_rate": 24000
   }'`,
         python: `import requests
@@ -261,7 +262,7 @@ def chat_completion(messages):
     return response.json()
 
 # TTS запрос (синтез речи)
-def text_to_speech(text, voice="aidar"):
+def text_to_speech(text, voice="omnivoice-ru"):
     response = requests.post(
         'http://localhost/api/tts/synthesize',
         headers=headers,
@@ -269,6 +270,7 @@ def text_to_speech(text, voice="aidar"):
             'text': text,
             'voice': voice,
             'language': 'ru',
+            'speed': 0.65,
             'sample_rate': 24000
         }
     )
@@ -325,7 +327,7 @@ async function chatCompletion(messages) {
 }
 
 // TTS запрос (синтез речи)
-async function textToSpeech(text, voice = "aidar") {
+async function textToSpeech(text, voice = "omnivoice-ru") {
     const response = await fetch('http://localhost/api/tts/synthesize', {
         method: 'POST',
         headers,
@@ -333,6 +335,7 @@ async function textToSpeech(text, voice = "aidar") {
             text,
             voice,
             language: 'ru',
+            speed: 0.65,
             sample_rate: 24000
         })
     });
@@ -884,4 +887,4 @@ async function textToSpeech(text, voice = "aidar") {
 }
 
 // Export for browser environment
-window.API = API; 
+window.API = API;

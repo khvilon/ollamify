@@ -3,15 +3,15 @@ import io
 import logging
 import os
 from threading import Lock
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
+import numpy as np
 import soundfile as sf
 import torch
 from fastapi import FastAPI, HTTPException
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import Response
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
-from transformers import AutoModel, AutoProcessor
 
 
 logging.basicConfig(
@@ -23,31 +23,39 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="Ollamify Realtime TTS Service",
-    description="Multilingual TTS service (ru/en/he) based on OpenMOSS",
-    version="3.0.0",
+    description="Multilingual TTS service (ru/en/he) based on OmniVoice",
+    version="4.0.0",
 )
 
 
 SUPPORTED_LANGUAGES = {"ru", "en", "he"}
+HEBREW_YOUNG_VOICE_INSTRUCT = (
+    "young adult, high pitch"
+)
 VOICE_INFOS = [
-    {"name": "moss-ru", "gender": "unknown", "language": "ru", "description": "OpenMOSS Russian"},
-    {"name": "moss-en", "gender": "unknown", "language": "en", "description": "OpenMOSS English"},
-    {"name": "moss-he", "gender": "unknown", "language": "he", "description": "OpenMOSS Hebrew"},
+    {"name": "omnivoice-ru", "gender": "auto", "language": "ru", "description": "OmniVoice Auto Russian"},
+    {"name": "omnivoice-en", "gender": "auto", "language": "en", "description": "OmniVoice Auto English"},
+    {"name": "omnivoice-he", "gender": "young", "language": "he", "description": "OmniVoice Young Hebrew"},
 ]
 VOICE_TO_LANGUAGE = {item["name"]: item["language"] for item in VOICE_INFOS}
+VOICE_TO_INSTRUCT = {
+    "omnivoice-he": HEBREW_YOUNG_VOICE_INSTRUCT,
+}
 DEFAULT_VOICE_BY_LANGUAGE = {
-    "ru": "moss-ru",
-    "en": "moss-en",
-    "he": "moss-he",
+    "ru": "omnivoice-ru",
+    "en": "omnivoice-en",
+    "he": "omnivoice-he",
 }
 
-MOSS_MODEL_ID = os.environ.get("MOSS_MODEL_ID", "OpenMOSS-Team/MOSS-TTS-Local-Transformer")
-MAX_NEW_TOKENS = int(os.environ.get("MOSS_MAX_NEW_TOKENS", "320"))
+OMNIVOICE_MODEL_ID = os.environ.get("OMNIVOICE_MODEL_ID", "k2-fsa/OmniVoice")
+OMNIVOICE_NUM_STEP = int(os.environ.get("OMNIVOICE_NUM_STEP", "10"))
+OMNIVOICE_SYNTHESIS_ATTEMPTS = max(1, int(os.environ.get("OMNIVOICE_SYNTHESIS_ATTEMPTS", "2")))
+DEFAULT_TTS_SPEED = float(os.environ.get("TTS_DEFAULT_SPEED", "0.65"))
 PRELOAD_MODEL_ON_STARTUP = os.environ.get("TTS_PRELOAD_ON_STARTUP", "1").strip() != "0"
 
 _MODEL_LOCK = Lock()
-_moss_model: Optional[Any] = None
-_moss_processor: Optional[Any] = None
+_GENERATION_LOCK = Lock()
+_omnivoice_model: Optional[Any] = None
 _model_device = "cpu"
 _model_dtype = torch.float32
 _sample_rate = 24000
@@ -56,7 +64,7 @@ _sample_rate = 24000
 class TTSRequest(BaseModel):
     text: str
     voice: Optional[str] = None
-    speed: Optional[float] = 1.0
+    speed: Optional[float] = DEFAULT_TTS_SPEED
     sample_rate: Optional[int] = 24000
     format: Optional[str] = "wav"
     language: Optional[str] = "ru"
@@ -81,125 +89,130 @@ def normalize_lang(value: Optional[str]) -> str:
     return lang if lang in SUPPORTED_LANGUAGES else "ru"
 
 
-def _detect_device() -> str:
-    forced = (os.environ.get("MOSS_DEVICE") or "").strip().lower()
-    if forced in {"cpu", "cuda"}:
-        if forced == "cuda" and not torch.cuda.is_available():
-            logger.warning("MOSS_DEVICE=cuda requested, but CUDA is unavailable. Falling back to CPU.")
+def normalize_speed(value: Optional[float]) -> float:
+    if value is None:
+        return DEFAULT_TTS_SPEED
+    speed = float(value)
+    if speed <= 0:
+        raise ValueError("speed must be greater than 0")
+    return speed
+
+
+def _detect_device_map() -> str:
+    forced = (os.environ.get("OMNIVOICE_DEVICE") or "").strip().lower()
+    if forced:
+        if forced.startswith("cuda") and not torch.cuda.is_available():
+            logger.warning("OMNIVOICE_DEVICE=%s requested, but CUDA is unavailable. Falling back to CPU.", forced)
             return "cpu"
         return forced
-    return "cuda" if torch.cuda.is_available() else "cpu"
+    return "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
-def _resolve_dtype(device: str) -> torch.dtype:
-    if device == "cuda":
+def _resolve_dtype(device_map: str) -> torch.dtype:
+    forced = (os.environ.get("OMNIVOICE_DTYPE") or "").strip().lower()
+    if forced in {"float16", "fp16"}:
+        return torch.float16
+    if forced in {"bfloat16", "bf16"}:
         return torch.bfloat16
-    return torch.float32
+    if forced in {"float32", "fp32"}:
+        return torch.float32
+    return torch.float16 if device_map.startswith("cuda") else torch.float32
 
 
-def _ensure_openmoss_config_compat(model: Any) -> None:
-    config = getattr(model, "config", None)
-    if config is None:
-        return
-    if hasattr(config, "num_hidden_layers"):
-        return
+def _load_model() -> Any:
+    global _omnivoice_model, _model_device, _model_dtype, _sample_rate
 
-    fallback_layers = (
-        getattr(config, "local_num_layers", None)
-        or getattr(config, "num_layers", None)
-        or getattr(config, "n_layer", None)
-    )
-    if fallback_layers is None:
-        return
-
-    try:
-        setattr(config, "num_hidden_layers", int(fallback_layers))
-        logger.info("Patched OpenMOSS config: num_hidden_layers=%s", getattr(config, "num_hidden_layers", "unknown"))
-    except Exception as error:
-        logger.warning("Unable to patch OpenMOSS config compatibility: %s", error)
-
-
-def _load_model() -> Tuple[Any, Any]:
-    global _moss_model, _moss_processor, _model_device, _model_dtype, _sample_rate
     with _MODEL_LOCK:
-        if _moss_model is not None and _moss_processor is not None:
-            return _moss_model, _moss_processor
-
-        _model_device = _detect_device()
-        _model_dtype = _resolve_dtype(_model_device)
-        logger.info("Loading OpenMOSS model %s on device: %s (dtype=%s)", MOSS_MODEL_ID, _model_device, _model_dtype)
-
-        processor = AutoProcessor.from_pretrained(MOSS_MODEL_ID, trust_remote_code=True)
-        if hasattr(processor, "audio_tokenizer") and hasattr(processor.audio_tokenizer, "to"):
-            processor.audio_tokenizer = processor.audio_tokenizer.to(_model_device)
-
-        model = AutoModel.from_pretrained(
-            MOSS_MODEL_ID,
-            trust_remote_code=True,
-            dtype=_model_dtype,
-        ).to(_model_device)
-        _ensure_openmoss_config_compat(model)
-        model.eval()
+        if _omnivoice_model is not None:
+            return _omnivoice_model
 
         try:
-            _sample_rate = int(getattr(processor.model_config, "sampling_rate", 24000))
-        except Exception:
-            _sample_rate = 24000
+            from omnivoice import OmniVoice
+        except Exception as error:
+            raise RuntimeError("OmniVoice runtime is unavailable. Install the omnivoice Python package.") from error
 
-        _moss_model = model
-        _moss_processor = processor
-        logger.info("OpenMOSS model loaded successfully")
-        return _moss_model, _moss_processor
+        _model_device = _detect_device_map()
+        _model_dtype = _resolve_dtype(_model_device)
+        logger.info(
+            "Loading OmniVoice model %s on device_map=%s (dtype=%s, num_step=%s)",
+            OMNIVOICE_MODEL_ID,
+            _model_device,
+            _model_dtype,
+            OMNIVOICE_NUM_STEP,
+        )
+
+        _omnivoice_model = OmniVoice.from_pretrained(
+            OMNIVOICE_MODEL_ID,
+            device_map=_model_device,
+            dtype=_model_dtype,
+        )
+        _sample_rate = int(getattr(_omnivoice_model, "sampling_rate", 24000) or 24000)
+        logger.info("OmniVoice model loaded successfully (sample_rate=%s)", _sample_rate)
+        return _omnivoice_model
 
 
 def resolve_voice(requested_voice: Optional[str], language: str) -> str:
-    if requested_voice and requested_voice in VOICE_TO_LANGUAGE:
+    if requested_voice and VOICE_TO_LANGUAGE.get(requested_voice) == language:
         return requested_voice
-    return DEFAULT_VOICE_BY_LANGUAGE.get(language, "moss-en")
+    return DEFAULT_VOICE_BY_LANGUAGE.get(language, "omnivoice-en")
 
 
-def _decode_audio_from_outputs(processor: Any, outputs: torch.Tensor) -> torch.Tensor:
-    messages = processor.decode(outputs)
-    if not messages:
-        raise RuntimeError("OpenMOSS decode returned no messages")
-    audio_codes_list = getattr(messages[0], "audio_codes_list", None)
-    if not audio_codes_list:
-        raise RuntimeError("OpenMOSS decode returned no audio codes")
-    audio = audio_codes_list[0]
-    if not isinstance(audio, torch.Tensor):
-        audio = torch.tensor(audio, dtype=torch.float32)
-    if audio.dim() > 1:
-        audio = audio.squeeze()
-    return audio.detach().cpu().float().clamp(-1.0, 1.0)
+def resolve_voice_instruct(voice: str) -> Optional[str]:
+    return VOICE_TO_INSTRUCT.get(voice)
 
 
-def synthesize_wav(text: str) -> Tuple[bytes, int]:
-    model, processor = _load_model()
-    # Keep generation bounded; large token budgets can cause very long responses.
-    target_tokens = min(500, max(120, len(text) * 4))
-    try:
-        user_message = processor.build_user_message(text=text, tokens=target_tokens)
-    except TypeError:
-        user_message = processor.build_user_message(text=text)
-    conversation = [[user_message]]
-    batch = processor(conversation, mode="generation")
-    input_ids = batch["input_ids"].to(_model_device)
-    attention_mask = batch.get("attention_mask")
-    if attention_mask is not None:
-        attention_mask = attention_mask.to(_model_device)
+def _audio_to_wav_bytes(audio: Any, sample_rate: int) -> bytes:
+    if isinstance(audio, (list, tuple)):
+        if not audio:
+            raise RuntimeError("OmniVoice returned no audio")
+        audio = audio[0]
+    audio_np = np.asarray(audio, dtype=np.float32).reshape(-1)
+    if audio_np.size == 0:
+        raise RuntimeError("OmniVoice returned empty audio")
 
-    with torch.no_grad():
-        outputs = model.generate(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            max_new_tokens=MAX_NEW_TOKENS,
-        )
-
-    audio = _decode_audio_from_outputs(processor, outputs)
-    audio_np = audio.numpy()
     buffer = io.BytesIO()
-    sf.write(buffer, audio_np, _sample_rate, format="WAV")
-    return buffer.getvalue(), _sample_rate
+    sf.write(buffer, np.clip(audio_np, -1.0, 1.0), sample_rate, format="WAV")
+    return buffer.getvalue()
+
+
+def synthesize_wav(
+    text: str,
+    language: str = "ru",
+    speed: Optional[float] = None,
+    voice: Optional[str] = None,
+) -> Tuple[bytes, int]:
+    model = _load_model()
+    normalized_language = normalize_lang(language)
+    normalized_speed = normalize_speed(speed)
+    resolved_voice = resolve_voice(voice, normalized_language)
+    instruct = resolve_voice_instruct(resolved_voice)
+    sample_rate = int(getattr(model, "sampling_rate", _sample_rate) or _sample_rate)
+
+    last_error: Optional[Exception] = None
+    for attempt in range(1, OMNIVOICE_SYNTHESIS_ATTEMPTS + 1):
+        try:
+            with _GENERATION_LOCK:
+                audio = model.generate(
+                    text=text,
+                    language=normalized_language,
+                    instruct=instruct,
+                    speed=normalized_speed,
+                    num_step=OMNIVOICE_NUM_STEP,
+                )
+            return _audio_to_wav_bytes(audio, sample_rate), sample_rate
+        except Exception as error:
+            last_error = error
+            logger.warning(
+                "OmniVoice generation attempt %s/%s failed for language=%s: %s",
+                attempt,
+                OMNIVOICE_SYNTHESIS_ATTEMPTS,
+                normalized_language,
+                error,
+            )
+
+    raise RuntimeError(
+        f"OmniVoice generation failed after {OMNIVOICE_SYNTHESIS_ATTEMPTS} attempt(s): {last_error}"
+    ) from last_error
 
 
 def estimate_duration_ms(wav_bytes: bytes) -> int:
@@ -225,13 +238,18 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "realtime-tts",
-        "provider": "openmoss",
-        "model_id": MOSS_MODEL_ID,
-        "model_loaded": _moss_model is not None,
+        "provider": "omnivoice",
+        "model_id": OMNIVOICE_MODEL_ID,
+        "model_loaded": _omnivoice_model is not None,
         "device": _model_device,
         "dtype": str(_model_dtype),
+        "sample_rate": _sample_rate,
+        "default_speed": DEFAULT_TTS_SPEED,
+        "num_step": OMNIVOICE_NUM_STEP,
+        "synthesis_attempts": OMNIVOICE_SYNTHESIS_ATTEMPTS,
         "supported_languages": sorted(list(SUPPORTED_LANGUAGES)),
         "voices_total": len(VOICE_INFOS),
+        "voice_designs": sorted(VOICE_TO_INSTRUCT.keys()),
     }
 
 
@@ -243,19 +261,26 @@ async def get_voices():
 @app.post("/synthesize", response_model=TTSResponse)
 async def synthesize(request: TTSRequest):
     if not request.text or not request.text.strip():
-        raise HTTPException(status_code=400, detail="Пустой текст")
+        raise HTTPException(status_code=400, detail="Empty text")
     if len(request.text) > 2000:
-        raise HTTPException(status_code=400, detail="Текст слишком длинный (максимум 2000 символов)")
+        raise HTTPException(status_code=400, detail="Text too long (maximum 2000 characters)")
 
     language = normalize_lang(request.language)
     voice = resolve_voice(request.voice, language)
-    _ = voice  # API compatibility; OpenMOSS voice is selected by text/style capabilities.
 
     try:
-        wav_bytes, actual_sample_rate = await run_in_threadpool(synthesize_wav, request.text.strip())
+        wav_bytes, actual_sample_rate = await run_in_threadpool(
+            synthesize_wav,
+            request.text.strip(),
+            language,
+            request.speed,
+            voice,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
         logger.exception("Synthesis failed: %s", error)
-        raise HTTPException(status_code=503, detail=f"Синтез временно недоступен: {error}")
+        raise HTTPException(status_code=503, detail=f"Synthesis is temporarily unavailable: {error}")
 
     duration_ms = estimate_duration_ms(wav_bytes)
     return TTSResponse(
@@ -269,13 +294,23 @@ async def synthesize(request: TTSRequest):
 @app.post("/synthesize/stream")
 async def synthesize_stream(request: TTSRequest):
     if not request.text or not request.text.strip():
-        raise HTTPException(status_code=400, detail="Пустой текст")
+        raise HTTPException(status_code=400, detail="Empty text")
 
+    language = normalize_lang(request.language)
+    voice = resolve_voice(request.voice, language)
     try:
-        wav_bytes, _ = await run_in_threadpool(synthesize_wav, request.text.strip())
+        wav_bytes, _ = await run_in_threadpool(
+            synthesize_wav,
+            request.text.strip(),
+            language,
+            request.speed,
+            voice,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
     except Exception as error:
         logger.exception("Stream synthesis failed: %s", error)
-        raise HTTPException(status_code=503, detail=f"Синтез временно недоступен: {error}")
+        raise HTTPException(status_code=503, detail=f"Synthesis is temporarily unavailable: {error}")
 
     return Response(
         content=wav_bytes,
@@ -287,13 +322,59 @@ async def synthesize_stream(request: TTSRequest):
     )
 
 
+@app.post("/synthesize/pcm-stream")
+async def synthesize_pcm_stream(request: TTSRequest):
+    if not request.text or not request.text.strip():
+        raise HTTPException(status_code=400, detail="Empty text")
+
+    language = normalize_lang(request.language)
+    voice = resolve_voice(request.voice, language)
+    try:
+        wav_bytes, sample_rate = await run_in_threadpool(
+            synthesize_wav,
+            request.text.strip(),
+            language,
+            request.speed,
+            voice,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error))
+    except Exception as error:
+        logger.exception("PCM synthesis failed: %s", error)
+        raise HTTPException(status_code=503, detail=f"Synthesis is temporarily unavailable: {error}")
+
+    def iter_pcm():
+        audio, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
+        if sr != sample_rate:
+            logger.warning("Unexpected sample rate while streaming PCM: %s != %s", sr, sample_rate)
+        audio_np = np.asarray(audio, dtype=np.float32).reshape(-1)
+        pcm = (np.clip(audio_np, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
+        chunk_size = 4096
+        for offset in range(0, len(pcm), chunk_size):
+            yield pcm[offset : offset + chunk_size]
+
+    return StreamingResponse(
+        iter_pcm(),
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": "attachment; filename=speech.pcm",
+            "X-Audio-Codec": "pcm_s16le",
+            "X-Audio-Sample-Rate": str(sample_rate),
+            "X-Audio-Channels": "1",
+        },
+    )
+
+
 @app.get("/")
 async def root():
     return {
         "service": "Ollamify Realtime TTS",
-        "provider": "openmoss",
-        "model_id": MOSS_MODEL_ID,
-        "version": "3.0.0",
+        "provider": "omnivoice",
+        "model_id": OMNIVOICE_MODEL_ID,
+        "version": "4.0.0",
+        "default_speed": DEFAULT_TTS_SPEED,
+        "num_step": OMNIVOICE_NUM_STEP,
+        "voice_designs": sorted(VOICE_TO_INSTRUCT.keys()),
         "languages": sorted(list(SUPPORTED_LANGUAGES)),
     }
 

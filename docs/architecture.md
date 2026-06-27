@@ -10,7 +10,7 @@ flowchart LR
 
   nginx -->|POST auth login| auth["auth service"]
   nginx -->|api protected| zeus["zeus API"]
-  nginx -->|api tts protected| tts["tts service"]
+  nginx -->|api tts protected| zeus
   nginx -->|api stt protected| stt["stt service"]
   nginx -->|ws WebSocket| zeus
 
@@ -23,12 +23,13 @@ flowchart LR
   zeus -->|HTTPS| openrouter["OpenRouter (optional)"]
 
   ollama -->|model cache| ollama_models["ollama_data (volume)"]
-  tts -->|model cache| tts_models["tts_models (volume)"]
+  zeus -->|HTTP 8006| tts["tts-realtime (OmniVoice)"]
+  tts -->|model cache| tts_models["tts_hf_cache (volume)"]
   stt -->|model cache| stt_models["stt_models (volume)"]
   reranker -->|model cache| reranker_models["reranker_models (volume)"]
   frida -->|model cache| frida_models["frida_models (volume)"]
 
-  tts -.->|download on first run| model_hub["Model hubs (Silero, Whisper, HF)"]
+  tts -.->|download on first run| model_hub["Model hubs (OmniVoice, Whisper, HF)"]
   stt -.->|download on first run| model_hub
   reranker -.->|download on first run| model_hub
   frida -.->|download on first run| model_hub
@@ -42,7 +43,8 @@ flowchart LR
 - `ollama` provides local LLM + embeddings runtime.
 - `vector-db` runs Qdrant (vector search).
 - `db` is PostgreSQL (+ pgvector extension; admin tables are in `admin` schema).
-- `tts` and `stt` are separate services exposed under `/api/tts/*` and `/api/stt/*`.
+- `tts-realtime` is the OmniVoice TTS service. It is reached through `zeus` under `/api/tts/*`.
+- `stt` is exposed under `/api/stt/*`.
 
 ## Ports (default)
 
@@ -55,14 +57,14 @@ flowchart LR
 | vector-db (Qdrant) | 6333 | 6333 |
 | frida | 8002 | 8002 |
 | reranker | 8001 | 8001 |
-| tts | 8003 | 8003 |
+| tts-realtime | 8006 | (internal) |
 | stt | 8004 | 8004 |
 
 ## Gateway routing (Nginx)
 
 - `POST /auth/login` → `auth`
 - `/api/*` → `zeus` (authenticated)
-- `/api/tts/*` → `tts` (authenticated)
+- `/api/tts/*` → `zeus` → `tts-realtime` (authenticated)
 - `/api/stt/*` → `stt` (authenticated)
 - `/api/docs` → `zeus` (public Swagger UI)
 

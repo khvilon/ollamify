@@ -6,6 +6,17 @@ const router = express.Router();
 
 // URL TTS сервиса
 const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts-realtime:8006';
+const DEFAULT_TTS_SYNTHESIS_TIMEOUT_MS = 300000;
+export const DEFAULT_TTS_SPEED = 0.65;
+
+export function normalizeTtsSynthesisTimeoutMs(value = process.env.TTS_SYNTHESIS_TIMEOUT_MS) {
+  const timeoutMs = Number(value);
+  return Number.isFinite(timeoutMs) && timeoutMs > 0
+    ? timeoutMs
+    : DEFAULT_TTS_SYNTHESIS_TIMEOUT_MS;
+}
+
+const TTS_SYNTHESIS_TIMEOUT_MS = normalizeTtsSynthesisTimeoutMs();
 
 /**
  * @swagger
@@ -28,7 +39,7 @@ const TTS_SERVICE_URL = process.env.TTS_SERVICE_URL || 'http://tts-realtime:8006
  *           type: number
  *           minimum: 0.5
  *           maximum: 2.0
- *           default: 1.0
+ *           default: 0.65
  *           description: Скорость речи
  *         sample_rate:
  *           type: integer
@@ -147,7 +158,7 @@ router.get('/voices', async (req, res) => {
  */
 router.post('/synthesize', async (req, res) => {
   try {
-    const { text, voice = '', speed = 1.0, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
+    const { text, voice = '', speed = DEFAULT_TTS_SPEED, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -174,7 +185,7 @@ router.post('/synthesize', async (req, res) => {
         format,
         language
       })
-    }, 60000);
+    }, TTS_SYNTHESIS_TIMEOUT_MS);
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
@@ -227,7 +238,7 @@ router.post('/synthesize', async (req, res) => {
  */
 router.post('/synthesize/stream', async (req, res) => {
   try {
-    const { text, voice = '', speed = 1.0, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
+    const { text, voice = '', speed = DEFAULT_TTS_SPEED, sample_rate = 24000, format = 'mp3', language = 'ru' } = req.body;
     
     // Валидация входных данных
     if (!text || typeof text !== 'string' || text.trim().length === 0) {
@@ -250,7 +261,7 @@ router.post('/synthesize/stream', async (req, res) => {
         format,
         language
       })
-    }, 60000);
+    }, TTS_SYNTHESIS_TIMEOUT_MS);
     
     if (!response.ok) {
       const errorData = await response.text();
@@ -271,6 +282,55 @@ router.post('/synthesize/stream', async (req, res) => {
     res.status(503).json({ 
       error: 'Ошибка потокового синтеза речи',
       details: error.message 
+    });
+  }
+});
+
+router.post('/synthesize/pcm-stream', async (req, res) => {
+  try {
+    const { text, voice = '', speed = DEFAULT_TTS_SPEED, sample_rate = 24000, format = 'pcm', language = 'ru' } = req.body;
+
+    if (!text || typeof text !== 'string' || text.trim().length === 0) {
+      return res.status(400).json({ error: 'РўРµРєСЃС‚ РѕР±СЏР·Р°С‚РµР»РµРЅ РґР»СЏ Р·Р°РїРѕР»РЅРµРЅРёСЏ' });
+    }
+
+    logger.info(`TTS PCM stream request: "${text.substring(0, 50)}..." with voice: ${voice}, language: ${language}`);
+
+    const response = await fetchWithTimeout(`${TTS_SERVICE_URL}/synthesize/pcm-stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        text,
+        voice,
+        speed,
+        sample_rate,
+        format,
+        language
+      })
+    }, TTS_SYNTHESIS_TIMEOUT_MS);
+
+    if (!response.ok) {
+      const errorData = await response.text();
+      throw new Error(`TTS service error: ${response.status} - ${errorData}`);
+    }
+
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment; filename=speech.pcm');
+    for (const headerName of ['x-audio-codec', 'x-audio-sample-rate', 'x-audio-channels']) {
+      const headerValue = response.headers.get(headerName);
+      if (headerValue) {
+        res.setHeader(headerName, headerValue);
+      }
+    }
+
+    response.body.pipe(res);
+  } catch (error) {
+    logger.error('Error in TTS PCM stream synthesis:', error);
+    res.status(503).json({
+      error: 'РћС€РёР±РєР° PCM-СЃС‚СЂРёРјРёРЅРіР° СЃРёРЅС‚РµР·Р° СЂРµС‡Рё',
+      details: error.message
     });
   }
 });

@@ -125,7 +125,11 @@ services:
   tts-realtime:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
-      - MOSS_DEVICE=cuda
+      - OMNIVOICE_DEVICE=cuda:0
+      - OMNIVOICE_MODEL_ID=k2-fsa/OmniVoice
+      - OMNIVOICE_NUM_STEP=10
+      - OMNIVOICE_SYNTHESIS_ATTEMPTS=2
+      - TTS_DEFAULT_SPEED=0.65
     deploy:
       resources:
         reservations:

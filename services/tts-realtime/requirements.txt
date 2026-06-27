@@ -1,9 +1,11 @@
 fastapi==0.115.6
 uvicorn==0.34.0
 pydantic==2.10.4
-torch
-torchaudio
-transformers==5.0.0
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch==2.9.1+cu128
+torchaudio==2.9.1+cu128
+transformers>=5.3.0,<6.0.0
+omnivoice==0.1.5
 sentencepiece
 numpy
 soundfile

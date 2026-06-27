@@ -228,18 +228,19 @@ UI вызывает:
 
 Страница‑песочница для:
 
-- **TTS**: синтез речи (Silero)
+- **TTS**: синтез речи (OmniVoice через `tts-realtime`)
 - **STT**: распознавание речи (Whisper)
 
 ### Вкладка TTS
 
 #### Управление
 
-- **Voice**: загружается из `GET /api/tts/voices`
-- **Language**: сейчас только `ru` (в UI отключено)
-- **Speed**: 0.5× … 2.0×
+- **Voice**: загружается из `GET /api/tts/voices`; текущие голоса: `omnivoice-ru`, `omnivoice-en`, `omnivoice-he`
+- **Language**: `ru`, `en`, `he`
+- **Speed**: 0.5x ... 2.0x; по умолчанию `0.65x`
 - **Quality (sample rate)**: 8k / 24k / 48k
 - **Quick phrases**: быстрые фразы для заполнения текста
+- **Hebrew voice**: `omnivoice-he` использует OmniVoice instruct `young adult, high pitch` для более молодого тембра.
 
 #### Как синтезировать
 

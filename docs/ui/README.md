@@ -228,18 +228,19 @@ Path: `/voice`
 
 This page is a playground for:
 
-- **TTS**: Text-to-Speech (Silero)
+- **TTS**: Text-to-Speech (OmniVoice via `tts-realtime`)
 - **STT**: Speech-to-Text (Whisper)
 
 ### TTS tab
 
 #### Controls
 
-- **Voice**: fetched from `GET /api/tts/voices`
-- **Language**: currently `ru` only (disabled in UI)
-- **Speed**: 0.5× … 2.0×
+- **Voice**: fetched from `GET /api/tts/voices`; current voices are `omnivoice-ru`, `omnivoice-en`, and `omnivoice-he`
+- **Language**: `ru`, `en`, `he`
+- **Speed**: 0.5x ... 2.0x; default is `0.65x`
 - **Quality (sample rate)**: 8k / 24k / 48k
 - **Quick phrases**: one-click presets to fill the text box
+- **Hebrew voice**: `omnivoice-he` uses the OmniVoice `young adult, high pitch` instruction for a younger timbre.
 
 #### How to synthesize
 

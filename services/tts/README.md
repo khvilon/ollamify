@@ -1,40 +1,13 @@
-# Ollamify TTS service (Silero TTS)
+# Ollamify legacy TTS service (Silero)
 
-This service provides **Text-to-Speech** using **Silero TTS** (current implementation: Russian voices).
+This directory contains the older Silero-based TTS service.
+It is not the default TTS path in the current Docker stack.
 
-In the full stack it is exposed via the gateway as:
-- `/api/tts/*` → this service
+Current production/local TTS uses:
 
-## Endpoints (service-level)
+- service: `services/tts-realtime`
+- container: `tts-realtime`
+- model: `k2-fsa/OmniVoice`
+- gateway route: `/api/tts/*` -> `zeus` -> `tts-realtime:8006`
 
-- `GET /health` — service + model status
-- `GET /voices` — available voices
-- `POST /synthesize` — synthesize speech (base64 WAV)
-- `POST /synthesize/stream` — synthesize speech (binary WAV)
-
-## Voices
-
-Currently available RU voices:
-- `aidar` (male)
-- `baya` (female)
-- `kseniya` (female)
-- `xenia` (female)
-
-## Request example
-
-```json
-{
-  "text": "Привет! Как дела?",
-  "voice": "aidar",
-  "speed": 1.0,
-  "sample_rate": 24000,
-  "format": "wav",
-  "language": "ru"
-}
-```
-
-## Notes
-
-- Local docs (FastAPI): `http://localhost:8003/docs`
-- Gateway docs: `http://localhost/api/docs`
-- The `/health` response contains the license string used by the service.
+Keep this service only for legacy experiments or rollback testing.

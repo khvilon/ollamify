@@ -19,7 +19,13 @@ Some networks block `pypi.nvidia.com`. GPU images now use safer pip flags, but i
 - Rebuild with increased timeouts:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache --build-arg PIP_TIMEOUT=300 --build-arg PIP_RETRIES=20 tts
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml build --no-cache tts-realtime
+```
+
+If you have the local Torch/CUDA base image prepared, you can speed up rebuilds with:
+
+```bash
+docker build --build-arg BASE_IMAGE=ollamify-tts-realtime-base:torch-cu128 -t ollamify-tts-realtime:latest services/tts-realtime
 ```
 
 ## Can’t login

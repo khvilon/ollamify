@@ -386,16 +386,16 @@ Detailed code examples in various programming languages are available on the "Co
             },
             voice: {
               type: 'string',
-              description: 'Silero TTS voice (Russian)',
-              enum: ['aidar', 'baya', 'kseniya', 'xenia'],
-              example: 'aidar'
+              description: 'OmniVoice voice',
+              enum: ['omnivoice-ru', 'omnivoice-en', 'omnivoice-he'],
+              example: 'omnivoice-he'
             },
             speed: {
               type: 'number',
               minimum: 0.5,
               maximum: 2.0,
               description: 'Speech speed',
-              example: 1.0
+              example: 0.65
             },
             sample_rate: {
               type: 'integer',
@@ -411,9 +411,9 @@ Detailed code examples in various programming languages are available on the "Co
             },
             language: {
               type: 'string',
-              enum: ['ru'],
-              description: 'Language (currently only ru is supported)',
-              example: 'ru'
+              enum: ['ru', 'en', 'he'],
+              description: 'Speech language',
+              example: 'he'
             }
           }
         },
